@@ -11,10 +11,12 @@ import static org.mockito.Mockito.when;
 import com.songly.content.dto.CommentResponse;
 import com.songly.content.dto.PostResponse;
 import com.songly.profile.ProfileDirectory;
+import com.songly.social.SocialGraph;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,11 +39,15 @@ class ContentServiceTest {
 	@Mock
 	private ProfileDirectory profileDirectory;
 
+	@Mock
+	private SocialGraph socialGraph;
+
 	private ContentService contentService;
 
 	@BeforeEach
 	void setUp() {
-		contentService = new ContentService(postRepository, likeRepository, commentRepository, profileDirectory);
+		contentService = new ContentService(postRepository, likeRepository, commentRepository, profileDirectory,
+				socialGraph);
 	}
 
 	@Test
@@ -144,6 +150,27 @@ class ContentServiceTest {
 				.isInstanceOf(NotResourceOwnerException.class);
 
 		verify(commentRepository, never()).delete(any(Comment.class));
+	}
+
+	@Test
+	void feed_queriesPostsOfFriendsAndViewer() {
+		UUID viewerId = UUID.randomUUID();
+		UUID friendId = UUID.randomUUID();
+		Post post = new Post(UUID.randomUUID(), friendId, "od znajomego", Instant.now());
+		when(socialGraph.friendIds(viewerId)).thenReturn(Set.of(friendId));
+		when(postRepository.findByAuthorIdInOrderByCreatedAtDesc(any(), any()))
+				.thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(post)));
+		when(likeRepository.countByPostIdIn(any())).thenReturn(List.of());
+		when(commentRepository.countByPostIdIn(any())).thenReturn(List.of());
+		when(likeRepository.findByPostIdInAndUserId(any(), any())).thenReturn(List.of());
+		when(profileDirectory.displayNames(anyCollection())).thenReturn(Map.of(friendId, "Bono"));
+
+		var page = contentService.feed(viewerId, org.springframework.data.domain.Pageable.unpaged());
+
+		verify(postRepository).findByAuthorIdInOrderByCreatedAtDesc(Set.of(friendId, viewerId),
+				org.springframework.data.domain.Pageable.unpaged());
+		assertThat(page.getContent()).hasSize(1);
+		assertThat(page.getContent().get(0).authorDisplayName()).isEqualTo("Bono");
 	}
 
 	@Test

@@ -3,7 +3,9 @@ package com.songly.content;
 import com.songly.content.dto.CommentResponse;
 import com.songly.content.dto.PostResponse;
 import com.songly.profile.ProfileDirectory;
+import com.songly.social.SocialGraph;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -22,13 +24,15 @@ class ContentService {
 	private final LikeRepository likeRepository;
 	private final CommentRepository commentRepository;
 	private final ProfileDirectory profileDirectory;
+	private final SocialGraph socialGraph;
 
 	ContentService(PostRepository postRepository, LikeRepository likeRepository, CommentRepository commentRepository,
-			ProfileDirectory profileDirectory) {
+			ProfileDirectory profileDirectory, SocialGraph socialGraph) {
 		this.postRepository = postRepository;
 		this.likeRepository = likeRepository;
 		this.commentRepository = commentRepository;
 		this.profileDirectory = profileDirectory;
+		this.socialGraph = socialGraph;
 	}
 
 	@Transactional
@@ -51,6 +55,21 @@ class ContentService {
 		Page<Post> page = authorId == null
 				? postRepository.findAllByOrderByCreatedAtDesc(pageable)
 				: postRepository.findByAuthorIdOrderByCreatedAtDesc(authorId, pageable);
+		Map<UUID, PostResponse> byId = toResponses(page.getContent(), viewerId).stream()
+				.collect(Collectors.toMap(PostResponse::id, Function.identity()));
+		return page.map(post -> byId.get(post.getId()));
+	}
+
+	/**
+	 * Prosty feed MVP: posty znajomych i własne, chronologicznie. Zapytanie po
+	 * liście autorów wystarczy przy setkach znajomych; przy realnym ruchu to
+	 * pierwszy kandydat na read-replikę / precomputed feed (Claude.md §10).
+	 */
+	@Transactional(readOnly = true)
+	Page<PostResponse> feed(UUID viewerId, Pageable pageable) {
+		Set<UUID> authorIds = new HashSet<>(socialGraph.friendIds(viewerId));
+		authorIds.add(viewerId);
+		Page<Post> page = postRepository.findByAuthorIdInOrderByCreatedAtDesc(authorIds, pageable);
 		Map<UUID, PostResponse> byId = toResponses(page.getContent(), viewerId).stream()
 				.collect(Collectors.toMap(PostResponse::id, Function.identity()));
 		return page.map(post -> byId.get(post.getId()));
