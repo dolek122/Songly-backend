@@ -86,6 +86,26 @@ class ProfileService implements ProfileDirectory {
 				.collect(Collectors.toMap(Profile::getUserId, Profile::getDisplayName));
 	}
 
+	@Override
+	@Transactional(readOnly = true)
+	public Set<UUID> userIdsWithAnyGenre(Collection<UUID> genreIds) {
+		if (genreIds.isEmpty()) {
+			return Set.of();
+		}
+		return userGenreRepository.findByGenreIdIn(genreIds).stream().map(UserGenre::getUserId)
+				.collect(Collectors.toSet());
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Map<UUID, Set<UUID>> favoriteGenreIdsByUser(Collection<UUID> userIds) {
+		if (userIds.isEmpty()) {
+			return Map.of();
+		}
+		return userGenreRepository.findByUserIdIn(userIds).stream().collect(Collectors
+				.groupingBy(UserGenre::getUserId, Collectors.mapping(UserGenre::getGenreId, Collectors.toSet())));
+	}
+
 	private String defaultDisplayName(String email) {
 		int at = email.indexOf('@');
 		return at > 0 ? email.substring(0, at) : email;

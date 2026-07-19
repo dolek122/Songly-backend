@@ -199,6 +199,19 @@ class SocialGraphServiceTest {
 	}
 
 	@Test
+	void blockedEitherWayIds_combinesBothDirections() {
+		UUID blockedByMe = UUID.randomUUID();
+		UUID blockingMe = UUID.randomUUID();
+		when(blockRepository.findByBlockerId(requesterId))
+				.thenReturn(List.of(new Block(requesterId, blockedByMe, Instant.now())));
+		when(blockRepository.findByBlockedId(requesterId))
+				.thenReturn(List.of(new Block(blockingMe, requesterId, Instant.now())));
+
+		assertThat(socialGraphService.blockedEitherWayIds(requesterId)).containsExactlyInAnyOrder(blockedByMe,
+				blockingMe);
+	}
+
+	@Test
 	void friendIds_returnsOtherEndOfEachFriendship() {
 		UUID other = UUID.randomUUID();
 		when(friendshipRepository.findByUserAIdOrUserBId(requesterId, requesterId))

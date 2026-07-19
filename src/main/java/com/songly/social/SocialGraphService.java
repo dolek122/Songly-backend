@@ -172,6 +172,15 @@ class SocialGraphService implements SocialGraph {
 				|| blockRepository.existsById(new BlockId(otherUserId, userId));
 	}
 
+	@Override
+	@Transactional(readOnly = true)
+	public Set<UUID> blockedEitherWayIds(UUID userId) {
+		return Stream
+				.concat(blockRepository.findByBlockerId(userId).stream().map(Block::getBlockedId),
+						blockRepository.findByBlockedId(userId).stream().map(Block::getBlockerId))
+				.collect(Collectors.toSet());
+	}
+
 	/**
 	 * Zwraca oczekujące zaproszenie tylko jeśli {@code currentUserId} jest jego
 	 * właściwą stroną — cudze zaproszenia zgłaszamy jako nieistniejące, żeby nie
