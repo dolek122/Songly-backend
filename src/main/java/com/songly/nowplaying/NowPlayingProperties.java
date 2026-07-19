@@ -1,0 +1,99 @@
+package com.songly.nowplaying;
+
+import java.time.Duration;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+@ConfigurationProperties(prefix = "songly.now-playing")
+class NowPlayingProperties {
+
+	private String tokenEncryptionKey;
+	private Duration cacheTtl = Duration.ofSeconds(45);
+	private Duration oauthStateTtl = Duration.ofMinutes(10);
+	private final Spotify spotify = new Spotify();
+
+	String getTokenEncryptionKey() {
+		return tokenEncryptionKey;
+	}
+
+	void setTokenEncryptionKey(String tokenEncryptionKey) {
+		this.tokenEncryptionKey = tokenEncryptionKey;
+	}
+
+	Duration getCacheTtl() {
+		return cacheTtl;
+	}
+
+	void setCacheTtl(Duration cacheTtl) {
+		this.cacheTtl = cacheTtl;
+	}
+
+	Duration getOauthStateTtl() {
+		return oauthStateTtl;
+	}
+
+	void setOauthStateTtl(Duration oauthStateTtl) {
+		this.oauthStateTtl = oauthStateTtl;
+	}
+
+	Spotify getSpotify() {
+		return spotify;
+	}
+
+	static class Spotify {
+
+		private String clientId;
+		private String clientSecret;
+		private String redirectUri;
+		private String authorizeUrl = "https://accounts.spotify.com/authorize";
+		private String tokenUrl = "https://accounts.spotify.com/api/token";
+		private String apiBaseUrl = "https://api.spotify.com/v1";
+
+		String getClientId() {
+			return clientId;
+		}
+
+		void setClientId(String clientId) {
+			this.clientId = clientId;
+		}
+
+		String getClientSecret() {
+			return clientSecret;
+		}
+
+		void setClientSecret(String clientSecret) {
+			this.clientSecret = clientSecret;
+		}
+
+		String getRedirectUri() {
+			return redirectUri;
+		}
+
+		void setRedirectUri(String redirectUri) {
+			this.redirectUri = redirectUri;
+		}
+
+		String getAuthorizeUrl() {
+			return authorizeUrl;
+		}
+
+		void setAuthorizeUrl(String authorizeUrl) {
+			this.authorizeUrl = authorizeUrl;
+		}
+
+		String getTokenUrl() {
+			return tokenUrl;
+		}
+
+		void setTokenUrl(String tokenUrl) {
+			this.tokenUrl = tokenUrl;
+		}
+
+		String getApiBaseUrl() {
+			return apiBaseUrl;
+		}
+
+		void setApiBaseUrl(String apiBaseUrl) {
+			this.apiBaseUrl = apiBaseUrl;
+		}
+	}
+}

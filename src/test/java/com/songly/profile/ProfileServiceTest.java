@@ -1,0 +1,151 @@
+package com.songly.profile;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.songly.profile.dto.GenreResponse;
+import com.songly.profile.dto.ProfileResponse;
+import com.songly.profile.dto.UpdateProfileRequest;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+class ProfileServiceTest {
+
+	@Mock
+	private ProfileRepository profileRepository;
+
+	@Mock
+	private GenreRepository genreRepository;
+
+	@Mock
+	private UserGenreRepository userGenreRepository;
+
+	private ProfileService profileService;
+
+	@BeforeEach
+	void setUp() {
+		profileService = new ProfileService(profileRepository, genreRepository, userGenreRepository);
+	}
+
+	@Test
+	void createDefaultProfile_createsProfileWithEmailLocalPartAsDisplayName_whenNoneExists() {
+		UUID userId = UUID.randomUUID();
+		when(profileRepository.existsByUserId(userId)).thenReturn(false);
+
+		profileService.createDefaultProfile(userId, "ada@songly.io");
+
+		ArgumentCaptor<Profile> captor = ArgumentCaptor.forClass(Profile.class);
+		verify(profileRepository).save(captor.capture());
+		assertThat(captor.getValue().getDisplayName()).isEqualTo("ada");
+		assertThat(captor.getValue().getUserId()).isEqualTo(userId);
+	}
+
+	@Test
+	void createDefaultProfile_doesNothing_whenProfileAlreadyExists() {
+		UUID userId = UUID.randomUUID();
+		when(profileRepository.existsByUserId(userId)).thenReturn(true);
+
+		profileService.createDefaultProfile(userId, "ada@songly.io");
+
+		verify(profileRepository, never()).save(any());
+	}
+
+	@Test
+	void getProfile_returnsResponse_whenFound() {
+		UUID userId = UUID.randomUUID();
+		Profile profile = new Profile(UUID.randomUUID(), userId, "Ada", "bio", null, Instant.now(), Instant.now());
+		when(profileRepository.findByUserId(userId)).thenReturn(Optional.of(profile));
+
+		ProfileResponse response = profileService.getProfile(userId);
+
+		assertThat(response.displayName()).isEqualTo("Ada");
+		assertThat(response.bio()).isEqualTo("bio");
+	}
+
+	@Test
+	void getProfile_throws_whenNotFound() {
+		UUID userId = UUID.randomUUID();
+		when(profileRepository.findByUserId(userId)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> profileService.getProfile(userId)).isInstanceOf(ProfileNotFoundException.class);
+	}
+
+	@Test
+	void updateProfile_updatesFields_whenFound() {
+		UUID userId = UUID.randomUUID();
+		Profile profile = new Profile(UUID.randomUUID(), userId, "Old", "old bio", null, Instant.now(), Instant.now());
+		when(profileRepository.findByUserId(userId)).thenReturn(Optional.of(profile));
+
+		ProfileResponse response = profileService.updateProfile(userId,
+				new UpdateProfileRequest("New", "new bio", "https://example.com/a.png"));
+
+		assertThat(response.displayName()).isEqualTo("New");
+		assertThat(response.bio()).isEqualTo("new bio");
+		assertThat(response.avatarUrl()).isEqualTo("https://example.com/a.png");
+	}
+
+	@Test
+	void updateProfile_throws_whenNotFound() {
+		UUID userId = UUID.randomUUID();
+		when(profileRepository.findByUserId(userId)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> profileService.updateProfile(userId, new UpdateProfileRequest("New", null, null)))
+				.isInstanceOf(ProfileNotFoundException.class);
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void setFavoriteGenres_replacesGenres_whenAllKnown() {
+		UUID userId = UUID.randomUUID();
+		Set<UUID> genreIds = Set.of(UUID.randomUUID(), UUID.randomUUID());
+		when(genreRepository.countByIdIn(genreIds)).thenReturn((long) genreIds.size());
+
+		profileService.setFavoriteGenres(userId, genreIds);
+
+		verify(userGenreRepository).deleteByUserId(userId);
+		ArgumentCaptor<List<UserGenre>> captor = ArgumentCaptor.forClass(List.class);
+		verify(userGenreRepository).saveAll(captor.capture());
+		assertThat(captor.getValue()).hasSize(genreIds.size());
+	}
+
+	@Test
+	void setFavoriteGenres_throws_whenGenreUnknown() {
+		UUID userId = UUID.randomUUID();
+		Set<UUID> genreIds = Set.of(UUID.randomUUID());
+		when(genreRepository.countByIdIn(genreIds)).thenReturn(0L);
+
+		assertThatThrownBy(() -> profileService.setFavoriteGenres(userId, genreIds))
+				.isInstanceOf(UnknownGenreException.class);
+
+		verify(userGenreRepository, never()).deleteByUserId(any());
+		verify(userGenreRepository, never()).saveAll(anyCollection());
+	}
+
+	@Test
+	void getFavoriteGenres_mapsToResponses() {
+		UUID userId = UUID.randomUUID();
+		UUID genreId = UUID.randomUUID();
+		when(userGenreRepository.findByUserId(userId))
+				.thenReturn(List.of(new UserGenre(userId, genreId, Instant.now())));
+		when(genreRepository.findAllById(List.of(genreId))).thenReturn(List.of(new Genre(genreId, "Rock")));
+
+		List<GenreResponse> result = profileService.getFavoriteGenres(userId);
+
+		assertThat(result).containsExactly(new GenreResponse(genreId, "Rock"));
+	}
+}
