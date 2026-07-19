@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class ContentServiceTest {
@@ -42,12 +43,15 @@ class ContentServiceTest {
 	@Mock
 	private SocialGraph socialGraph;
 
+	@Mock
+	private ApplicationEventPublisher eventPublisher;
+
 	private ContentService contentService;
 
 	@BeforeEach
 	void setUp() {
 		contentService = new ContentService(postRepository, likeRepository, commentRepository, profileDirectory,
-				socialGraph);
+				socialGraph, eventPublisher);
 	}
 
 	@Test
@@ -96,36 +100,51 @@ class ContentServiceTest {
 
 	@Test
 	void likePost_isIdempotent() {
-		UUID postId = UUID.randomUUID();
 		UUID userId = UUID.randomUUID();
-		when(postRepository.existsById(postId)).thenReturn(true);
-		when(likeRepository.existsById(new LikeId(postId, userId))).thenReturn(true);
+		Post post = new Post(UUID.randomUUID(), UUID.randomUUID(), "treść", Instant.now());
+		when(postRepository.findById(post.getId())).thenReturn(Optional.of(post));
+		when(likeRepository.existsById(new LikeId(post.getId(), userId))).thenReturn(true);
 
-		contentService.likePost(postId, userId);
+		contentService.likePost(post.getId(), userId);
 
 		verify(likeRepository, never()).save(any());
+		verify(eventPublisher, never()).publishEvent(any());
+	}
+
+	@Test
+	void likePost_publishesEventForPostAuthor() {
+		UUID likerId = UUID.randomUUID();
+		Post post = new Post(UUID.randomUUID(), UUID.randomUUID(), "treść", Instant.now());
+		when(postRepository.findById(post.getId())).thenReturn(Optional.of(post));
+		when(likeRepository.existsById(new LikeId(post.getId(), likerId))).thenReturn(false);
+
+		contentService.likePost(post.getId(), likerId);
+
+		verify(likeRepository).save(any(Like.class));
+		verify(eventPublisher).publishEvent(any(PostLikedEvent.class));
 	}
 
 	@Test
 	void likePost_throws_whenPostMissing() {
 		UUID postId = UUID.randomUUID();
-		when(postRepository.existsById(postId)).thenReturn(false);
+		when(postRepository.findById(postId)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> contentService.likePost(postId, UUID.randomUUID()))
 				.isInstanceOf(PostNotFoundException.class);
 	}
 
 	@Test
-	void addComment_savesAndReturnsResponse() {
-		UUID postId = UUID.randomUUID();
+	void addComment_savesAndReturnsResponse_andPublishesEvent() {
 		UUID authorId = UUID.randomUUID();
-		when(postRepository.existsById(postId)).thenReturn(true);
+		Post post = new Post(UUID.randomUUID(), UUID.randomUUID(), "treść", Instant.now());
+		when(postRepository.findById(post.getId())).thenReturn(Optional.of(post));
 		when(profileDirectory.displayNames(anyCollection())).thenReturn(Map.of(authorId, "Ada"));
 
-		CommentResponse response = contentService.addComment(postId, authorId, "Świetny kawałek");
+		CommentResponse response = contentService.addComment(post.getId(), authorId, "Świetny kawałek");
 
 		verify(commentRepository).save(any(Comment.class));
-		assertThat(response.postId()).isEqualTo(postId);
+		verify(eventPublisher).publishEvent(any(PostCommentedEvent.class));
+		assertThat(response.postId()).isEqualTo(post.getId());
 		assertThat(response.authorDisplayName()).isEqualTo("Ada");
 	}
 

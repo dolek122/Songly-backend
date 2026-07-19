@@ -14,6 +14,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -26,13 +27,16 @@ class SocialGraphService implements SocialGraph {
 	private final FriendshipRepository friendshipRepository;
 	private final BlockRepository blockRepository;
 	private final ProfileDirectory profileDirectory;
+	private final ApplicationEventPublisher eventPublisher;
 
 	SocialGraphService(FriendRequestRepository friendRequestRepository, FriendshipRepository friendshipRepository,
-			BlockRepository blockRepository, ProfileDirectory profileDirectory) {
+			BlockRepository blockRepository, ProfileDirectory profileDirectory,
+			ApplicationEventPublisher eventPublisher) {
 		this.friendRequestRepository = friendRequestRepository;
 		this.friendshipRepository = friendshipRepository;
 		this.blockRepository = blockRepository;
 		this.profileDirectory = profileDirectory;
+		this.eventPublisher = eventPublisher;
 	}
 
 	/**
@@ -61,10 +65,13 @@ class SocialGraphService implements SocialGraph {
 			FriendRequest request = reverse.get();
 			request.accept(now);
 			friendshipRepository.save(Friendship.between(requesterId, addresseeId, now));
+			eventPublisher.publishEvent(new FriendRequestAcceptedEvent(request.getId(), request.getRequesterId(),
+					request.getAddresseeId(), now));
 			return toResponse(request);
 		}
 		FriendRequest request = new FriendRequest(UUID.randomUUID(), requesterId, addresseeId, now);
 		friendRequestRepository.save(request);
+		eventPublisher.publishEvent(new FriendRequestSentEvent(request.getId(), requesterId, addresseeId, now));
 		return toResponse(request);
 	}
 
@@ -88,6 +95,8 @@ class SocialGraphService implements SocialGraph {
 		Instant now = Instant.now();
 		request.accept(now);
 		friendshipRepository.save(Friendship.between(request.getRequesterId(), request.getAddresseeId(), now));
+		eventPublisher.publishEvent(
+				new FriendRequestAcceptedEvent(request.getId(), request.getRequesterId(), request.getAddresseeId(), now));
 		return toResponse(request);
 	}
 

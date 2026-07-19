@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -25,14 +26,16 @@ class ContentService {
 	private final CommentRepository commentRepository;
 	private final ProfileDirectory profileDirectory;
 	private final SocialGraph socialGraph;
+	private final ApplicationEventPublisher eventPublisher;
 
 	ContentService(PostRepository postRepository, LikeRepository likeRepository, CommentRepository commentRepository,
-			ProfileDirectory profileDirectory, SocialGraph socialGraph) {
+			ProfileDirectory profileDirectory, SocialGraph socialGraph, ApplicationEventPublisher eventPublisher) {
 		this.postRepository = postRepository;
 		this.likeRepository = likeRepository;
 		this.commentRepository = commentRepository;
 		this.profileDirectory = profileDirectory;
 		this.socialGraph = socialGraph;
+		this.eventPublisher = eventPublisher;
 	}
 
 	@Transactional
@@ -86,9 +89,11 @@ class ContentService {
 
 	@Transactional
 	void likePost(UUID postId, UUID userId) {
-		requirePostExists(postId);
+		Post post = postRepository.findById(postId).orElseThrow(PostNotFoundException::new);
 		if (!likeRepository.existsById(new LikeId(postId, userId))) {
-			likeRepository.save(new Like(postId, userId, Instant.now()));
+			Instant now = Instant.now();
+			likeRepository.save(new Like(postId, userId, now));
+			eventPublisher.publishEvent(new PostLikedEvent(postId, post.getAuthorId(), userId, now));
 		}
 	}
 
@@ -100,9 +105,11 @@ class ContentService {
 
 	@Transactional
 	CommentResponse addComment(UUID postId, UUID authorId, String content) {
-		requirePostExists(postId);
+		Post post = postRepository.findById(postId).orElseThrow(PostNotFoundException::new);
 		Comment comment = new Comment(UUID.randomUUID(), postId, authorId, content, Instant.now());
 		commentRepository.save(comment);
+		eventPublisher.publishEvent(new PostCommentedEvent(postId, post.getAuthorId(), comment.getId(), authorId,
+				comment.getCreatedAt()));
 		String displayName = profileDirectory.displayNames(Set.of(authorId)).get(authorId);
 		return new CommentResponse(comment.getId(), postId, authorId, displayName, comment.getContent(),
 				comment.getCreatedAt());

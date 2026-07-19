@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class SocialGraphServiceTest {
@@ -37,6 +38,9 @@ class SocialGraphServiceTest {
 	@Mock
 	private ProfileDirectory profileDirectory;
 
+	@Mock
+	private ApplicationEventPublisher eventPublisher;
+
 	private SocialGraphService socialGraphService;
 
 	private final UUID requesterId = UUID.randomUUID();
@@ -45,7 +49,7 @@ class SocialGraphServiceTest {
 	@BeforeEach
 	void setUp() {
 		socialGraphService = new SocialGraphService(friendRequestRepository, friendshipRepository, blockRepository,
-				profileDirectory);
+				profileDirectory, eventPublisher);
 		lenient().when(profileDirectory.displayNames(anyCollection()))
 				.thenReturn(Map.of(requesterId, "Ada", addresseeId, "Bono"));
 	}
@@ -114,6 +118,7 @@ class SocialGraphServiceTest {
 		assertThat(response.requesterDisplayName()).isEqualTo("Ada");
 		assertThat(response.addresseeDisplayName()).isEqualTo("Bono");
 		verify(friendRequestRepository).save(any(FriendRequest.class));
+		verify(eventPublisher).publishEvent(any(FriendRequestSentEvent.class));
 	}
 
 	@Test
@@ -125,6 +130,7 @@ class SocialGraphServiceTest {
 
 		assertThat(response.status()).isEqualTo(FriendRequestStatus.ACCEPTED);
 		verify(friendshipRepository).save(any(Friendship.class));
+		verify(eventPublisher).publishEvent(any(FriendRequestAcceptedEvent.class));
 	}
 
 	@Test
