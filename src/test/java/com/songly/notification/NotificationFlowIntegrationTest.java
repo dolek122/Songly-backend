@@ -47,48 +47,53 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 		TestUser bono = registerUser("notif-bono@songly.io");
 
 		// zaproszenie: powiadomienie dla adresata
-		MvcResult requestResult = mockMvc.perform(post("/api/v1/friends/requests")
-				.header("Authorization", "Bearer " + ada.accessToken()).contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"addresseeId":"%s"}""".formatted(bono.userId()))).andExpect(status().isCreated()).andReturn();
+		MvcResult requestResult = mockMvc
+				.perform(post("/api/v1/friends/requests").header("Authorization", "Bearer " + ada.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"addresseeId":"%s"}""".formatted(bono.userId())))
+				.andExpect(status().isCreated()).andReturn();
 		String requestId = objectMapper.readTree(requestResult.getResponse().getContentAsString()).get("id").asText();
 
-		mockMvc.perform(get("/api/v1/notifications/unread-count").header("Authorization",
-				"Bearer " + bono.accessToken())).andExpect(status().isOk()).andExpect(jsonPath("$.count").value(1));
+		mockMvc.perform(
+				get("/api/v1/notifications/unread-count").header("Authorization", "Bearer " + bono.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.count").value(1));
 		mockMvc.perform(get("/api/v1/notifications").header("Authorization", "Bearer " + bono.accessToken()))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.content[0].type").value("FRIEND_REQUEST_RECEIVED"))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.content[0].type").value("FRIEND_REQUEST_RECEIVED"))
 				.andExpect(jsonPath("$.content[0].actorId").value(ada.userId()))
 				.andExpect(jsonPath("$.content[0].actorDisplayName").value("notif-ada"));
 
 		// akceptacja: powiadomienie dla wysyłającego
-		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId))
-				.header("Authorization", "Bearer " + bono.accessToken())).andExpect(status().isOk());
+		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId)).header("Authorization",
+				"Bearer " + bono.accessToken())).andExpect(status().isOk());
 		mockMvc.perform(get("/api/v1/notifications").header("Authorization", "Bearer " + ada.accessToken()))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.content[0].type").value("FRIEND_REQUEST_ACCEPTED"))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.content[0].type").value("FRIEND_REQUEST_ACCEPTED"))
 				.andExpect(jsonPath("$.content[0].actorId").value(bono.userId()));
 
 		// lajk i komentarz: powiadomienia dla autora posta
-		MvcResult postResult = mockMvc.perform(post("/api/v1/posts")
-				.header("Authorization", "Bearer " + ada.accessToken()).contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"content":"nowy album!"}""")).andExpect(status().isCreated()).andReturn();
+		MvcResult postResult = mockMvc
+				.perform(post("/api/v1/posts").header("Authorization", "Bearer " + ada.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"content":"nowy album!"}"""))
+				.andExpect(status().isCreated()).andReturn();
 		String postId = objectMapper.readTree(postResult.getResponse().getContentAsString()).get("id").asText();
 
-		mockMvc.perform(put("/api/v1/posts/" + postId + "/likes").header("Authorization",
-				"Bearer " + bono.accessToken())).andExpect(status().isNoContent());
-		mockMvc.perform(post("/api/v1/posts/" + postId + "/comments")
-				.header("Authorization", "Bearer " + bono.accessToken()).contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"content":"świetne"}""")).andExpect(status().isCreated());
+		mockMvc.perform(
+				put("/api/v1/posts/" + postId + "/likes").header("Authorization", "Bearer " + bono.accessToken()))
+				.andExpect(status().isNoContent());
+		mockMvc.perform(
+				post("/api/v1/posts/" + postId + "/comments").header("Authorization", "Bearer " + bono.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"content":"świetne"}"""))
+				.andExpect(status().isCreated());
 
 		// własny lajk nie generuje powiadomienia
-		mockMvc.perform(put("/api/v1/posts/" + postId + "/likes").header("Authorization",
-				"Bearer " + ada.accessToken())).andExpect(status().isNoContent());
+		mockMvc.perform(
+				put("/api/v1/posts/" + postId + "/likes").header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isNoContent());
 
-		mockMvc.perform(get("/api/v1/notifications/unread-count").header("Authorization",
-				"Bearer " + ada.accessToken())).andExpect(status().isOk()).andExpect(jsonPath("$.count").value(3));
+		mockMvc.perform(
+				get("/api/v1/notifications/unread-count").header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.count").value(3));
 
 		// oznaczanie jako przeczytane
 		MvcResult listResult = mockMvc
@@ -101,13 +106,15 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 				"Bearer " + bono.accessToken())).andExpect(status().isNotFound());
 		mockMvc.perform(post("/api/v1/notifications/" + firstId + "/read").header("Authorization",
 				"Bearer " + ada.accessToken())).andExpect(status().isNoContent());
-		mockMvc.perform(get("/api/v1/notifications/unread-count").header("Authorization",
-				"Bearer " + ada.accessToken())).andExpect(status().isOk()).andExpect(jsonPath("$.count").value(2));
+		mockMvc.perform(
+				get("/api/v1/notifications/unread-count").header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.count").value(2));
 
-		mockMvc.perform(post("/api/v1/notifications/read-all").header("Authorization",
-				"Bearer " + ada.accessToken())).andExpect(status().isNoContent());
-		mockMvc.perform(get("/api/v1/notifications/unread-count").header("Authorization",
-				"Bearer " + ada.accessToken())).andExpect(status().isOk()).andExpect(jsonPath("$.count").value(0));
+		mockMvc.perform(post("/api/v1/notifications/read-all").header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isNoContent());
+		mockMvc.perform(
+				get("/api/v1/notifications/unread-count").header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.count").value(0));
 	}
 
 	@Test
@@ -115,11 +122,11 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 		TestUser owner = registerUser("notif-community-owner@songly.io");
 		TestUser joiner = registerUser("notif-community-joiner@songly.io");
 
-		MvcResult communityResult = mockMvc.perform(post("/api/v1/communities")
-				.header("Authorization", "Bearer " + owner.accessToken()).contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"name":"Metalheads","description":"dla fanów metalu"}""")).andExpect(status().isCreated())
-				.andReturn();
+		MvcResult communityResult = mockMvc
+				.perform(post("/api/v1/communities").header("Authorization", "Bearer " + owner.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"name":"Metalheads","description":"dla fanów metalu"}"""))
+				.andExpect(status().isCreated()).andReturn();
 		String communityId = objectMapper.readTree(communityResult.getResponse().getContentAsString()).get("id")
 				.asText();
 
@@ -133,8 +140,9 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 		// ponowne dołączenie (idempotentne) nie generuje kolejnego powiadomienia
 		mockMvc.perform(put("/api/v1/communities/" + communityId + "/membership").header("Authorization",
 				"Bearer " + joiner.accessToken())).andExpect(status().isNoContent());
-		mockMvc.perform(get("/api/v1/notifications/unread-count").header("Authorization",
-				"Bearer " + owner.accessToken())).andExpect(status().isOk()).andExpect(jsonPath("$.count").value(1));
+		mockMvc.perform(
+				get("/api/v1/notifications/unread-count").header("Authorization", "Bearer " + owner.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.count").value(1));
 	}
 
 	@Test
@@ -142,14 +150,16 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 		TestUser author = registerUser("notif-share-author@songly.io");
 		TestUser sharer = registerUser("notif-share-sharer@songly.io");
 
-		MvcResult postResult = mockMvc.perform(post("/api/v1/posts")
-				.header("Authorization", "Bearer " + author.accessToken()).contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"content":"do udostępnienia"}""")).andExpect(status().isCreated()).andReturn();
+		MvcResult postResult = mockMvc
+				.perform(post("/api/v1/posts").header("Authorization", "Bearer " + author.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"content":"do udostępnienia"}"""))
+				.andExpect(status().isCreated()).andReturn();
 		String postId = objectMapper.readTree(postResult.getResponse().getContentAsString()).get("id").asText();
 
-		mockMvc.perform(put("/api/v1/posts/" + postId + "/shares").header("Authorization",
-				"Bearer " + sharer.accessToken())).andExpect(status().isNoContent());
+		mockMvc.perform(
+				put("/api/v1/posts/" + postId + "/shares").header("Authorization", "Bearer " + sharer.accessToken()))
+				.andExpect(status().isNoContent());
 
 		mockMvc.perform(get("/api/v1/notifications").header("Authorization", "Bearer " + author.accessToken()))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.content[0].type").value("POST_SHARED"))

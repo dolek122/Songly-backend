@@ -34,10 +34,11 @@ class CommunityFlowIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	private String createCommunity(String accessToken, String name) throws Exception {
-		MvcResult result = mockMvc.perform(post("/api/v1/communities").header("Authorization", "Bearer " + accessToken)
-				.contentType(MediaType.APPLICATION_JSON).content("""
-						{"name":"%s","description":"opis"}""".formatted(name))).andExpect(status().isCreated())
-				.andReturn();
+		MvcResult result = mockMvc
+				.perform(post("/api/v1/communities").header("Authorization", "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"name":"%s","description":"opis"}""".formatted(name)))
+				.andExpect(status().isCreated()).andReturn();
 		return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
 	}
 
@@ -48,15 +49,17 @@ class CommunityFlowIntegrationTest extends AbstractIntegrationTest {
 
 		String communityId = createCommunity(owner, "Fani Metalu");
 
-		mockMvc.perform(put("/api/v1/communities/" + communityId + "/membership").header("Authorization",
-				"Bearer " + member)).andExpect(status().isNoContent());
+		mockMvc.perform(
+				put("/api/v1/communities/" + communityId + "/membership").header("Authorization", "Bearer " + member))
+				.andExpect(status().isNoContent());
 
 		mockMvc.perform(get("/api/v1/communities/" + communityId).header("Authorization", "Bearer " + member))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Fani Metalu"))
 				.andExpect(jsonPath("$.memberCount").value(2)).andExpect(jsonPath("$.myRole").value("MEMBER"));
 
-		mockMvc.perform(get("/api/v1/communities/" + communityId + "/members").header("Authorization",
-				"Bearer " + owner)).andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(2))
+		mockMvc.perform(
+				get("/api/v1/communities/" + communityId + "/members").header("Authorization", "Bearer " + owner))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(2))
 				.andExpect(jsonPath("$.content[0].role").value("OWNER"))
 				.andExpect(jsonPath("$.content[0].displayName").value("community-owner"));
 
@@ -98,9 +101,9 @@ class CommunityFlowIntegrationTest extends AbstractIntegrationTest {
 						{"name":"Jazzowa Piwnica","description":"nowy opis"}""")).andExpect(status().isOk())
 				.andExpect(jsonPath("$.description").value("nowy opis"));
 
-		mockMvc.perform(delete("/api/v1/communities/" + communityId + "/membership").header("Authorization",
-				"Bearer " + owner)).andExpect(status().isConflict())
-				.andExpect(jsonPath("$.code").value("OWNER_CANNOT_LEAVE"));
+		mockMvc.perform(
+				delete("/api/v1/communities/" + communityId + "/membership").header("Authorization", "Bearer " + owner))
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("OWNER_CANNOT_LEAVE"));
 
 		mockMvc.perform(delete("/api/v1/communities/" + communityId).header("Authorization", "Bearer " + other))
 				.andExpect(status().isForbidden());

@@ -21,9 +21,9 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Kontener bazy jest współdzielony między wszystkimi klasami testowymi
- * (AbstractIntegrationTest), więc liczniki nie są tu porównywane wprost —
- * tylko delta przed/po akcjach w obrębie jednego testu, żeby nie zależeć od
- * tego, co inne klasy zdążyły już zapisać.
+ * (AbstractIntegrationTest), więc liczniki nie są tu porównywane wprost — tylko
+ * delta przed/po akcjach w obrębie jednego testu, żeby nie zależeć od tego, co
+ * inne klasy zdążyły już zapisać.
  */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class AnalyticsFlowIntegrationTest extends AbstractIntegrationTest {
@@ -79,34 +79,39 @@ class AnalyticsFlowIntegrationTest extends AbstractIntegrationTest {
 
 		registerUser("analytics-charlie@songly.io");
 
-		MvcResult requestResult = mockMvc.perform(post("/api/v1/friends/requests")
-				.header("Authorization", "Bearer " + ada.accessToken()).contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"addresseeId":"%s"}""".formatted(bono.userId()))).andExpect(status().isCreated()).andReturn();
+		MvcResult requestResult = mockMvc
+				.perform(post("/api/v1/friends/requests").header("Authorization", "Bearer " + ada.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"addresseeId":"%s"}""".formatted(bono.userId())))
+				.andExpect(status().isCreated()).andReturn();
 		String requestId = objectMapper.readTree(requestResult.getResponse().getContentAsString()).get("id").asText();
-		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId))
-				.header("Authorization", "Bearer " + bono.accessToken())).andExpect(status().isOk());
+		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId)).header("Authorization",
+				"Bearer " + bono.accessToken())).andExpect(status().isOk());
 
-		MvcResult postResult = mockMvc.perform(post("/api/v1/posts")
-				.header("Authorization", "Bearer " + ada.accessToken()).contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"content":"analytics test"}""")).andExpect(status().isCreated()).andReturn();
+		MvcResult postResult = mockMvc
+				.perform(post("/api/v1/posts").header("Authorization", "Bearer " + ada.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"content":"analytics test"}"""))
+				.andExpect(status().isCreated()).andReturn();
 		String postId = objectMapper.readTree(postResult.getResponse().getContentAsString()).get("id").asText();
 
-		mockMvc.perform(put("/api/v1/posts/" + postId + "/likes").header("Authorization",
-				"Bearer " + bono.accessToken())).andExpect(status().isNoContent());
-		mockMvc.perform(post("/api/v1/posts/" + postId + "/comments")
-				.header("Authorization", "Bearer " + bono.accessToken()).contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"content":"super"}""")).andExpect(status().isCreated());
-		mockMvc.perform(put("/api/v1/posts/" + postId + "/shares").header("Authorization",
-				"Bearer " + bono.accessToken())).andExpect(status().isNoContent());
+		mockMvc.perform(
+				put("/api/v1/posts/" + postId + "/likes").header("Authorization", "Bearer " + bono.accessToken()))
+				.andExpect(status().isNoContent());
+		mockMvc.perform(
+				post("/api/v1/posts/" + postId + "/comments").header("Authorization", "Bearer " + bono.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"content":"super"}"""))
+				.andExpect(status().isCreated());
+		mockMvc.perform(
+				put("/api/v1/posts/" + postId + "/shares").header("Authorization", "Bearer " + bono.accessToken()))
+				.andExpect(status().isNoContent());
 
-		MvcResult communityResult = mockMvc.perform(post("/api/v1/communities")
-				.header("Authorization", "Bearer " + ada.accessToken()).contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"name":"Analytics fanklub","description":"test"}""")).andExpect(status().isCreated())
-				.andReturn();
+		MvcResult communityResult = mockMvc
+				.perform(post("/api/v1/communities").header("Authorization", "Bearer " + ada.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"name":"Analytics fanklub","description":"test"}"""))
+				.andExpect(status().isCreated()).andReturn();
 		String communityId = objectMapper.readTree(communityResult.getResponse().getContentAsString()).get("id")
 				.asText();
 		mockMvc.perform(put("/api/v1/communities/" + communityId + "/membership").header("Authorization",

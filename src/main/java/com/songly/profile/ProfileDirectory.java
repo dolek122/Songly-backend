@@ -17,6 +17,8 @@ public interface ProfileDirectory {
 	/** Użytkownicy mający wśród ulubionych którykolwiek z podanych gatunków. */
 	Set<UUID> userIdsWithAnyGenre(Collection<UUID> genreIds);
 
-	/** Pełne zbiory ulubionych gatunków; userId bez gatunków nie występują w wyniku. */
+	/**
+	 * Pełne zbiory ulubionych gatunków; userId bez gatunków nie występują w wyniku.
+	 */
 	Map<UUID, Set<UUID>> favoriteGenreIdsByUser(Collection<UUID> userIds);
 }

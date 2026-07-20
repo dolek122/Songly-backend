@@ -38,20 +38,20 @@ class NotificationEventListener {
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onPostShared(PostSharedEvent event) {
-		notificationService.record(event.postAuthorId(), event.sharerId(), NotificationType.POST_SHARED,
-				event.postId(), event.occurredAt());
+		notificationService.record(event.postAuthorId(), event.sharerId(), NotificationType.POST_SHARED, event.postId(),
+				event.occurredAt());
 	}
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onFriendRequestSent(FriendRequestSentEvent event) {
-		notificationService.record(event.addresseeId(), event.requesterId(),
-				NotificationType.FRIEND_REQUEST_RECEIVED, event.requestId(), event.occurredAt());
+		notificationService.record(event.addresseeId(), event.requesterId(), NotificationType.FRIEND_REQUEST_RECEIVED,
+				event.requestId(), event.occurredAt());
 	}
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onFriendRequestAccepted(FriendRequestAcceptedEvent event) {
-		notificationService.record(event.requesterId(), event.addresseeId(),
-				NotificationType.FRIEND_REQUEST_ACCEPTED, event.requestId(), event.occurredAt());
+		notificationService.record(event.requesterId(), event.addresseeId(), NotificationType.FRIEND_REQUEST_ACCEPTED,
+				event.requestId(), event.occurredAt());
 	}
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)

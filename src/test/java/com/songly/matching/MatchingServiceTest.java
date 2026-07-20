@@ -60,12 +60,12 @@ class MatchingServiceTest {
 		when(socialGraph.blockedEitherWayIds(me)).thenReturn(Set.of());
 		when(profileDirectory.favoriteGenreIdsByUser(Set.of(similar, lessSimilar)))
 				.thenReturn(Map.of(similar, Set.of(g1, g2, g4), lessSimilar, Set.of(g3)));
-		when(profileDirectory.displayNames(anyCollection()))
-				.thenReturn(Map.of(similar, "Bono", lessSimilar, "Carol"));
+		when(profileDirectory.displayNames(anyCollection())).thenReturn(Map.of(similar, "Bono", lessSimilar, "Carol"));
 
 		Page<MatchResponse> page = matchingService.matches(me, Pageable.unpaged());
 
-		// similar: |{g1,g2}| / |{g1,g2,g3,g4}| = 0.5; lessSimilar: |{g3}| / |{g1,g2,g3}| = 1/3
+		// similar: |{g1,g2}| / |{g1,g2,g3,g4}| = 0.5; lessSimilar: |{g3}| /
+		// |{g1,g2,g3}| = 1/3
 		assertThat(page.getContent()).hasSize(2);
 		assertThat(page.getContent().get(0).userId()).isEqualTo(similar);
 		assertThat(page.getContent().get(0).score()).isEqualTo(0.5);
@@ -79,12 +79,10 @@ class MatchingServiceTest {
 		UUID blocked = UUID.randomUUID();
 		UUID candidate = UUID.randomUUID();
 		when(profileDirectory.favoriteGenreIdsByUser(Set.of(me))).thenReturn(Map.of(me, Set.of(g1)));
-		when(profileDirectory.userIdsWithAnyGenre(anyCollection()))
-				.thenReturn(Set.of(me, friend, blocked, candidate));
+		when(profileDirectory.userIdsWithAnyGenre(anyCollection())).thenReturn(Set.of(me, friend, blocked, candidate));
 		when(socialGraph.friendIds(me)).thenReturn(Set.of(friend));
 		when(socialGraph.blockedEitherWayIds(me)).thenReturn(Set.of(blocked));
-		when(profileDirectory.favoriteGenreIdsByUser(Set.of(candidate)))
-				.thenReturn(Map.of(candidate, Set.of(g1)));
+		when(profileDirectory.favoriteGenreIdsByUser(Set.of(candidate))).thenReturn(Map.of(candidate, Set.of(g1)));
 		when(profileDirectory.displayNames(anyCollection())).thenReturn(Map.of(candidate, "Dave"));
 
 		Page<MatchResponse> page = matchingService.matches(me, Pageable.unpaged());

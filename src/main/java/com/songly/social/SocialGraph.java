@@ -15,6 +15,8 @@ public interface SocialGraph {
 	/** Blokada w którymkolwiek kierunku ukrywa użytkowników przed sobą nawzajem. */
 	boolean isBlockedEitherWay(UUID userId, UUID otherUserId);
 
-	/** Wszyscy użytkownicy powiązani z {@code userId} blokadą w dowolnym kierunku. */
+	/**
+	 * Wszyscy użytkownicy powiązani z {@code userId} blokadą w dowolnym kierunku.
+	 */
 	Set<UUID> blockedEitherWayIds(UUID userId);
 }

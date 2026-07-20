@@ -37,8 +37,8 @@ class AnalyticsService {
 	AnalyticsSummaryResponse summary(int windowDays) {
 		int days = Math.max(1, Math.min(windowDays, MAX_WINDOW_DAYS));
 		Instant since = Instant.now().minus(Duration.ofDays(days));
-		Map<AnalyticsEventType, Long> counts = repository.countByTypeSince(since).stream().collect(
-				Collectors.toMap(AnalyticsEventRepository.TypeCount::getType, AnalyticsEventRepository.TypeCount::getCount));
+		Map<AnalyticsEventType, Long> counts = repository.countByTypeSince(since).stream().collect(Collectors
+				.toMap(AnalyticsEventRepository.TypeCount::getType, AnalyticsEventRepository.TypeCount::getCount));
 		return new AnalyticsSummaryResponse(days, since, Arrays.stream(AnalyticsEventType.values())
 				.map(type -> new AnalyticsCountResponse(type, counts.getOrDefault(type, 0L))).toList());
 	}

@@ -70,7 +70,8 @@ class NowPlayingService {
 	}
 
 	void setManualStatus(UUID userId, ManualNowPlayingRequest request) {
-		String source = request.source() != null && !request.source().isBlank() ? request.source()
+		String source = request.source() != null && !request.source().isBlank()
+				? request.source()
 				: DEFAULT_MANUAL_SOURCE;
 		NowPlayingStatusResponse response = new NowPlayingStatusResponse(source, request.title(), request.artist(),
 				request.album(), null, true, Instant.now());

@@ -13,8 +13,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
  * Jedyny kontakt modułu analytics z resztą systemu: te same zdarzenia Springa,
- * które konsumuje moduł notification (Claude.md §2) — bez sięgania po encje
- * ani serwisy innych modułów.
+ * które konsumuje moduł notification (Claude.md §2) — bez sięgania po encje ani
+ * serwisy innych modułów.
  */
 @Component
 class AnalyticsEventListener {

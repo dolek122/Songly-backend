@@ -177,8 +177,7 @@ class CommunityServiceTest {
 	void leave_isNoOp_whenNotMember() {
 		Community community = community();
 		when(communityRepository.findById(community.getId())).thenReturn(Optional.of(community));
-		when(memberRepository.findById(new CommunityMemberId(community.getId(), otherId)))
-				.thenReturn(Optional.empty());
+		when(memberRepository.findById(new CommunityMemberId(community.getId(), otherId))).thenReturn(Optional.empty());
 
 		communityService.leave(community.getId(), otherId);
 

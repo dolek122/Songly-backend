@@ -59,8 +59,8 @@ class SocialGraphService implements SocialGraph {
 			throw new FriendRequestAlreadyPendingException();
 		}
 		Instant now = Instant.now();
-		Optional<FriendRequest> reverse = friendRequestRepository
-				.findByRequesterIdAndAddresseeIdAndStatus(addresseeId, requesterId, FriendRequestStatus.PENDING);
+		Optional<FriendRequest> reverse = friendRequestRepository.findByRequesterIdAndAddresseeIdAndStatus(addresseeId,
+				requesterId, FriendRequestStatus.PENDING);
 		if (reverse.isPresent()) {
 			FriendRequest request = reverse.get();
 			request.accept(now);
@@ -95,8 +95,8 @@ class SocialGraphService implements SocialGraph {
 		Instant now = Instant.now();
 		request.accept(now);
 		friendshipRepository.save(Friendship.between(request.getRequesterId(), request.getAddresseeId(), now));
-		eventPublisher.publishEvent(
-				new FriendRequestAcceptedEvent(request.getId(), request.getRequesterId(), request.getAddresseeId(), now));
+		eventPublisher.publishEvent(new FriendRequestAcceptedEvent(request.getId(), request.getRequesterId(),
+				request.getAddresseeId(), now));
 		return toResponse(request);
 	}
 

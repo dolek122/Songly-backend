@@ -43,10 +43,11 @@ class SocialFlowIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	private String sendRequest(TestUser from, TestUser to) throws Exception {
-		MvcResult result = mockMvc.perform(post("/api/v1/friends/requests")
-				.header("Authorization", "Bearer " + from.accessToken()).contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"addresseeId":"%s"}""".formatted(to.userId()))).andExpect(status().isCreated()).andReturn();
+		MvcResult result = mockMvc
+				.perform(post("/api/v1/friends/requests").header("Authorization", "Bearer " + from.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"addresseeId":"%s"}""".formatted(to.userId())))
+				.andExpect(status().isCreated()).andReturn();
 		return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
 	}
 
@@ -57,13 +58,13 @@ class SocialFlowIntegrationTest extends AbstractIntegrationTest {
 
 		String requestId = sendRequest(ada, bono);
 
-		mockMvc.perform(get("/api/v1/friends/requests?direction=INCOMING")
-				.header("Authorization", "Bearer " + bono.accessToken())).andExpect(status().isOk())
+		mockMvc.perform(get("/api/v1/friends/requests?direction=INCOMING").header("Authorization",
+				"Bearer " + bono.accessToken())).andExpect(status().isOk())
 				.andExpect(jsonPath("$.content[0].id").value(requestId))
 				.andExpect(jsonPath("$.content[0].requesterDisplayName").value("social-ada"));
 
-		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId))
-				.header("Authorization", "Bearer " + bono.accessToken())).andExpect(status().isOk())
+		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId)).header("Authorization",
+				"Bearer " + bono.accessToken())).andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("ACCEPTED"));
 
 		mockMvc.perform(get("/api/v1/friends").header("Authorization", "Bearer " + ada.accessToken()))
@@ -78,8 +79,9 @@ class SocialFlowIntegrationTest extends AbstractIntegrationTest {
 						{"addresseeId":"%s"}""".formatted(bono.userId()))).andExpect(status().isConflict())
 				.andExpect(jsonPath("$.code").value("ALREADY_FRIENDS"));
 
-		mockMvc.perform(delete("/api/v1/friends/" + bono.userId())
-				.header("Authorization", "Bearer " + ada.accessToken())).andExpect(status().isNoContent());
+		mockMvc.perform(
+				delete("/api/v1/friends/" + bono.userId()).header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isNoContent());
 
 		mockMvc.perform(get("/api/v1/friends").header("Authorization", "Bearer " + bono.accessToken()))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(0));
@@ -92,15 +94,15 @@ class SocialFlowIntegrationTest extends AbstractIntegrationTest {
 
 		String requestId = sendRequest(ada, bono);
 
-		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId))
-				.header("Authorization", "Bearer " + ada.accessToken())).andExpect(status().isNotFound());
+		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId)).header("Authorization",
+				"Bearer " + ada.accessToken())).andExpect(status().isNotFound());
 
-		mockMvc.perform(post("/api/v1/friends/requests/%s/decline".formatted(requestId))
-				.header("Authorization", "Bearer " + bono.accessToken())).andExpect(status().isOk())
+		mockMvc.perform(post("/api/v1/friends/requests/%s/decline".formatted(requestId)).header("Authorization",
+				"Bearer " + bono.accessToken())).andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("DECLINED"));
 
-		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId))
-				.header("Authorization", "Bearer " + bono.accessToken())).andExpect(status().isConflict())
+		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId)).header("Authorization",
+				"Bearer " + bono.accessToken())).andExpect(status().isConflict())
 				.andExpect(jsonPath("$.code").value("FRIEND_REQUEST_ALREADY_HANDLED"));
 	}
 
@@ -126,8 +128,8 @@ class SocialFlowIntegrationTest extends AbstractIntegrationTest {
 		TestUser bono = registerUser("social-block-bono@songly.io");
 
 		String requestId = sendRequest(ada, bono);
-		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId))
-				.header("Authorization", "Bearer " + bono.accessToken())).andExpect(status().isOk());
+		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId)).header("Authorization",
+				"Bearer " + bono.accessToken())).andExpect(status().isOk());
 
 		mockMvc.perform(put("/api/v1/blocks/" + bono.userId()).header("Authorization", "Bearer " + ada.accessToken()))
 				.andExpect(status().isNoContent());
@@ -143,8 +145,9 @@ class SocialFlowIntegrationTest extends AbstractIntegrationTest {
 						{"addresseeId":"%s"}""".formatted(ada.userId()))).andExpect(status().isConflict())
 				.andExpect(jsonPath("$.code").value("USER_BLOCKED"));
 
-		mockMvc.perform(delete("/api/v1/blocks/" + bono.userId())
-				.header("Authorization", "Bearer " + ada.accessToken())).andExpect(status().isNoContent());
+		mockMvc.perform(
+				delete("/api/v1/blocks/" + bono.userId()).header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isNoContent());
 
 		mockMvc.perform(post("/api/v1/friends/requests").header("Authorization", "Bearer " + bono.accessToken())
 				.contentType(MediaType.APPLICATION_JSON).content("""

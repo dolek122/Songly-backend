@@ -39,8 +39,7 @@ class NotificationServiceTest {
 
 	@Test
 	void record_savesNotification() {
-		notificationService.record(recipientId, actorId, NotificationType.POST_LIKED, UUID.randomUUID(),
-				Instant.now());
+		notificationService.record(recipientId, actorId, NotificationType.POST_LIKED, UUID.randomUUID(), Instant.now());
 
 		verify(notificationRepository).save(any(Notification.class));
 	}
@@ -90,8 +89,8 @@ class NotificationServiceTest {
 	void markAllRead_marksEveryUnread() {
 		Notification first = new Notification(UUID.randomUUID(), recipientId, NotificationType.POST_LIKED, actorId,
 				UUID.randomUUID(), Instant.now());
-		Notification second = new Notification(UUID.randomUUID(), recipientId, NotificationType.POST_COMMENTED,
-				actorId, UUID.randomUUID(), Instant.now());
+		Notification second = new Notification(UUID.randomUUID(), recipientId, NotificationType.POST_COMMENTED, actorId,
+				UUID.randomUUID(), Instant.now());
 		when(notificationRepository.findByUserIdAndReadAtIsNull(recipientId)).thenReturn(List.of(first, second));
 
 		notificationService.markAllRead(recipientId);

@@ -96,7 +96,8 @@ class CommunityService {
 		if (!memberRepository.existsById(id)) {
 			Instant now = Instant.now();
 			memberRepository.save(new CommunityMember(communityId, userId, CommunityRole.MEMBER, now));
-			eventPublisher.publishEvent(new CommunityMemberJoinedEvent(communityId, community.getOwnerId(), userId, now));
+			eventPublisher
+					.publishEvent(new CommunityMemberJoinedEvent(communityId, community.getOwnerId(), userId, now));
 		}
 	}
 
@@ -124,7 +125,8 @@ class CommunityService {
 	private Page<CommunityResponse> enrich(Page<Community> page, UUID viewerId) {
 		List<UUID> communityIds = page.getContent().stream().map(Community::getId).toList();
 		Map<UUID, Long> counts = memberCounts(communityIds);
-		Map<UUID, CommunityRole> myRoles = communityIds.isEmpty() ? Map.of()
+		Map<UUID, CommunityRole> myRoles = communityIds.isEmpty()
+				? Map.of()
 				: memberRepository.findByUserIdAndCommunityIdIn(viewerId, communityIds).stream()
 						.collect(Collectors.toMap(CommunityMember::getCommunityId, CommunityMember::getRole));
 		return page.map(community -> toResponse(community, counts.getOrDefault(community.getId(), 0L),

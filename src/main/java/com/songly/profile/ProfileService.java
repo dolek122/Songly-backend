@@ -102,8 +102,8 @@ class ProfileService implements ProfileDirectory {
 		if (userIds.isEmpty()) {
 			return Map.of();
 		}
-		return userGenreRepository.findByUserIdIn(userIds).stream().collect(Collectors
-				.groupingBy(UserGenre::getUserId, Collectors.mapping(UserGenre::getGenreId, Collectors.toSet())));
+		return userGenreRepository.findByUserIdIn(userIds).stream().collect(Collectors.groupingBy(UserGenre::getUserId,
+				Collectors.mapping(UserGenre::getGenreId, Collectors.toSet())));
 	}
 
 	private String defaultDisplayName(String email) {

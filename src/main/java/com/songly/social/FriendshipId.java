@@ -18,13 +18,13 @@ class FriendshipId implements Serializable {
 	}
 
 	/**
-	 * Porządek kanoniczny przez porównanie hex-stringów, nie
-	 * {@link UUID#compareTo} — ten drugi porównuje longi ze znakiem i nie zgadza
-	 * się z bajtowym porządkiem uuid w Postgresie, który egzekwuje CHECK
-	 * {@code user_a_id < user_b_id}.
+	 * Porządek kanoniczny przez porównanie hex-stringów, nie {@link UUID#compareTo}
+	 * — ten drugi porównuje longi ze znakiem i nie zgadza się z bajtowym porządkiem
+	 * uuid w Postgresie, który egzekwuje CHECK {@code user_a_id < user_b_id}.
 	 */
 	static FriendshipId of(UUID first, UUID second) {
-		return first.toString().compareTo(second.toString()) < 0 ? new FriendshipId(first, second)
+		return first.toString().compareTo(second.toString()) < 0
+				? new FriendshipId(first, second)
 				: new FriendshipId(second, first);
 	}
 

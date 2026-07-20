@@ -42,13 +42,14 @@ class FeedFlowIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	private void makeFriends(TestUser from, TestUser to) throws Exception {
-		MvcResult result = mockMvc.perform(post("/api/v1/friends/requests")
-				.header("Authorization", "Bearer " + from.accessToken()).contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"addresseeId":"%s"}""".formatted(to.userId()))).andExpect(status().isCreated()).andReturn();
+		MvcResult result = mockMvc
+				.perform(post("/api/v1/friends/requests").header("Authorization", "Bearer " + from.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"addresseeId":"%s"}""".formatted(to.userId())))
+				.andExpect(status().isCreated()).andReturn();
 		String requestId = objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
-		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId))
-				.header("Authorization", "Bearer " + to.accessToken())).andExpect(status().isOk());
+		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId)).header("Authorization",
+				"Bearer " + to.accessToken())).andExpect(status().isOk());
 	}
 
 	private void createPost(TestUser author, String content) throws Exception {
@@ -70,9 +71,8 @@ class FeedFlowIntegrationTest extends AbstractIntegrationTest {
 		createPost(stranger, "post obcego");
 
 		mockMvc.perform(get("/api/v1/feed").header("Authorization", "Bearer " + ada.accessToken()))
-				.andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(2))
-				.andExpect(jsonPath("$.content[*].content",
-						org.hamcrest.Matchers.containsInAnyOrder("post Ady", "post Bono")));
+				.andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(2)).andExpect(jsonPath(
+						"$.content[*].content", org.hamcrest.Matchers.containsInAnyOrder("post Ady", "post Bono")));
 
 		mockMvc.perform(get("/api/v1/feed").header("Authorization", "Bearer " + stranger.accessToken()))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(1))
@@ -91,15 +91,14 @@ class FeedFlowIntegrationTest extends AbstractIntegrationTest {
 		mockMvc.perform(get("/api/v1/feed").header("Authorization", "Bearer " + ada.accessToken()))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(0));
 
-		MvcResult postsResult = mockMvc
-				.perform(get("/api/v1/posts?authorId=" + stranger.userId())
-						.header("Authorization", "Bearer " + bono.accessToken()))
-				.andExpect(status().isOk()).andReturn();
+		MvcResult postsResult = mockMvc.perform(get("/api/v1/posts?authorId=" + stranger.userId())
+				.header("Authorization", "Bearer " + bono.accessToken())).andExpect(status().isOk()).andReturn();
 		String postId = objectMapper.readTree(postsResult.getResponse().getContentAsString()).get("content").get(0)
 				.get("id").asText();
 
-		mockMvc.perform(put("/api/v1/posts/" + postId + "/shares").header("Authorization",
-				"Bearer " + bono.accessToken())).andExpect(status().isNoContent());
+		mockMvc.perform(
+				put("/api/v1/posts/" + postId + "/shares").header("Authorization", "Bearer " + bono.accessToken()))
+				.andExpect(status().isNoContent());
 
 		mockMvc.perform(get("/api/v1/feed").header("Authorization", "Bearer " + ada.accessToken()))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(1))

@@ -128,8 +128,8 @@ class ContentService {
 		Post post = postRepository.findById(postId).orElseThrow(PostNotFoundException::new);
 		Comment comment = new Comment(UUID.randomUUID(), postId, authorId, content, Instant.now());
 		commentRepository.save(comment);
-		eventPublisher.publishEvent(new PostCommentedEvent(postId, post.getAuthorId(), comment.getId(), authorId,
-				comment.getCreatedAt()));
+		eventPublisher.publishEvent(
+				new PostCommentedEvent(postId, post.getAuthorId(), comment.getId(), authorId, comment.getCreatedAt()));
 		String displayName = profileDirectory.displayNames(Set.of(authorId)).get(authorId);
 		return new CommentResponse(comment.getId(), postId, authorId, displayName, comment.getContent(),
 				comment.getCreatedAt());

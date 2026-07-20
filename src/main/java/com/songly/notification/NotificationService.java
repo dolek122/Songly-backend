@@ -64,7 +64,6 @@ class NotificationService {
 	@Transactional
 	void markAllRead(UUID userId) {
 		Instant now = Instant.now();
-		notificationRepository.findByUserIdAndReadAtIsNull(userId)
-				.forEach(notification -> notification.markRead(now));
+		notificationRepository.findByUserIdAndReadAtIsNull(userId).forEach(notification -> notification.markRead(now));
 	}
 }

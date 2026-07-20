@@ -58,9 +58,9 @@ class NowPlayingController {
 	}
 
 	/**
-	 * Uniwersalny fallback dla serwisów bez integracji (Apple Music, Tidal,
-	 * YouTube Music...) — Claude.md §7. Ma pierwszeństwo przed providerem, dopóki
-	 * nie wygaśnie albo user go nie wyczyści.
+	 * Uniwersalny fallback dla serwisów bez integracji (Apple Music, Tidal, YouTube
+	 * Music...) — Claude.md §7. Ma pierwszeństwo przed providerem, dopóki nie
+	 * wygaśnie albo user go nie wyczyści.
 	 */
 	@PutMapping("/manual")
 	@SecurityRequirement(name = "bearerAuth")

@@ -86,7 +86,8 @@ class MatchingFlowIntegrationTest extends AbstractIntegrationTest {
 		setGenres(bono, List.of(GENRE_REGGAE, GENRE_LATIN, GENRE_FOLK));
 		setGenres(carol, List.of(GENRE_KPOP));
 
-		// bono: |{reggae,latin}| / |{reggae,latin,kpop,folk}| = 0.5; carol: |{kpop}| / |{reggae,latin,kpop}| = 1/3
+		// bono: |{reggae,latin}| / |{reggae,latin,kpop,folk}| = 0.5; carol: |{kpop}| /
+		// |{reggae,latin,kpop}| = 1/3
 		mockMvc.perform(get("/api/v1/matches?size=100").header("Authorization", "Bearer " + ada.accessToken()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.content[?(@.userId == '%s')].score".formatted(bono.userId()), hasItem(0.5)))
@@ -109,13 +110,14 @@ class MatchingFlowIntegrationTest extends AbstractIntegrationTest {
 
 		assertThat(matchedUserIds(ada)).contains(bono.userId());
 
-		MvcResult requestResult = mockMvc.perform(post("/api/v1/friends/requests")
-				.header("Authorization", "Bearer " + ada.accessToken()).contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"addresseeId":"%s"}""".formatted(bono.userId()))).andExpect(status().isCreated()).andReturn();
+		MvcResult requestResult = mockMvc
+				.perform(post("/api/v1/friends/requests").header("Authorization", "Bearer " + ada.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"addresseeId":"%s"}""".formatted(bono.userId())))
+				.andExpect(status().isCreated()).andReturn();
 		String requestId = objectMapper.readTree(requestResult.getResponse().getContentAsString()).get("id").asText();
-		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId))
-				.header("Authorization", "Bearer " + bono.accessToken())).andExpect(status().isOk());
+		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId)).header("Authorization",
+				"Bearer " + bono.accessToken())).andExpect(status().isOk());
 
 		assertThat(matchedUserIds(ada)).doesNotContain(bono.userId());
 	}
