@@ -19,6 +19,8 @@ interface CommunityMemberRepository extends JpaRepository<CommunityMember, Commu
 
 	long countByCommunityId(UUID communityId);
 
+	void deleteByUserId(UUID userId);
+
 	/** Zliczenia dla całej strony społeczności jednym zapytaniem (bez N+1). */
 	@Query("select m.communityId as communityId, count(m) as memberCount from CommunityMember m "
 			+ "where m.communityId in :communityIds group by m.communityId")

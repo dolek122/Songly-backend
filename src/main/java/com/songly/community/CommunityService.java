@@ -112,6 +112,18 @@ class CommunityService {
 		});
 	}
 
+	/**
+	 * Najpierw członkostwa usera (w tym jego własne OWNER w społecznościach, które
+	 * za chwilę i tak znikną), potem społeczności które posiada — usunięcie
+	 * community kaskadowo (ON DELETE CASCADE community_id) zabiera członkostwa
+	 * pozostałych userów w tej społeczności.
+	 */
+	@Transactional
+	void deleteAccountData(UUID userId) {
+		memberRepository.deleteByUserId(userId);
+		communityRepository.deleteByOwnerId(userId);
+	}
+
 	@Transactional(readOnly = true)
 	Page<CommunityMemberResponse> listMembers(UUID communityId, Pageable pageable) {
 		requireCommunity(communityId);

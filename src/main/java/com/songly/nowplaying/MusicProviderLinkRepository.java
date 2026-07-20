@@ -9,4 +9,6 @@ interface MusicProviderLinkRepository extends JpaRepository<MusicProviderLink, U
 	Optional<MusicProviderLink> findByUserIdAndProvider(UUID userId, String provider);
 
 	void deleteByUserIdAndProvider(UUID userId, String provider);
+
+	void deleteByUserId(UUID userId);
 }

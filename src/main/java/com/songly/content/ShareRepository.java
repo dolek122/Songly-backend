@@ -15,6 +15,8 @@ interface ShareRepository extends JpaRepository<Share, ShareId> {
 
 	List<Share> findByPostIdInAndUserId(Collection<UUID> postIds, UUID userId);
 
+	void deleteByUserId(UUID userId);
+
 	interface PostIdCount {
 
 		UUID getPostId();

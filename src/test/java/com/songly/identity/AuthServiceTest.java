@@ -173,4 +173,41 @@ class AuthServiceTest {
 
 		authService.logout(new RefreshRequest("unknown"));
 	}
+
+	@Test
+	void deleteAccount_publishesEventAndDeletesUser_whenPasswordCorrect() {
+		UUID userId = UUID.randomUUID();
+		User user = new User(userId, "user@songly.io", passwordEncoder.encode("password123"), Instant.now());
+		when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+		authService.deleteAccount(userId, "password123");
+
+		verify(eventPublisher).publishEvent(new UserAccountDeletionRequestedEvent(userId));
+		verify(sessionRepository).deleteByUserId(userId);
+		verify(userRepository).delete(user);
+	}
+
+	@Test
+	void deleteAccount_throws_whenPasswordWrong() {
+		UUID userId = UUID.randomUUID();
+		User user = new User(userId, "user@songly.io", passwordEncoder.encode("password123"), Instant.now());
+		when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+		assertThatThrownBy(() -> authService.deleteAccount(userId, "wrong-password"))
+				.isInstanceOf(InvalidCredentialsException.class);
+
+		verify(eventPublisher, never()).publishEvent(any());
+		verify(userRepository, never()).delete(any());
+	}
+
+	@Test
+	void deleteAccount_throws_whenUserNotFound() {
+		UUID userId = UUID.randomUUID();
+		when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> authService.deleteAccount(userId, "password123"))
+				.isInstanceOf(InvalidCredentialsException.class);
+
+		verify(eventPublisher, never()).publishEvent(any());
+	}
 }

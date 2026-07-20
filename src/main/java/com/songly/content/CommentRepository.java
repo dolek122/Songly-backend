@@ -15,6 +15,8 @@ interface CommentRepository extends JpaRepository<Comment, UUID> {
 
 	long countByPostId(UUID postId);
 
+	void deleteByAuthorId(UUID authorId);
+
 	/** Zliczenia dla całej strony postów jednym zapytaniem (bez N+1). */
 	@Query("select c.postId as postId, count(c) as commentCount from Comment c where c.postId in :postIds group by c.postId")
 	List<PostIdCount> countByPostIdIn(@Param("postIds") Collection<UUID> postIds);

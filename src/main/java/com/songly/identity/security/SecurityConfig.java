@@ -35,8 +35,10 @@ class SecurityConfig {
 				.sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.exceptionHandling(eh -> eh.authenticationEntryPoint(authenticationEntryPoint)
 						.accessDeniedHandler(accessDeniedHandler))
-				.authorizeHttpRequests(auth -> auth.requestMatchers("/api/v1/auth/**").permitAll()
-						.requestMatchers("/api/v1/now-playing/spotify/callback").permitAll()
+				.authorizeHttpRequests(auth -> auth
+						.requestMatchers("/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/refresh",
+								"/api/v1/auth/logout")
+						.permitAll().requestMatchers("/api/v1/now-playing/spotify/callback").permitAll()
 						.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 						.requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
 						.requestMatchers("/actuator/prometheus", "/actuator/metrics/**").hasAuthority("ROLE_ADMIN")

@@ -158,6 +158,13 @@ class SocialGraphService implements SocialGraph {
 		blockRepository.deleteById(new BlockId(blockerId, blockedId));
 	}
 
+	@Transactional
+	void deleteAccountData(UUID userId) {
+		friendRequestRepository.deleteByRequesterIdOrAddresseeId(userId, userId);
+		friendshipRepository.deleteByUserAIdOrUserBId(userId, userId);
+		blockRepository.deleteByBlockerIdOrBlockedId(userId, userId);
+	}
+
 	@Transactional(readOnly = true)
 	Page<BlockedUserResponse> listBlockedUsers(UUID blockerId, Pageable pageable) {
 		Page<Block> page = blockRepository.findByBlockerIdOrderByCreatedAtDesc(blockerId, pageable);

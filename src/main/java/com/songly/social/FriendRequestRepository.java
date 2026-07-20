@@ -18,4 +18,6 @@ interface FriendRequestRepository extends JpaRepository<FriendRequest, UUID> {
 			Pageable pageable);
 
 	void deleteByRequesterIdAndAddresseeIdAndStatus(UUID requesterId, UUID addresseeId, FriendRequestStatus status);
+
+	void deleteByRequesterIdOrAddresseeId(UUID requesterId, UUID addresseeId);
 }

@@ -14,6 +14,8 @@ interface PostRepository extends JpaRepository<Post, UUID> {
 
 	Page<Post> findByAuthorIdOrderByCreatedAtDesc(UUID authorId, Pageable pageable);
 
+	void deleteByAuthorId(UUID authorId);
+
 	/** Feed: posty napisane albo udostępnione przez podanych użytkowników. */
 	@Query(value = "select p from Post p where p.authorId in :userIds "
 			+ "or exists (select 1 from Share s where s.postId = p.id and s.userId in :userIds) "

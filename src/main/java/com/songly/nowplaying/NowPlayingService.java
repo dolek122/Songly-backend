@@ -69,6 +69,13 @@ class NowPlayingService {
 		redisTemplate.delete(CACHE_KEY_PREFIX + userId);
 	}
 
+	@Transactional
+	void deleteAccountData(UUID userId) {
+		linkRepository.deleteByUserId(userId);
+		redisTemplate.delete(CACHE_KEY_PREFIX + userId);
+		redisTemplate.delete(MANUAL_KEY_PREFIX + userId);
+	}
+
 	void setManualStatus(UUID userId, ManualNowPlayingRequest request) {
 		String source = request.source() != null && !request.source().isBlank()
 				? request.source()

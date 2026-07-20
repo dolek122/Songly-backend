@@ -11,4 +11,6 @@ interface FriendshipRepository extends JpaRepository<Friendship, FriendshipId> {
 	Page<Friendship> findByUserAIdOrUserBIdOrderByCreatedAtDesc(UUID userAId, UUID userBId, Pageable pageable);
 
 	List<Friendship> findByUserAIdOrUserBId(UUID userAId, UUID userBId);
+
+	void deleteByUserAIdOrUserBId(UUID userAId, UUID userBId);
 }

@@ -155,6 +155,20 @@ class ContentService {
 		commentRepository.delete(comment);
 	}
 
+	/**
+	 * Kolejność ma znaczenie: najpierw aktywność usera na CUDZYCH postach
+	 * (komentarze/lajki/shares), dopiero potem jego własne posty — usunięcie posta
+	 * kaskadowo (ON DELETE CASCADE post_id) zabiera resztę powiązanych wierszy, w
+	 * tym od innych userów.
+	 */
+	@Transactional
+	void deleteAccountData(UUID userId) {
+		commentRepository.deleteByAuthorId(userId);
+		likeRepository.deleteByUserId(userId);
+		shareRepository.deleteByUserId(userId);
+		postRepository.deleteByAuthorId(userId);
+	}
+
 	private void requirePostExists(UUID postId) {
 		if (!postRepository.existsById(postId)) {
 			throw new PostNotFoundException();

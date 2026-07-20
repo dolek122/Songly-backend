@@ -73,6 +73,24 @@ class AuthService {
 		sessionRepository.findByRefreshTokenHash(hashToken(request.refreshToken())).ifPresent(Session::revoke);
 	}
 
+	/**
+	 * Wymaga ponownego podania hasła — sam ważny access token nie wystarcza na
+	 * akcję nieodwracalną (Claude.md §9, RODO — prawo do usunięcia konta). Event
+	 * leci PRZED usunięciem wiersza {@code users}: pozostałe moduły mają FK do
+	 * {@code users} bez CASCADE, więc muszą posprzątać swoje dane w tej samej
+	 * transakcji, zanim to konto w ogóle da się usunąć.
+	 */
+	@Transactional
+	void deleteAccount(UUID userId, String password) {
+		User user = userRepository.findById(userId).orElseThrow(InvalidCredentialsException::new);
+		if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+			throw new InvalidCredentialsException();
+		}
+		eventPublisher.publishEvent(new UserAccountDeletionRequestedEvent(userId));
+		sessionRepository.deleteByUserId(userId);
+		userRepository.delete(user);
+	}
+
 	private AuthTokensResponse issueTokens(User user) {
 		String accessToken = jwtService.generateAccessToken(user.getId(), user.getEmail());
 		String refreshToken = generateRefreshToken();

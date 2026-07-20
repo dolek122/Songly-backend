@@ -13,4 +13,6 @@ interface BlockRepository extends JpaRepository<Block, BlockId> {
 	List<Block> findByBlockerId(UUID blockerId);
 
 	List<Block> findByBlockedId(UUID blockedId);
+
+	void deleteByBlockerIdOrBlockedId(UUID blockerId, UUID blockedId);
 }

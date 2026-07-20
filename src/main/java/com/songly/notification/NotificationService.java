@@ -66,4 +66,9 @@ class NotificationService {
 		Instant now = Instant.now();
 		notificationRepository.findByUserIdAndReadAtIsNull(userId).forEach(notification -> notification.markRead(now));
 	}
+
+	@Transactional
+	void deleteAccountData(UUID userId) {
+		notificationRepository.deleteByUserIdOrActorId(userId, userId);
+	}
 }

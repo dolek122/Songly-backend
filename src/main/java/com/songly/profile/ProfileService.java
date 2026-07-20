@@ -96,6 +96,12 @@ class ProfileService implements ProfileDirectory {
 				.collect(Collectors.toSet());
 	}
 
+	@Transactional
+	void deleteAccountData(UUID userId) {
+		userGenreRepository.deleteByUserId(userId);
+		profileRepository.findByUserId(userId).ifPresent(profileRepository::delete);
+	}
+
 	@Override
 	@Transactional(readOnly = true)
 	public Map<UUID, Set<UUID>> favoriteGenreIdsByUser(Collection<UUID> userIds) {

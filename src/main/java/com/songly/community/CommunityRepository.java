@@ -10,4 +10,6 @@ interface CommunityRepository extends JpaRepository<Community, UUID> {
 	Page<Community> findAllByOrderByNameAsc(Pageable pageable);
 
 	boolean existsByNameIgnoreCase(String name);
+
+	void deleteByOwnerId(UUID ownerId);
 }
