@@ -9,6 +9,7 @@ class NowPlayingProperties {
 	private String tokenEncryptionKey;
 	private Duration cacheTtl = Duration.ofSeconds(45);
 	private Duration oauthStateTtl = Duration.ofMinutes(10);
+	private Duration manualStatusTtl = Duration.ofHours(3);
 	private final Spotify spotify = new Spotify();
 
 	String getTokenEncryptionKey() {
@@ -33,6 +34,14 @@ class NowPlayingProperties {
 
 	void setOauthStateTtl(Duration oauthStateTtl) {
 		this.oauthStateTtl = oauthStateTtl;
+	}
+
+	Duration getManualStatusTtl() {
+		return manualStatusTtl;
+	}
+
+	void setManualStatusTtl(Duration manualStatusTtl) {
+		this.manualStatusTtl = manualStatusTtl;
 	}
 
 	Spotify getSpotify() {

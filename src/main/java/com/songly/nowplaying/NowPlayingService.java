@@ -1,5 +1,6 @@
 package com.songly.nowplaying;
 
+import com.songly.nowplaying.dto.ManualNowPlayingRequest;
 import com.songly.nowplaying.dto.NowPlayingStatusResponse;
 import java.security.SecureRandom;
 import java.time.Instant;
@@ -15,6 +16,9 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Status "co teraz gra" cache'owany w Redis (Claude.md §7): Spotify nie ma
  * webhooków, więc bez cache każdy odczyt feedu biłby w ich API i rate limity.
+ * Ręcznie ustawiony status (fallback dla serwisów bez integracji, np. Apple
+ * Music/Tidal — Claude.md §7) żyje w osobnym kluczu z własnym, dłuższym TTL i
+ * ma pierwszeństwo przed providerem, dopóki nie wygaśnie.
  */
 @Service
 @EnableConfigurationProperties(NowPlayingProperties.class)
@@ -22,7 +26,9 @@ class NowPlayingService {
 
 	private static final String STATE_KEY_PREFIX = "now-playing:oauth-state:";
 	private static final String CACHE_KEY_PREFIX = "now-playing:status:";
+	private static final String MANUAL_KEY_PREFIX = "now-playing:manual:";
 	private static final String CACHE_NOTHING_PLAYING = "NOTHING_PLAYING";
+	private static final String DEFAULT_MANUAL_SOURCE = "manual";
 
 	private final MusicProvider musicProvider;
 	private final MusicProviderLinkRepository linkRepository;
@@ -63,7 +69,24 @@ class NowPlayingService {
 		redisTemplate.delete(CACHE_KEY_PREFIX + userId);
 	}
 
+	void setManualStatus(UUID userId, ManualNowPlayingRequest request) {
+		String source = request.source() != null && !request.source().isBlank() ? request.source()
+				: DEFAULT_MANUAL_SOURCE;
+		NowPlayingStatusResponse response = new NowPlayingStatusResponse(source, request.title(), request.artist(),
+				request.album(), null, true, Instant.now());
+		redisTemplate.opsForValue().set(MANUAL_KEY_PREFIX + userId, objectMapper.writeValueAsString(response),
+				properties.getManualStatusTtl());
+	}
+
+	void clearManualStatus(UUID userId) {
+		redisTemplate.delete(MANUAL_KEY_PREFIX + userId);
+	}
+
 	Optional<NowPlayingStatusResponse> getStatus(UUID userId) {
+		String manual = redisTemplate.opsForValue().get(MANUAL_KEY_PREFIX + userId);
+		if (manual != null) {
+			return Optional.of(objectMapper.readValue(manual, NowPlayingStatusResponse.class));
+		}
 		String cacheKey = CACHE_KEY_PREFIX + userId;
 		String cached = redisTemplate.opsForValue().get(cacheKey);
 		if (cached != null) {

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -72,8 +73,52 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	@Test
+	void setManualStatus_overridesUnconnectedProvider_andCanBeCleared() throws Exception {
+		String accessToken = registerAndGetAccessToken("manual-status@songly.io");
+
+		mockMvc.perform(put("/api/v1/now-playing/manual").header("Authorization", "Bearer " + accessToken)
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"title":"Bohemian Rhapsody","artist":"Queen","source":"Tidal"}"""))
+				.andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/api/v1/now-playing/me").header("Authorization", "Bearer " + accessToken))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.provider").value("Tidal"))
+				.andExpect(jsonPath("$.title").value("Bohemian Rhapsody"))
+				.andExpect(jsonPath("$.artist").value("Queen")).andExpect(jsonPath("$.playing").value(true));
+
+		mockMvc.perform(delete("/api/v1/now-playing/manual").header("Authorization", "Bearer " + accessToken))
+				.andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/api/v1/now-playing/me").header("Authorization", "Bearer " + accessToken))
+				.andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PROVIDER_NOT_CONNECTED"));
+	}
+
+	@Test
+	void setManualStatus_defaultsSourceLabel_whenNotProvided() throws Exception {
+		String accessToken = registerAndGetAccessToken("manual-status-default-source@songly.io");
+
+		mockMvc.perform(put("/api/v1/now-playing/manual").header("Authorization", "Bearer " + accessToken)
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"title":"Nowa piosenka"}""")).andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/api/v1/now-playing/me").header("Authorization", "Bearer " + accessToken))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.provider").value("manual"));
+	}
+
+	@Test
+	void setManualStatus_rejectsBlankTitle() throws Exception {
+		String accessToken = registerAndGetAccessToken("manual-status-invalid@songly.io");
+
+		mockMvc.perform(put("/api/v1/now-playing/manual").header("Authorization", "Bearer " + accessToken)
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"title":""}""")).andExpect(status().isBadRequest());
+	}
+
+	@Test
 	void nowPlayingEndpoints_requireAuthentication() throws Exception {
 		mockMvc.perform(post("/api/v1/now-playing/spotify/connect")).andExpect(status().isUnauthorized());
 		mockMvc.perform(get("/api/v1/now-playing/me")).andExpect(status().isUnauthorized());
+		mockMvc.perform(put("/api/v1/now-playing/manual")).andExpect(status().isUnauthorized());
+		mockMvc.perform(delete("/api/v1/now-playing/manual")).andExpect(status().isUnauthorized());
 	}
 }
