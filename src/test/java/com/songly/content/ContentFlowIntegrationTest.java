@@ -101,6 +101,28 @@ class ContentFlowIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	@Test
+	void sharePost_updatesCounters_andIsIdempotent() throws Exception {
+		String author = registerAndGetAccessToken("share-author@songly.io");
+		String sharer = registerAndGetAccessToken("share-sharer@songly.io");
+		String postId = createPost(author, "Post do udostępnienia");
+
+		mockMvc.perform(put("/api/v1/posts/" + postId + "/shares").header("Authorization", "Bearer " + sharer))
+				.andExpect(status().isNoContent());
+		mockMvc.perform(put("/api/v1/posts/" + postId + "/shares").header("Authorization", "Bearer " + sharer))
+				.andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/api/v1/posts/" + postId).header("Authorization", "Bearer " + sharer))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.shareCount").value(1))
+				.andExpect(jsonPath("$.sharedByMe").value(true));
+
+		mockMvc.perform(delete("/api/v1/posts/" + postId + "/shares").header("Authorization", "Bearer " + sharer))
+				.andExpect(status().isNoContent());
+		mockMvc.perform(get("/api/v1/posts/" + postId).header("Authorization", "Bearer " + sharer))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.shareCount").value(0))
+				.andExpect(jsonPath("$.sharedByMe").value(false));
+	}
+
+	@Test
 	void postEndpoints_requireAuthentication() throws Exception {
 		mockMvc.perform(get("/api/v1/posts")).andExpect(status().isUnauthorized());
 		mockMvc.perform(post("/api/v1/posts").contentType(MediaType.APPLICATION_JSON).content("""

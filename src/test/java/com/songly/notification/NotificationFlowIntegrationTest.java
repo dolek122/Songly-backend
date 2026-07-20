@@ -111,6 +111,25 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	@Test
+	void sharingPost_notifiesAuthor() throws Exception {
+		TestUser author = registerUser("notif-share-author@songly.io");
+		TestUser sharer = registerUser("notif-share-sharer@songly.io");
+
+		MvcResult postResult = mockMvc.perform(post("/api/v1/posts")
+				.header("Authorization", "Bearer " + author.accessToken()).contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"content":"do udostępnienia"}""")).andExpect(status().isCreated()).andReturn();
+		String postId = objectMapper.readTree(postResult.getResponse().getContentAsString()).get("id").asText();
+
+		mockMvc.perform(put("/api/v1/posts/" + postId + "/shares").header("Authorization",
+				"Bearer " + sharer.accessToken())).andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/api/v1/notifications").header("Authorization", "Bearer " + author.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.content[0].type").value("POST_SHARED"))
+				.andExpect(jsonPath("$.content[0].actorId").value(sharer.userId()));
+	}
+
+	@Test
 	void notificationEndpoints_requireAuthentication() throws Exception {
 		mockMvc.perform(get("/api/v1/notifications")).andExpect(status().isUnauthorized());
 	}
