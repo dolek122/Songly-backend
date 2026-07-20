@@ -70,6 +70,18 @@ class PostController {
 		return ResponseEntity.noContent().build();
 	}
 
+	@PutMapping("/{postId}/shares")
+	ResponseEntity<Void> sharePost(Authentication authentication, @PathVariable UUID postId) {
+		contentService.sharePost(postId, currentUserId(authentication));
+		return ResponseEntity.noContent().build();
+	}
+
+	@DeleteMapping("/{postId}/shares")
+	ResponseEntity<Void> unsharePost(Authentication authentication, @PathVariable UUID postId) {
+		contentService.unsharePost(postId, currentUserId(authentication));
+		return ResponseEntity.noContent().build();
+	}
+
 	@PostMapping("/{postId}/comments")
 	ResponseEntity<CommentResponse> addComment(Authentication authentication, @PathVariable UUID postId,
 			@Valid @RequestBody CreateCommentRequest request) {

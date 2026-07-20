@@ -24,15 +24,18 @@ class ContentService {
 	private final PostRepository postRepository;
 	private final LikeRepository likeRepository;
 	private final CommentRepository commentRepository;
+	private final ShareRepository shareRepository;
 	private final ProfileDirectory profileDirectory;
 	private final SocialGraph socialGraph;
 	private final ApplicationEventPublisher eventPublisher;
 
 	ContentService(PostRepository postRepository, LikeRepository likeRepository, CommentRepository commentRepository,
-			ProfileDirectory profileDirectory, SocialGraph socialGraph, ApplicationEventPublisher eventPublisher) {
+			ShareRepository shareRepository, ProfileDirectory profileDirectory, SocialGraph socialGraph,
+			ApplicationEventPublisher eventPublisher) {
 		this.postRepository = postRepository;
 		this.likeRepository = likeRepository;
 		this.commentRepository = commentRepository;
+		this.shareRepository = shareRepository;
 		this.profileDirectory = profileDirectory;
 		this.socialGraph = socialGraph;
 		this.eventPublisher = eventPublisher;
@@ -44,7 +47,7 @@ class ContentService {
 		postRepository.save(post);
 		String displayName = profileDirectory.displayNames(Set.of(authorId)).get(authorId);
 		return new PostResponse(post.getId(), authorId, displayName, post.getContent(), post.getCreatedAt(), 0, false,
-				0);
+				0, 0, false);
 	}
 
 	@Transactional(readOnly = true)
@@ -64,15 +67,16 @@ class ContentService {
 	}
 
 	/**
-	 * Prosty feed MVP: posty znajomych i własne, chronologicznie. Zapytanie po
-	 * liście autorów wystarczy przy setkach znajomych; przy realnym ruchu to
-	 * pierwszy kandydat na read-replikę / precomputed feed (Claude.md §10).
+	 * Prosty feed MVP: posty napisane albo udostępnione przez znajomych i mnie,
+	 * chronologicznie wg utworzenia posta. Zapytanie po liście userów wystarczy
+	 * przy setkach znajomych; przy realnym ruchu to pierwszy kandydat na
+	 * read-replikę / precomputed feed (Claude.md §10).
 	 */
 	@Transactional(readOnly = true)
 	Page<PostResponse> feed(UUID viewerId, Pageable pageable) {
 		Set<UUID> authorIds = new HashSet<>(socialGraph.friendIds(viewerId));
 		authorIds.add(viewerId);
-		Page<Post> page = postRepository.findByAuthorIdInOrderByCreatedAtDesc(authorIds, pageable);
+		Page<Post> page = postRepository.findFeedPosts(authorIds, pageable);
 		Map<UUID, PostResponse> byId = toResponses(page.getContent(), viewerId).stream()
 				.collect(Collectors.toMap(PostResponse::id, Function.identity()));
 		return page.map(post -> byId.get(post.getId()));
@@ -101,6 +105,22 @@ class ContentService {
 	void unlikePost(UUID postId, UUID userId) {
 		requirePostExists(postId);
 		likeRepository.deleteById(new LikeId(postId, userId));
+	}
+
+	@Transactional
+	void sharePost(UUID postId, UUID userId) {
+		Post post = postRepository.findById(postId).orElseThrow(PostNotFoundException::new);
+		if (!shareRepository.existsById(new ShareId(postId, userId))) {
+			Instant now = Instant.now();
+			shareRepository.save(new Share(postId, userId, now));
+			eventPublisher.publishEvent(new PostSharedEvent(postId, post.getAuthorId(), userId, now));
+		}
+	}
+
+	@Transactional
+	void unsharePost(UUID postId, UUID userId) {
+		requirePostExists(postId);
+		shareRepository.deleteById(new ShareId(postId, userId));
 	}
 
 	@Transactional
@@ -150,14 +170,19 @@ class ContentService {
 				Collectors.toMap(LikeRepository.PostIdCount::getPostId, LikeRepository.PostIdCount::getLikeCount));
 		Map<UUID, Long> commentCounts = commentRepository.countByPostIdIn(postIds).stream().collect(Collectors
 				.toMap(CommentRepository.PostIdCount::getPostId, CommentRepository.PostIdCount::getCommentCount));
+		Map<UUID, Long> shareCounts = shareRepository.countByPostIdIn(postIds).stream().collect(
+				Collectors.toMap(ShareRepository.PostIdCount::getPostId, ShareRepository.PostIdCount::getShareCount));
 		Set<UUID> likedByViewer = likeRepository.findByPostIdInAndUserId(postIds, viewerId).stream()
 				.map(Like::getPostId).collect(Collectors.toSet());
+		Set<UUID> sharedByViewer = shareRepository.findByPostIdInAndUserId(postIds, viewerId).stream()
+				.map(Share::getPostId).collect(Collectors.toSet());
 		Map<UUID, String> names = profileDirectory
 				.displayNames(posts.stream().map(Post::getAuthorId).collect(Collectors.toSet()));
 		return posts.stream()
 				.map(post -> new PostResponse(post.getId(), post.getAuthorId(), names.get(post.getAuthorId()),
 						post.getContent(), post.getCreatedAt(), likeCounts.getOrDefault(post.getId(), 0L),
-						likedByViewer.contains(post.getId()), commentCounts.getOrDefault(post.getId(), 0L)))
+						likedByViewer.contains(post.getId()), commentCounts.getOrDefault(post.getId(), 0L),
+						shareCounts.getOrDefault(post.getId(), 0L), sharedByViewer.contains(post.getId())))
 				.collect(Collectors.toList());
 	}
 }

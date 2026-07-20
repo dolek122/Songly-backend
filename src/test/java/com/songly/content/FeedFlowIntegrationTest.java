@@ -2,6 +2,7 @@ package com.songly.content;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -76,6 +77,34 @@ class FeedFlowIntegrationTest extends AbstractIntegrationTest {
 		mockMvc.perform(get("/api/v1/feed").header("Authorization", "Bearer " + stranger.accessToken()))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(1))
 				.andExpect(jsonPath("$.content[0].content").value("post obcego"));
+	}
+
+	@Test
+	void feed_containsPostsSharedByFriends() throws Exception {
+		TestUser ada = registerUser("feed-share-ada@songly.io");
+		TestUser bono = registerUser("feed-share-bono@songly.io");
+		TestUser stranger = registerUser("feed-share-stranger@songly.io");
+
+		makeFriends(ada, bono);
+		createPost(stranger, "post obcego do udostępnienia");
+
+		mockMvc.perform(get("/api/v1/feed").header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(0));
+
+		MvcResult postsResult = mockMvc
+				.perform(get("/api/v1/posts?authorId=" + stranger.userId())
+						.header("Authorization", "Bearer " + bono.accessToken()))
+				.andExpect(status().isOk()).andReturn();
+		String postId = objectMapper.readTree(postsResult.getResponse().getContentAsString()).get("content").get(0)
+				.get("id").asText();
+
+		mockMvc.perform(put("/api/v1/posts/" + postId + "/shares").header("Authorization",
+				"Bearer " + bono.accessToken())).andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/api/v1/feed").header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(1))
+				.andExpect(jsonPath("$.content[0].id").value(postId))
+				.andExpect(jsonPath("$.content[0].shareCount").value(1));
 	}
 
 	@Test
