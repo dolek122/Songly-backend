@@ -111,6 +111,33 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	@Test
+	void joiningCommunity_notifiesOwner() throws Exception {
+		TestUser owner = registerUser("notif-community-owner@songly.io");
+		TestUser joiner = registerUser("notif-community-joiner@songly.io");
+
+		MvcResult communityResult = mockMvc.perform(post("/api/v1/communities")
+				.header("Authorization", "Bearer " + owner.accessToken()).contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"name":"Metalheads","description":"dla fanów metalu"}""")).andExpect(status().isCreated())
+				.andReturn();
+		String communityId = objectMapper.readTree(communityResult.getResponse().getContentAsString()).get("id")
+				.asText();
+
+		mockMvc.perform(put("/api/v1/communities/" + communityId + "/membership").header("Authorization",
+				"Bearer " + joiner.accessToken())).andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/api/v1/notifications").header("Authorization", "Bearer " + owner.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.content[0].type").value("COMMUNITY_MEMBER_JOINED"))
+				.andExpect(jsonPath("$.content[0].actorId").value(joiner.userId()));
+
+		// ponowne dołączenie (idempotentne) nie generuje kolejnego powiadomienia
+		mockMvc.perform(put("/api/v1/communities/" + communityId + "/membership").header("Authorization",
+				"Bearer " + joiner.accessToken())).andExpect(status().isNoContent());
+		mockMvc.perform(get("/api/v1/notifications/unread-count").header("Authorization",
+				"Bearer " + owner.accessToken())).andExpect(status().isOk()).andExpect(jsonPath("$.count").value(1));
+	}
+
+	@Test
 	void notificationEndpoints_requireAuthentication() throws Exception {
 		mockMvc.perform(get("/api/v1/notifications")).andExpect(status().isUnauthorized());
 	}

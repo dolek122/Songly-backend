@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class CommunityServiceTest {
@@ -30,6 +31,9 @@ class CommunityServiceTest {
 	@Mock
 	private ProfileDirectory profileDirectory;
 
+	@Mock
+	private ApplicationEventPublisher eventPublisher;
+
 	private CommunityService communityService;
 
 	private final UUID ownerId = UUID.randomUUID();
@@ -37,7 +41,8 @@ class CommunityServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		communityService = new CommunityService(communityRepository, memberRepository, profileDirectory);
+		communityService = new CommunityService(communityRepository, memberRepository, profileDirectory,
+				eventPublisher);
 	}
 
 	private Community community() {
@@ -119,6 +124,19 @@ class CommunityServiceTest {
 		communityService.join(community.getId(), otherId);
 
 		verify(memberRepository, never()).save(any());
+		verify(eventPublisher, never()).publishEvent(any());
+	}
+
+	@Test
+	void join_publishesEvent_forNewMember() {
+		Community community = community();
+		when(communityRepository.findById(community.getId())).thenReturn(Optional.of(community));
+		when(memberRepository.existsById(new CommunityMemberId(community.getId(), otherId))).thenReturn(false);
+
+		communityService.join(community.getId(), otherId);
+
+		verify(memberRepository).save(any(CommunityMember.class));
+		verify(eventPublisher).publishEvent(any(CommunityMemberJoinedEvent.class));
 	}
 
 	@Test
