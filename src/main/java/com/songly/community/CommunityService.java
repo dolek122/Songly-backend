@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -20,12 +21,14 @@ class CommunityService {
 	private final CommunityRepository communityRepository;
 	private final CommunityMemberRepository memberRepository;
 	private final ProfileDirectory profileDirectory;
+	private final ApplicationEventPublisher eventPublisher;
 
 	CommunityService(CommunityRepository communityRepository, CommunityMemberRepository memberRepository,
-			ProfileDirectory profileDirectory) {
+			ProfileDirectory profileDirectory, ApplicationEventPublisher eventPublisher) {
 		this.communityRepository = communityRepository;
 		this.memberRepository = memberRepository;
 		this.profileDirectory = profileDirectory;
+		this.eventPublisher = eventPublisher;
 	}
 
 	@Transactional
@@ -88,10 +91,12 @@ class CommunityService {
 	/** Idempotentne — ponowne dołączenie nie zmienia istniejącego członkostwa. */
 	@Transactional
 	void join(UUID communityId, UUID userId) {
-		requireCommunity(communityId);
+		Community community = requireCommunity(communityId);
 		CommunityMemberId id = new CommunityMemberId(communityId, userId);
 		if (!memberRepository.existsById(id)) {
-			memberRepository.save(new CommunityMember(communityId, userId, CommunityRole.MEMBER, Instant.now()));
+			Instant now = Instant.now();
+			memberRepository.save(new CommunityMember(communityId, userId, CommunityRole.MEMBER, now));
+			eventPublisher.publishEvent(new CommunityMemberJoinedEvent(communityId, community.getOwnerId(), userId, now));
 		}
 	}
 

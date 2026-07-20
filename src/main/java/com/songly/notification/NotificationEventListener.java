@@ -1,5 +1,6 @@
 package com.songly.notification;
 
+import com.songly.community.CommunityMemberJoinedEvent;
 import com.songly.content.PostCommentedEvent;
 import com.songly.content.PostLikedEvent;
 import com.songly.content.PostSharedEvent;
@@ -11,8 +12,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
  * Jedyny kontakt modułu notification z resztą systemu: zdarzenia Springa
- * publikowane przez content i social (Claude.md §2) — bez sięgania po ich
- * encje ani serwisy.
+ * publikowane przez content, social i community (Claude.md §2) — bez sięgania
+ * po ich encje ani serwisy.
  */
 @Component
 class NotificationEventListener {
@@ -51,5 +52,11 @@ class NotificationEventListener {
 	void onFriendRequestAccepted(FriendRequestAcceptedEvent event) {
 		notificationService.record(event.requesterId(), event.addresseeId(),
 				NotificationType.FRIEND_REQUEST_ACCEPTED, event.requestId(), event.occurredAt());
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onCommunityMemberJoined(CommunityMemberJoinedEvent event) {
+		notificationService.record(event.ownerId(), event.memberId(), NotificationType.COMMUNITY_MEMBER_JOINED,
+				event.communityId(), event.occurredAt());
 	}
 }
