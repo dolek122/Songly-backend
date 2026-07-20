@@ -19,6 +19,6 @@ Nowy moduł `analytics` nasłuchuje tych samych eventów Springa (`@Transactiona
 
 ## Konsekwencje
 
-- Gdy w systemie pojawi się rola admina (do czegokolwiek innego), `GET /api/v1/analytics/summary` powinien dostać gating tą rolą — to jest dług, nie docelowy stan.
+- ~~Gdy w systemie pojawi się rola admina (do czegokolwiek innego), `GET /api/v1/analytics/summary` powinien dostać gating tą rolą — to jest dług, nie docelowy stan.~~ Rozwiązane w ADR 0006: `GET /api/v1/analytics/summary` wymaga teraz `ROLE_ADMIN`.
 - Jeśli w przyszłości analytics będzie potrzebować danych per-user (np. lejek konwersji, cohorty), to nowa decyzja i osobny ADR — obecny model celowo tego nie robi.
 - Nowy typ zdarzenia domenowego w dowolnym module = nowy listener w `AnalyticsEventListener` + nowa wartość `AnalyticsEventType`, zero zmian w module źródłowym.

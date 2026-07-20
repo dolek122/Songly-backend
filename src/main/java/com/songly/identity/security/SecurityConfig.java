@@ -3,6 +3,7 @@ package com.songly.identity.security;
 import com.songly.common.web.RateLimitingFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -18,23 +19,27 @@ class SecurityConfig {
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
 	private final RateLimitingFilter rateLimitingFilter;
 	private final RestAuthenticationEntryPoint authenticationEntryPoint;
+	private final RestAccessDeniedHandler accessDeniedHandler;
 
 	SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, RateLimitingFilter rateLimitingFilter,
-			RestAuthenticationEntryPoint authenticationEntryPoint) {
+			RestAuthenticationEntryPoint authenticationEntryPoint, RestAccessDeniedHandler accessDeniedHandler) {
 		this.jwtAuthenticationFilter = jwtAuthenticationFilter;
 		this.rateLimitingFilter = rateLimitingFilter;
 		this.authenticationEntryPoint = authenticationEntryPoint;
+		this.accessDeniedHandler = accessDeniedHandler;
 	}
 
 	@Bean
 	SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 		http.csrf(csrf -> csrf.disable())
 				.sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-				.exceptionHandling(eh -> eh.authenticationEntryPoint(authenticationEntryPoint))
+				.exceptionHandling(eh -> eh.authenticationEntryPoint(authenticationEntryPoint)
+						.accessDeniedHandler(accessDeniedHandler))
 				.authorizeHttpRequests(auth -> auth.requestMatchers("/api/v1/auth/**").permitAll()
 						.requestMatchers("/api/v1/now-playing/spotify/callback").permitAll()
 						.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 						.requestMatchers("/actuator/health/**", "/actuator/info", "/actuator/prometheus").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/v1/analytics/summary").hasAuthority("ROLE_ADMIN")
 						.anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
 				.addFilterBefore(rateLimitingFilter, JwtAuthenticationFilter.class);

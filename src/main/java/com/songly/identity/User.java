@@ -23,6 +23,9 @@ class User {
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
 
+	@Column(name = "is_admin", nullable = false)
+	private boolean admin;
+
 	protected User() {
 	}
 
@@ -31,6 +34,7 @@ class User {
 		this.email = email;
 		this.passwordHash = passwordHash;
 		this.createdAt = createdAt;
+		this.admin = false;
 	}
 
 	public UUID getId() {
@@ -47,5 +51,9 @@ class User {
 
 	public Instant getCreatedAt() {
 		return createdAt;
+	}
+
+	public boolean isAdmin() {
+		return admin;
 	}
 }

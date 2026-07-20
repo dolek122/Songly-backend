@@ -9,9 +9,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.songly.AbstractIntegrationTest;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -32,6 +34,9 @@ class AnalyticsFlowIntegrationTest extends AbstractIntegrationTest {
 	@Autowired
 	private ObjectMapper objectMapper;
 
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
+
 	private record TestUser(String accessToken, String userId) {
 	}
 
@@ -49,6 +54,12 @@ class AnalyticsFlowIntegrationTest extends AbstractIntegrationTest {
 		return new TestUser(accessToken, userId);
 	}
 
+	private TestUser registerAdmin(String email) throws Exception {
+		TestUser user = registerUser(email);
+		jdbcTemplate.update("UPDATE users SET is_admin = TRUE WHERE id = ?", UUID.fromString(user.userId()));
+		return user;
+	}
+
 	private Map<String, Long> fetchCounts(String accessToken) throws Exception {
 		MvcResult result = mockMvc
 				.perform(get("/api/v1/analytics/summary").header("Authorization", "Bearer " + accessToken))
@@ -61,7 +72,7 @@ class AnalyticsFlowIntegrationTest extends AbstractIntegrationTest {
 
 	@Test
 	void summary_reflectsDomainActivity_asDeltaSinceBefore() throws Exception {
-		TestUser ada = registerUser("analytics-ada@songly.io");
+		TestUser ada = registerAdmin("analytics-ada@songly.io");
 		TestUser bono = registerUser("analytics-bono@songly.io");
 
 		Map<String, Long> before = fetchCounts(ada.accessToken());
@@ -115,5 +126,12 @@ class AnalyticsFlowIntegrationTest extends AbstractIntegrationTest {
 	@Test
 	void analyticsEndpoints_requireAuthentication() throws Exception {
 		mockMvc.perform(get("/api/v1/analytics/summary")).andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void analyticsEndpoints_requireAdminRole() throws Exception {
+		TestUser regularUser = registerUser("analytics-non-admin@songly.io");
+		mockMvc.perform(get("/api/v1/analytics/summary").header("Authorization", "Bearer " + regularUser.accessToken()))
+				.andExpect(status().isForbidden());
 	}
 }
