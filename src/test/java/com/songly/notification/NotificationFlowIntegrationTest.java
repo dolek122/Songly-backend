@@ -135,6 +135,9 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 				"Bearer " + joiner.accessToken())).andExpect(status().isNoContent());
 		mockMvc.perform(get("/api/v1/notifications/unread-count").header("Authorization",
 				"Bearer " + owner.accessToken())).andExpect(status().isOk()).andExpect(jsonPath("$.count").value(1));
+	}
+
+	@Test
 	void sharingPost_notifiesAuthor() throws Exception {
 		TestUser author = registerUser("notif-share-author@songly.io");
 		TestUser sharer = registerUser("notif-share-sharer@songly.io");
