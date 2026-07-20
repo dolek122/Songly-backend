@@ -38,6 +38,9 @@ class ContentServiceTest {
 	private CommentRepository commentRepository;
 
 	@Mock
+	private ShareRepository shareRepository;
+
+	@Mock
 	private ProfileDirectory profileDirectory;
 
 	@Mock
@@ -50,8 +53,8 @@ class ContentServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		contentService = new ContentService(postRepository, likeRepository, commentRepository, profileDirectory,
-				socialGraph, eventPublisher);
+		contentService = new ContentService(postRepository, likeRepository, commentRepository, shareRepository,
+				profileDirectory, socialGraph, eventPublisher);
 	}
 
 	@Test
@@ -177,19 +180,47 @@ class ContentServiceTest {
 		UUID friendId = UUID.randomUUID();
 		Post post = new Post(UUID.randomUUID(), friendId, "od znajomego", Instant.now());
 		when(socialGraph.friendIds(viewerId)).thenReturn(Set.of(friendId));
-		when(postRepository.findByAuthorIdInOrderByCreatedAtDesc(any(), any()))
+		when(postRepository.findFeedPosts(any(), any()))
 				.thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(post)));
 		when(likeRepository.countByPostIdIn(any())).thenReturn(List.of());
 		when(commentRepository.countByPostIdIn(any())).thenReturn(List.of());
+		when(shareRepository.countByPostIdIn(any())).thenReturn(List.of());
 		when(likeRepository.findByPostIdInAndUserId(any(), any())).thenReturn(List.of());
+		when(shareRepository.findByPostIdInAndUserId(any(), any())).thenReturn(List.of());
 		when(profileDirectory.displayNames(anyCollection())).thenReturn(Map.of(friendId, "Bono"));
 
 		var page = contentService.feed(viewerId, org.springframework.data.domain.Pageable.unpaged());
 
-		verify(postRepository).findByAuthorIdInOrderByCreatedAtDesc(Set.of(friendId, viewerId),
+		verify(postRepository).findFeedPosts(Set.of(friendId, viewerId),
 				org.springframework.data.domain.Pageable.unpaged());
 		assertThat(page.getContent()).hasSize(1);
 		assertThat(page.getContent().get(0).authorDisplayName()).isEqualTo("Bono");
+	}
+
+	@Test
+	void sharePost_publishesEventOnlyForNewShare() {
+		UUID sharerId = UUID.randomUUID();
+		Post post = new Post(UUID.randomUUID(), UUID.randomUUID(), "treść", Instant.now());
+		when(postRepository.findById(post.getId())).thenReturn(Optional.of(post));
+		when(shareRepository.existsById(new ShareId(post.getId(), sharerId))).thenReturn(false);
+
+		contentService.sharePost(post.getId(), sharerId);
+
+		verify(shareRepository).save(any(Share.class));
+		verify(eventPublisher).publishEvent(any(PostSharedEvent.class));
+	}
+
+	@Test
+	void sharePost_isIdempotent() {
+		UUID sharerId = UUID.randomUUID();
+		Post post = new Post(UUID.randomUUID(), UUID.randomUUID(), "treść", Instant.now());
+		when(postRepository.findById(post.getId())).thenReturn(Optional.of(post));
+		when(shareRepository.existsById(new ShareId(post.getId(), sharerId))).thenReturn(true);
+
+		contentService.sharePost(post.getId(), sharerId);
+
+		verify(shareRepository, never()).save(any());
+		verify(eventPublisher, never()).publishEvent(any());
 	}
 
 	@Test

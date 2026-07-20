@@ -3,6 +3,7 @@ package com.songly.notification;
 import com.songly.community.CommunityMemberJoinedEvent;
 import com.songly.content.PostCommentedEvent;
 import com.songly.content.PostLikedEvent;
+import com.songly.content.PostSharedEvent;
 import com.songly.social.FriendRequestAcceptedEvent;
 import com.songly.social.FriendRequestSentEvent;
 import org.springframework.stereotype.Component;
@@ -32,6 +33,12 @@ class NotificationEventListener {
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onPostCommented(PostCommentedEvent event) {
 		notificationService.record(event.postAuthorId(), event.commentAuthorId(), NotificationType.POST_COMMENTED,
+				event.postId(), event.occurredAt());
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onPostShared(PostSharedEvent event) {
+		notificationService.record(event.postAuthorId(), event.sharerId(), NotificationType.POST_SHARED,
 				event.postId(), event.occurredAt());
 	}
 
