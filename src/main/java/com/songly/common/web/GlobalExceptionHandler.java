@@ -14,6 +14,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -67,6 +68,18 @@ class GlobalExceptionHandler {
 		}
 		return response.body(toApiError("METHOD_NOT_ALLOWED",
 				"Metoda " + ex.getMethod() + " nie jest obsługiwana dla tego zasobu", request));
+	}
+
+	/**
+	 * Nieznana ścieżka (np. literówka w URL-u klienta). Bez tego handlera
+	 * {@link NoResourceFoundException} wpada do łapacza {@code Exception} niżej i
+	 * daje 500 {@code INTERNAL_ERROR} ze stack tracem — czyli zły endpoint wygląda
+	 * jak awaria serwera i zasypuje monitoring fałszywymi 500-tkami.
+	 */
+	@ExceptionHandler(NoResourceFoundException.class)
+	ResponseEntity<ApiError> handleNoResourceFound(NoResourceFoundException ex, HttpServletRequest request) {
+		return ResponseEntity.status(HttpStatus.NOT_FOUND)
+				.body(toApiError("NOT_FOUND", "Nie znaleziono zasobu: " + request.getRequestURI(), request));
 	}
 
 	/**
