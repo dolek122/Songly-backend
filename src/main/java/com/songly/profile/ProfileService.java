@@ -3,6 +3,7 @@ package com.songly.profile;
 import com.songly.profile.dto.GenreResponse;
 import com.songly.profile.dto.ProfileResponse;
 import com.songly.profile.dto.UpdateProfileRequest;
+import com.songly.profile.dto.UserSearchResponse;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
@@ -48,6 +49,25 @@ class ProfileService implements ProfileDirectory {
 	@Transactional(readOnly = true)
 	ProfileResponse getProfile(UUID userId) {
 		return toResponse(profileRepository.findByUserId(userId).orElseThrow(ProfileNotFoundException::new));
+	}
+
+	/**
+	 * Wyszukiwanie użytkowników po nazwie wyświetlanej — na potrzeby dodawania
+	 * znajomych (moduł social-graph potrzebuje {@code addresseeId}). Pusty/biały
+	 * query zwraca pustą stronę, żeby nie wysypywać wszystkich użytkowników. Sam
+	 * pytający jest wykluczany z wyników. Wyszukiwarka celowo nie filtruje po
+	 * blokadach (to dane modułu social, poza granicą §2) — wysłanie zaproszenia do
+	 * zablokowanego i tak odrzuci moduł social.
+	 */
+	@Transactional(readOnly = true)
+	Page<UserSearchResponse> searchUsers(UUID requesterId, String query, Pageable pageable) {
+		String trimmed = query == null ? "" : query.trim();
+		if (trimmed.isEmpty()) {
+			return Page.empty(pageable);
+		}
+		return profileRepository.findByDisplayNameContainingIgnoreCaseAndUserIdNot(trimmed, requesterId, pageable)
+				.map(profile -> new UserSearchResponse(profile.getUserId(), profile.getDisplayName(),
+						profile.getAvatarUrl()));
 	}
 
 	@Transactional
