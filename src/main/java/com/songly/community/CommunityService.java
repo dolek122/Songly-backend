@@ -41,8 +41,7 @@ class CommunityService {
 		Community community = new Community(UUID.randomUUID(), name, description, ownerId, now);
 		communityRepository.save(community);
 		memberRepository.save(new CommunityMember(community.getId(), ownerId, CommunityRole.OWNER, now));
-		return new CommunityResponse(community.getId(), community.getName(), community.getDescription(), ownerId, 1,
-				CommunityRole.OWNER, now);
+		return toResponse(community, 1, CommunityRole.OWNER);
 	}
 
 	@Transactional
@@ -83,9 +82,13 @@ class CommunityService {
 		Map<UUID, Community> communities = communityRepository.findAllById(communityIds).stream()
 				.collect(Collectors.toMap(Community::getId, Function.identity()));
 		Map<UUID, Long> counts = memberCounts(communityIds);
+		Set<UUID> ownerIds = communities.values().stream().map(Community::getOwnerId).collect(Collectors.toSet());
+		Map<UUID, String> ownerNames = profileDirectory.displayNames(ownerIds);
+		Map<UUID, String> ownerAvatars = profileDirectory.avatarUrls(ownerIds);
 		return memberships.map(membership -> {
 			Community community = communities.get(membership.getCommunityId());
-			return toResponse(community, counts.getOrDefault(community.getId(), 0L), membership.getRole());
+			return toResponse(community, counts.getOrDefault(community.getId(), 0L), membership.getRole(), ownerNames,
+					ownerAvatars);
 		});
 	}
 
@@ -143,8 +146,11 @@ class CommunityService {
 				? Map.of()
 				: memberRepository.findByUserIdAndCommunityIdIn(viewerId, communityIds).stream()
 						.collect(Collectors.toMap(CommunityMember::getCommunityId, CommunityMember::getRole));
+		Set<UUID> ownerIds = page.getContent().stream().map(Community::getOwnerId).collect(Collectors.toSet());
+		Map<UUID, String> ownerNames = profileDirectory.displayNames(ownerIds);
+		Map<UUID, String> ownerAvatars = profileDirectory.avatarUrls(ownerIds);
 		return page.map(community -> toResponse(community, counts.getOrDefault(community.getId(), 0L),
-				myRoles.get(community.getId())));
+				myRoles.get(community.getId()), ownerNames, ownerAvatars));
 	}
 
 	private Map<UUID, Long> memberCounts(List<UUID> communityIds) {
@@ -171,8 +177,21 @@ class CommunityService {
 		}
 	}
 
+	/** Pojedyncza społeczność — dane założyciela dobieramy jednym zapytaniem po jego id. */
 	private CommunityResponse toResponse(Community community, long memberCount, CommunityRole myRole) {
-		return new CommunityResponse(community.getId(), community.getName(), community.getDescription(),
-				community.getOwnerId(), memberCount, myRole, community.getCreatedAt());
+		Set<UUID> ownerId = Set.of(community.getOwnerId());
+		return toResponse(community, memberCount, myRole, profileDirectory.displayNames(ownerId),
+				profileDirectory.avatarUrls(ownerId));
+	}
+
+	/**
+	 * Wariant wsadowy: nazwy/avatary założycieli podane z zewnątrz (jedno zapytanie na
+	 * całą stronę), żeby listy nie robiły N+1 do modułu profile.
+	 */
+	private CommunityResponse toResponse(Community community, long memberCount, CommunityRole myRole,
+			Map<UUID, String> ownerNames, Map<UUID, String> ownerAvatars) {
+		UUID ownerId = community.getOwnerId();
+		return new CommunityResponse(community.getId(), community.getName(), community.getDescription(), ownerId,
+				ownerNames.get(ownerId), ownerAvatars.get(ownerId), memberCount, myRole, community.getCreatedAt());
 	}
 }

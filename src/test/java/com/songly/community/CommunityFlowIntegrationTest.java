@@ -55,7 +55,8 @@ class CommunityFlowIntegrationTest extends AbstractIntegrationTest {
 
 		mockMvc.perform(get("/api/v1/communities/" + communityId).header("Authorization", "Bearer " + member))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Fani Metalu"))
-				.andExpect(jsonPath("$.memberCount").value(2)).andExpect(jsonPath("$.myRole").value("MEMBER"));
+				.andExpect(jsonPath("$.memberCount").value(2)).andExpect(jsonPath("$.myRole").value("MEMBER"))
+				.andExpect(jsonPath("$.ownerDisplayName").value("community-owner"));
 
 		mockMvc.perform(
 				get("/api/v1/communities/" + communityId + "/members").header("Authorization", "Bearer " + owner))
