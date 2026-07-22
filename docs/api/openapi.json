@@ -144,6 +144,12 @@
           "name" : {
             "type" : "string"
           },
+          "ownerAvatarUrl" : {
+            "type" : "string"
+          },
+          "ownerDisplayName" : {
+            "type" : "string"
+          },
           "ownerId" : {
             "format" : "uuid",
             "type" : "string"
