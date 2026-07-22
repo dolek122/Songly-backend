@@ -6,5 +6,5 @@ import java.util.UUID;
 
 /** {@code readAt} jest {@code null} dla nieprzeczytanych. */
 public record NotificationResponse(UUID id, NotificationType type, UUID actorId, String actorDisplayName,
-		UUID resourceId, Instant createdAt, Instant readAt) {
+		String actorAvatarUrl, UUID resourceId, Instant createdAt, Instant readAt) {
 }

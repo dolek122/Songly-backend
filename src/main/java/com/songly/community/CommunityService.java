@@ -6,6 +6,7 @@ import com.songly.profile.ProfileDirectory;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -128,10 +129,11 @@ class CommunityService {
 	Page<CommunityMemberResponse> listMembers(UUID communityId, Pageable pageable) {
 		requireCommunity(communityId);
 		Page<CommunityMember> page = memberRepository.findByCommunityIdOrderByJoinedAtAsc(communityId, pageable);
-		Map<UUID, String> names = profileDirectory
-				.displayNames(page.getContent().stream().map(CommunityMember::getUserId).collect(Collectors.toSet()));
+		Set<UUID> memberIds = page.getContent().stream().map(CommunityMember::getUserId).collect(Collectors.toSet());
+		Map<UUID, String> names = profileDirectory.displayNames(memberIds);
+		Map<UUID, String> avatars = profileDirectory.avatarUrls(memberIds);
 		return page.map(member -> new CommunityMemberResponse(member.getUserId(), names.get(member.getUserId()),
-				member.getRole(), member.getJoinedAt()));
+				avatars.get(member.getUserId()), member.getRole(), member.getJoinedAt()));
 	}
 
 	private Page<CommunityResponse> enrich(Page<Community> page, UUID viewerId) {

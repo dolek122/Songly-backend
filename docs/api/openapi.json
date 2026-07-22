@@ -69,6 +69,9 @@
       },
       "CommentResponse" : {
         "properties" : {
+          "authorAvatarUrl" : {
+            "type" : "string"
+          },
           "authorDisplayName" : {
             "type" : "string"
           },
@@ -96,6 +99,9 @@
       },
       "CommunityMemberResponse" : {
         "properties" : {
+          "avatarUrl" : {
+            "type" : "string"
+          },
           "displayName" : {
             "type" : "string"
           },
@@ -203,6 +209,9 @@
       },
       "FriendRequestResponse" : {
         "properties" : {
+          "addresseeAvatarUrl" : {
+            "type" : "string"
+          },
           "addresseeDisplayName" : {
             "type" : "string"
           },
@@ -216,6 +225,9 @@
           },
           "id" : {
             "format" : "uuid",
+            "type" : "string"
+          },
+          "requesterAvatarUrl" : {
             "type" : "string"
           },
           "requesterDisplayName" : {
@@ -234,6 +246,9 @@
       },
       "FriendResponse" : {
         "properties" : {
+          "avatarUrl" : {
+            "type" : "string"
+          },
           "displayName" : {
             "type" : "string"
           },
@@ -303,6 +318,9 @@
       },
       "MatchResponse" : {
         "properties" : {
+          "avatarUrl" : {
+            "type" : "string"
+          },
           "displayName" : {
             "type" : "string"
           },
@@ -326,6 +344,9 @@
       },
       "NotificationResponse" : {
         "properties" : {
+          "actorAvatarUrl" : {
+            "type" : "string"
+          },
           "actorDisplayName" : {
             "type" : "string"
           },
@@ -938,6 +959,9 @@
       },
       "PostResponse" : {
         "properties" : {
+          "authorAvatarUrl" : {
+            "type" : "string"
+          },
           "authorDisplayName" : {
             "type" : "string"
           },

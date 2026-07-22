@@ -86,7 +86,8 @@ class SocialGraphService implements SocialGraph {
 				.flatMap(request -> Stream.of(request.getRequesterId(), request.getAddresseeId()))
 				.collect(Collectors.toSet());
 		Map<UUID, String> names = profileDirectory.displayNames(userIds);
-		return page.map(request -> toResponse(request, names));
+		Map<UUID, String> avatars = profileDirectory.avatarUrls(userIds);
+		return page.map(request -> toResponse(request, names, avatars));
 	}
 
 	@Transactional
@@ -120,8 +121,10 @@ class SocialGraphService implements SocialGraph {
 		Set<UUID> friendIds = page.getContent().stream().map(friendship -> friendship.otherThan(userId))
 				.collect(Collectors.toSet());
 		Map<UUID, String> names = profileDirectory.displayNames(friendIds);
+		Map<UUID, String> avatars = profileDirectory.avatarUrls(friendIds);
 		return page.map(friendship -> new FriendResponse(friendship.otherThan(userId),
-				names.get(friendship.otherThan(userId)), friendship.getCreatedAt()));
+				names.get(friendship.otherThan(userId)), avatars.get(friendship.otherThan(userId)),
+				friendship.getCreatedAt()));
 	}
 
 	@Transactional
@@ -224,13 +227,14 @@ class SocialGraphService implements SocialGraph {
 	}
 
 	private FriendRequestResponse toResponse(FriendRequest request) {
-		return toResponse(request,
-				profileDirectory.displayNames(List.of(request.getRequesterId(), request.getAddresseeId())));
+		List<UUID> ids = List.of(request.getRequesterId(), request.getAddresseeId());
+		return toResponse(request, profileDirectory.displayNames(ids), profileDirectory.avatarUrls(ids));
 	}
 
-	private FriendRequestResponse toResponse(FriendRequest request, Map<UUID, String> names) {
+	private FriendRequestResponse toResponse(FriendRequest request, Map<UUID, String> names,
+			Map<UUID, String> avatars) {
 		return new FriendRequestResponse(request.getId(), request.getRequesterId(), names.get(request.getRequesterId()),
-				request.getAddresseeId(), names.get(request.getAddresseeId()), request.getStatus(),
-				request.getCreatedAt());
+				avatars.get(request.getRequesterId()), request.getAddresseeId(), names.get(request.getAddresseeId()),
+				avatars.get(request.getAddresseeId()), request.getStatus(), request.getCreatedAt());
 	}
 }

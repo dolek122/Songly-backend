@@ -46,8 +46,9 @@ class ContentService {
 		Post post = new Post(UUID.randomUUID(), authorId, content, Instant.now());
 		postRepository.save(post);
 		String displayName = profileDirectory.displayNames(Set.of(authorId)).get(authorId);
-		return new PostResponse(post.getId(), authorId, displayName, post.getContent(), post.getCreatedAt(), 0, false,
-				0, 0, false);
+		String avatarUrl = profileDirectory.avatarUrls(Set.of(authorId)).get(authorId);
+		return new PostResponse(post.getId(), authorId, displayName, avatarUrl, post.getContent(), post.getCreatedAt(),
+				0, false, 0, 0, false);
 	}
 
 	@Transactional(readOnly = true)
@@ -131,7 +132,8 @@ class ContentService {
 		eventPublisher.publishEvent(
 				new PostCommentedEvent(postId, post.getAuthorId(), comment.getId(), authorId, comment.getCreatedAt()));
 		String displayName = profileDirectory.displayNames(Set.of(authorId)).get(authorId);
-		return new CommentResponse(comment.getId(), postId, authorId, displayName, comment.getContent(),
+		String avatarUrl = profileDirectory.avatarUrls(Set.of(authorId)).get(authorId);
+		return new CommentResponse(comment.getId(), postId, authorId, displayName, avatarUrl, comment.getContent(),
 				comment.getCreatedAt());
 	}
 
@@ -139,10 +141,12 @@ class ContentService {
 	Page<CommentResponse> listComments(UUID postId, Pageable pageable) {
 		requirePostExists(postId);
 		Page<Comment> page = commentRepository.findByPostIdOrderByCreatedAtAsc(postId, pageable);
-		Map<UUID, String> names = profileDirectory
-				.displayNames(page.getContent().stream().map(Comment::getAuthorId).collect(Collectors.toSet()));
+		Set<UUID> authorIds = page.getContent().stream().map(Comment::getAuthorId).collect(Collectors.toSet());
+		Map<UUID, String> names = profileDirectory.displayNames(authorIds);
+		Map<UUID, String> avatars = profileDirectory.avatarUrls(authorIds);
 		return page.map(comment -> new CommentResponse(comment.getId(), comment.getPostId(), comment.getAuthorId(),
-				names.get(comment.getAuthorId()), comment.getContent(), comment.getCreatedAt()));
+				names.get(comment.getAuthorId()), avatars.get(comment.getAuthorId()), comment.getContent(),
+				comment.getCreatedAt()));
 	}
 
 	@Transactional
@@ -190,13 +194,15 @@ class ContentService {
 				.map(Like::getPostId).collect(Collectors.toSet());
 		Set<UUID> sharedByViewer = shareRepository.findByPostIdInAndUserId(postIds, viewerId).stream()
 				.map(Share::getPostId).collect(Collectors.toSet());
-		Map<UUID, String> names = profileDirectory
-				.displayNames(posts.stream().map(Post::getAuthorId).collect(Collectors.toSet()));
+		Set<UUID> authorIds = posts.stream().map(Post::getAuthorId).collect(Collectors.toSet());
+		Map<UUID, String> names = profileDirectory.displayNames(authorIds);
+		Map<UUID, String> avatars = profileDirectory.avatarUrls(authorIds);
 		return posts.stream()
 				.map(post -> new PostResponse(post.getId(), post.getAuthorId(), names.get(post.getAuthorId()),
-						post.getContent(), post.getCreatedAt(), likeCounts.getOrDefault(post.getId(), 0L),
-						likedByViewer.contains(post.getId()), commentCounts.getOrDefault(post.getId(), 0L),
-						shareCounts.getOrDefault(post.getId(), 0L), sharedByViewer.contains(post.getId())))
+						avatars.get(post.getAuthorId()), post.getContent(), post.getCreatedAt(),
+						likeCounts.getOrDefault(post.getId(), 0L), likedByViewer.contains(post.getId()),
+						commentCounts.getOrDefault(post.getId(), 0L), shareCounts.getOrDefault(post.getId(), 0L),
+						sharedByViewer.contains(post.getId())))
 				.collect(Collectors.toList());
 	}
 }

@@ -4,6 +4,7 @@ import com.songly.notification.dto.NotificationResponse;
 import com.songly.profile.ProfileDirectory;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
@@ -41,11 +42,13 @@ class NotificationService {
 	@Transactional(readOnly = true)
 	Page<NotificationResponse> list(UUID userId, Pageable pageable) {
 		Page<Notification> page = notificationRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
-		Map<UUID, String> names = profileDirectory
-				.displayNames(page.getContent().stream().map(Notification::getActorId).collect(Collectors.toSet()));
+		Set<UUID> actorIds = page.getContent().stream().map(Notification::getActorId).collect(Collectors.toSet());
+		Map<UUID, String> names = profileDirectory.displayNames(actorIds);
+		Map<UUID, String> avatars = profileDirectory.avatarUrls(actorIds);
 		return page.map(notification -> new NotificationResponse(notification.getId(), notification.getType(),
-				notification.getActorId(), names.get(notification.getActorId()), notification.getResourceId(),
-				notification.getCreatedAt(), notification.getReadAt()));
+				notification.getActorId(), names.get(notification.getActorId()),
+				avatars.get(notification.getActorId()), notification.getResourceId(), notification.getCreatedAt(),
+				notification.getReadAt()));
 	}
 
 	@Transactional(readOnly = true)

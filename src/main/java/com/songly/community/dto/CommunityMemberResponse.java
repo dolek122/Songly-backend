@@ -4,5 +4,6 @@ import com.songly.community.CommunityRole;
 import java.time.Instant;
 import java.util.UUID;
 
-public record CommunityMemberResponse(UUID userId, String displayName, CommunityRole role, Instant joinedAt) {
+public record CommunityMemberResponse(UUID userId, String displayName, String avatarUrl, CommunityRole role,
+		Instant joinedAt) {
 }

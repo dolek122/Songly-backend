@@ -3,6 +3,6 @@ package com.songly.content.dto;
 import java.time.Instant;
 import java.util.UUID;
 
-public record CommentResponse(UUID id, UUID postId, UUID authorId, String authorDisplayName, String content,
-		Instant createdAt) {
+public record CommentResponse(UUID id, UUID postId, UUID authorId, String authorDisplayName, String authorAvatarUrl,
+		String content, Instant createdAt) {
 }

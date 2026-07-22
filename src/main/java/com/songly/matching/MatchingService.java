@@ -48,8 +48,9 @@ class MatchingService {
 		}
 		Map<UUID, Set<UUID>> genresByCandidate = profileDirectory.favoriteGenreIdsByUser(candidateIds);
 		Map<UUID, String> names = profileDirectory.displayNames(candidateIds);
+		Map<UUID, String> avatars = profileDirectory.avatarUrls(candidateIds);
 		List<MatchResponse> ranked = genresByCandidate.entrySet().stream()
-				.map(entry -> toMatch(entry.getKey(), entry.getValue(), myGenres, names))
+				.map(entry -> toMatch(entry.getKey(), entry.getValue(), myGenres, names, avatars))
 				.sorted(Comparator.comparingDouble(MatchResponse::score).reversed()
 						.thenComparing(match -> match.userId().toString()))
 				.toList();
@@ -63,13 +64,13 @@ class MatchingService {
 	}
 
 	private MatchResponse toMatch(UUID candidateId, Set<UUID> candidateGenres, Set<UUID> myGenres,
-			Map<UUID, String> names) {
+			Map<UUID, String> names, Map<UUID, String> avatars) {
 		Set<UUID> shared = new HashSet<>(candidateGenres);
 		shared.retainAll(myGenres);
 		Set<UUID> union = new HashSet<>(candidateGenres);
 		union.addAll(myGenres);
 		double score = (double) shared.size() / union.size();
-		return new MatchResponse(candidateId, names.get(candidateId), score,
+		return new MatchResponse(candidateId, names.get(candidateId), avatars.get(candidateId), score,
 				shared.stream().sorted(Comparator.comparing(UUID::toString)).toList());
 	}
 }

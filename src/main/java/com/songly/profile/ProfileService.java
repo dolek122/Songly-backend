@@ -108,6 +108,15 @@ class ProfileService implements ProfileDirectory {
 
 	@Override
 	@Transactional(readOnly = true)
+	public Map<UUID, String> avatarUrls(Collection<UUID> userIds) {
+		// Filtrujemy null-e: Collectors.toMap nie przyjmuje null wartości, a i tak
+		// „brak avatara" reprezentujemy nieobecnością klucza (konsument dostaje null).
+		return profileRepository.findByUserIdIn(userIds).stream().filter(profile -> profile.getAvatarUrl() != null)
+				.collect(Collectors.toMap(Profile::getUserId, Profile::getAvatarUrl));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
 	public Set<UUID> userIdsWithAnyGenre(Collection<UUID> genreIds) {
 		if (genreIds.isEmpty()) {
 			return Set.of();
