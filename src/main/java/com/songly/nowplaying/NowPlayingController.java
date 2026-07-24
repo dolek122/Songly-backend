@@ -1,10 +1,12 @@
 package com.songly.nowplaying;
 
 import com.songly.nowplaying.dto.ConnectResponse;
+import com.songly.nowplaying.dto.FriendNowPlayingResponse;
 import com.songly.nowplaying.dto.ManualNowPlayingRequest;
 import com.songly.nowplaying.dto.NowPlayingStatusResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -55,6 +57,17 @@ class NowPlayingController {
 	ResponseEntity<NowPlayingStatusResponse> myStatus(Authentication authentication) {
 		return nowPlayingService.getStatus(currentUserId(authentication)).map(ResponseEntity::ok)
 				.orElseGet(() -> ResponseEntity.noContent().build());
+	}
+
+	/**
+	 * "Co słuchają znajomi teraz" (ADR 0007, Etap 0) — statusy znajomych z cache'a,
+	 * bez odpytywania providera per znajomy. Zwraca tylko tych, którzy mają
+	 * aktualny status; pusta lista, gdy nikt nie gra albo brak znajomych.
+	 */
+	@GetMapping("/friends")
+	@SecurityRequirement(name = "bearerAuth")
+	List<FriendNowPlayingResponse> friendsNowPlaying(Authentication authentication) {
+		return nowPlayingService.friendsNowPlaying(currentUserId(authentication));
 	}
 
 	/**

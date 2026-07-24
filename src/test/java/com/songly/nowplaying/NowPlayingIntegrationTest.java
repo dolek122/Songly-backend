@@ -34,6 +34,35 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 		return objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
 	}
 
+	private record TestUser(String accessToken, String userId) {
+	}
+
+	private TestUser registerUser(String email) throws Exception {
+		String accessToken = registerAndGetAccessToken(email);
+		MvcResult profile = mockMvc.perform(get("/api/v1/profiles/me").header("Authorization", "Bearer " + accessToken))
+				.andExpect(status().isOk()).andReturn();
+		String userId = objectMapper.readTree(profile.getResponse().getContentAsString()).get("userId").asText();
+		return new TestUser(accessToken, userId);
+	}
+
+	private void befriend(TestUser a, TestUser b) throws Exception {
+		MvcResult request = mockMvc
+				.perform(post("/api/v1/friends/requests").header("Authorization", "Bearer " + a.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"addresseeId":"%s"}""".formatted(b.userId())))
+				.andExpect(status().isCreated()).andReturn();
+		String requestId = objectMapper.readTree(request.getResponse().getContentAsString()).get("id").asText();
+		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId)).header("Authorization",
+				"Bearer " + b.accessToken())).andExpect(status().isOk());
+	}
+
+	private void setManualStatus(TestUser user, String title, String artist, String source) throws Exception {
+		mockMvc.perform(put("/api/v1/now-playing/manual").header("Authorization", "Bearer " + user.accessToken())
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"title":"%s","artist":"%s","source":"%s"}""".formatted(title, artist, source)))
+				.andExpect(status().isNoContent());
+	}
+
 	@Test
 	void connect_returnsSpotifyAuthorizeUrlWithState() throws Exception {
 		String accessToken = registerAndGetAccessToken("spotify-connect@songly.io");
@@ -115,9 +144,44 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	@Test
+	void friends_returnsOnlyFriendsWithCachedStatus_withProfileData() throws Exception {
+		TestUser viewer = registerUser("np-friends-viewer@songly.io");
+		TestUser playing = registerUser("np-friends-playing@songly.io");
+		TestUser silent = registerUser("np-friends-silent@songly.io");
+		TestUser stranger = registerUser("np-friends-stranger@songly.io");
+
+		setManualStatus(playing, "Bohemian Rhapsody", "Queen", "Tidal");
+		setManualStatus(stranger, "Come As You Are", "Nirvana", "Tidal");
+
+		befriend(viewer, playing);
+		befriend(viewer, silent); // znajomy bez statusu — pomijany
+		// stranger celowo nie jest znajomym — nie powinien się pojawić
+
+		mockMvc.perform(get("/api/v1/now-playing/friends").header("Authorization", "Bearer " + viewer.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
+				.andExpect(jsonPath("$[0].userId").value(playing.userId()))
+				.andExpect(jsonPath("$[0].displayName").value("np-friends-playing"))
+				.andExpect(jsonPath("$[0].status.provider").value("Tidal"))
+				.andExpect(jsonPath("$[0].status.title").value("Bohemian Rhapsody"))
+				.andExpect(jsonPath("$[0].status.artist").value("Queen"))
+				.andExpect(jsonPath("$[0].status.playing").value(true));
+	}
+
+	@Test
+	void friends_returnsEmpty_whenNoFriendHasStatus() throws Exception {
+		TestUser viewer = registerUser("np-friends-empty-viewer@songly.io");
+		TestUser friend = registerUser("np-friends-empty-friend@songly.io");
+		befriend(viewer, friend);
+
+		mockMvc.perform(get("/api/v1/now-playing/friends").header("Authorization", "Bearer " + viewer.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+	}
+
+	@Test
 	void nowPlayingEndpoints_requireAuthentication() throws Exception {
 		mockMvc.perform(post("/api/v1/now-playing/spotify/connect")).andExpect(status().isUnauthorized());
 		mockMvc.perform(get("/api/v1/now-playing/me")).andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/api/v1/now-playing/friends")).andExpect(status().isUnauthorized());
 		mockMvc.perform(put("/api/v1/now-playing/manual")).andExpect(status().isUnauthorized());
 		mockMvc.perform(delete("/api/v1/now-playing/manual")).andExpect(status().isUnauthorized());
 	}
