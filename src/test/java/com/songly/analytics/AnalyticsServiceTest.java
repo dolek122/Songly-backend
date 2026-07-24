@@ -6,6 +6,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.songly.analytics.dto.AnalyticsSummaryResponse;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,11 +22,14 @@ class AnalyticsServiceTest {
 	@Mock
 	private AnalyticsEventRepository repository;
 
+	private MeterRegistry meterRegistry;
+
 	private AnalyticsService analyticsService;
 
 	@BeforeEach
 	void setUp() {
-		analyticsService = new AnalyticsService(repository);
+		meterRegistry = new SimpleMeterRegistry();
+		analyticsService = new AnalyticsService(repository, meterRegistry);
 	}
 
 	@Test
@@ -32,6 +37,16 @@ class AnalyticsServiceTest {
 		analyticsService.record(AnalyticsEventType.POST_LIKED, Instant.now());
 
 		verify(repository).save(any(AnalyticsEvent.class));
+	}
+
+	@Test
+	void record_incrementsDomainEventCounterTaggedByType() {
+		analyticsService.record(AnalyticsEventType.POST_LIKED, Instant.now());
+		analyticsService.record(AnalyticsEventType.POST_LIKED, Instant.now());
+		analyticsService.record(AnalyticsEventType.FRIEND_REQUEST_SENT, Instant.now());
+
+		assertThat(meterRegistry.counter("songly.domain.events", "type", "POST_LIKED").count()).isEqualTo(2.0);
+		assertThat(meterRegistry.counter("songly.domain.events", "type", "FRIEND_REQUEST_SENT").count()).isEqualTo(1.0);
 	}
 
 	@Test
