@@ -1025,6 +1025,30 @@
         },
         "type" : "object"
       },
+      "PublicProfileResponse" : {
+        "properties" : {
+          "avatarUrl" : {
+            "type" : "string"
+          },
+          "bio" : {
+            "type" : "string"
+          },
+          "displayName" : {
+            "type" : "string"
+          },
+          "favoriteGenres" : {
+            "items" : {
+              "$ref" : "#/components/schemas/GenreResponse"
+            },
+            "type" : "array"
+          },
+          "userId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "RefreshRequest" : {
         "properties" : {
           "refreshToken" : {
@@ -2582,6 +2606,36 @@
               "*/*" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/PageUserSearchResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "profile-search-controller" ]
+      }
+    },
+    "/api/v1/profiles/{userId}" : {
+      "get" : {
+        "operationId" : "getPublicProfile",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PublicProfileResponse"
                 }
               }
             },
