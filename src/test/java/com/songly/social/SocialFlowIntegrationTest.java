@@ -155,6 +155,52 @@ class SocialFlowIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	@Test
+	void friendRequest_canBeCancelledByRequester_notByAddressee() throws Exception {
+		TestUser ada = registerUser("social-cancel-ada@songly.io");
+		TestUser bono = registerUser("social-cancel-bono@songly.io");
+
+		String requestId = sendRequest(ada, bono);
+
+		// Adresat nie może anulować cudzego zaproszenia — tylko nadawca; dla adresata
+		// zaproszenie jest "niewidoczne" (404), żeby nie ujawniać relacji.
+		mockMvc.perform(
+				delete("/api/v1/friends/requests/" + requestId).header("Authorization", "Bearer " + bono.accessToken()))
+				.andExpect(status().isNotFound());
+
+		mockMvc.perform(
+				delete("/api/v1/friends/requests/" + requestId).header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isNoContent());
+
+		// Po anulowaniu znika z listy wychodzących nadawcy i przychodzących adresata.
+		mockMvc.perform(get("/api/v1/friends/requests?direction=OUTGOING").header("Authorization",
+				"Bearer " + ada.accessToken())).andExpect(status().isOk())
+				.andExpect(jsonPath("$.content.length()").value(0));
+		mockMvc.perform(get("/api/v1/friends/requests?direction=INCOMING").header("Authorization",
+				"Bearer " + bono.accessToken())).andExpect(status().isOk())
+				.andExpect(jsonPath("$.content.length()").value(0));
+
+		// Naprawdę usunięte, nie tylko ukryte — to samo zaproszenie można wysłać od nowa.
+		mockMvc.perform(post("/api/v1/friends/requests").header("Authorization", "Bearer " + ada.accessToken())
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"addresseeId":"%s"}""".formatted(bono.userId()))).andExpect(status().isCreated());
+	}
+
+	@Test
+	void cancelRequest_returnsConflict_whenAlreadyAccepted() throws Exception {
+		TestUser ada = registerUser("social-cancel-accepted-ada@songly.io");
+		TestUser bono = registerUser("social-cancel-accepted-bono@songly.io");
+
+		String requestId = sendRequest(ada, bono);
+		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId)).header("Authorization",
+				"Bearer " + bono.accessToken())).andExpect(status().isOk());
+
+		mockMvc.perform(
+				delete("/api/v1/friends/requests/" + requestId).header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("FRIEND_REQUEST_ALREADY_HANDLED"));
+	}
+
+	@Test
 	void friendEndpoints_requireAuthentication() throws Exception {
 		mockMvc.perform(get("/api/v1/friends")).andExpect(status().isUnauthorized());
 	}
