@@ -230,6 +230,24 @@
         "required" : [ "password" ],
         "type" : "object"
       },
+      "FriendNowPlayingResponse" : {
+        "properties" : {
+          "avatarUrl" : {
+            "type" : "string"
+          },
+          "displayName" : {
+            "type" : "string"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/NowPlayingStatusResponse"
+          },
+          "userId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "FriendRequestResponse" : {
         "properties" : {
           "addresseeAvatarUrl" : {
@@ -1701,6 +1719,30 @@
           "bearerAuth" : [ ]
         } ],
         "tags" : [ "notification-controller" ]
+      }
+    },
+    "/api/v1/now-playing/friends" : {
+      "get" : {
+        "operationId" : "friendsNowPlaying",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/FriendNowPlayingResponse"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "now-playing-controller" ]
       }
     },
     "/api/v1/now-playing/manual" : {
