@@ -2,6 +2,7 @@ package com.songly.profile;
 
 import com.songly.profile.dto.GenreResponse;
 import com.songly.profile.dto.ProfileResponse;
+import com.songly.profile.dto.PublicProfileResponse;
 import com.songly.profile.dto.UpdateProfileRequest;
 import com.songly.profile.dto.UserSearchResponse;
 import java.time.Instant;
@@ -49,6 +50,18 @@ class ProfileService implements ProfileDirectory {
 	@Transactional(readOnly = true)
 	ProfileResponse getProfile(UUID userId) {
 		return toResponse(profileRepository.findByUserId(userId).orElseThrow(ProfileNotFoundException::new));
+	}
+
+	/**
+	 * Publiczny profil dowolnego użytkownika (do oglądania cudzych profili). Rzuca
+	 * {@link ProfileNotFoundException} (→ 404) gdy profilu nie ma. Ulubione gatunki
+	 * dokładamy tą samą ścieżką co dla własnego profilu — to dane publiczne.
+	 */
+	@Transactional(readOnly = true)
+	PublicProfileResponse getPublicProfile(UUID userId) {
+		Profile profile = profileRepository.findByUserId(userId).orElseThrow(ProfileNotFoundException::new);
+		return new PublicProfileResponse(profile.getUserId(), profile.getDisplayName(), profile.getBio(),
+				profile.getAvatarUrl(), getFavoriteGenres(userId));
 	}
 
 	/**
