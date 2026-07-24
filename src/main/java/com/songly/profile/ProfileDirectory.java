@@ -15,8 +15,8 @@ public interface ProfileDirectory {
 	Map<UUID, String> displayNames(Collection<UUID> userIds);
 
 	/**
-	 * URL-e avatarów. userId bez ustawionego avatara (null) nie występują w wyniku —
-	 * konsument dostaje wtedy {@code null} z {@code get(userId)}.
+	 * URL-e avatarów. userId bez ustawionego avatara (null) nie występują w wyniku
+	 * — konsument dostaje wtedy {@code null} z {@code get(userId)}.
 	 */
 	Map<UUID, String> avatarUrls(Collection<UUID> userIds);
 

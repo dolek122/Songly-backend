@@ -2,7 +2,6 @@ package com.songly.profile;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -20,8 +19,9 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Publiczny profil innego użytkownika (GET /api/v1/profiles/{userId}) — do
- * oglądania cudzego profilu z aplikacji. Zwraca dane profilowe wraz z ulubionymi
- * gatunkami; świadomie nie niesie danych o zachowaniu (Claude.md §9).
+ * oglądania cudzego profilu z aplikacji. Zwraca dane profilowe wraz z
+ * ulubionymi gatunkami; świadomie nie niesie danych o zachowaniu (Claude.md
+ * §9).
  */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class PublicProfileIntegrationTest extends AbstractIntegrationTest {
@@ -40,7 +40,10 @@ class PublicProfileIntegrationTest extends AbstractIntegrationTest {
 		return objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
 	}
 
-	/** userId = podmiot (sub) tokena JWT; to nim posługuje się backend jako principalem. */
+	/**
+	 * userId = podmiot (sub) tokena JWT; to nim posługuje się backend jako
+	 * principalem.
+	 */
 	private String userIdFromToken(String accessToken) {
 		String payload = accessToken.split("\\.")[1];
 		String json = new String(Base64.getUrlDecoder().decode(payload), StandardCharsets.UTF_8);
@@ -63,9 +66,9 @@ class PublicProfileIntegrationTest extends AbstractIntegrationTest {
 	void publicProfile_unknownUser_returnsNotFound() throws Exception {
 		String viewerToken = registerAndGetAccessToken("public-notfound@songly.io");
 
-		mockMvc.perform(get("/api/v1/profiles/{userId}", UUID.randomUUID())
-				.header("Authorization", "Bearer " + viewerToken)).andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.code").value("PROFILE_NOT_FOUND"));
+		mockMvc.perform(
+				get("/api/v1/profiles/{userId}", UUID.randomUUID()).header("Authorization", "Bearer " + viewerToken))
+				.andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PROFILE_NOT_FOUND"));
 	}
 
 	@Test

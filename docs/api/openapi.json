@@ -410,507 +410,22 @@
         },
         "type" : "object"
       },
-      "PageBlockedUserResponse" : {
+      "PageMetadata" : {
         "properties" : {
-          "content" : {
-            "items" : {
-              "$ref" : "#/components/schemas/BlockedUserResponse"
-            },
-            "type" : "array"
-          },
-          "empty" : {
-            "type" : "boolean"
-          },
-          "first" : {
-            "type" : "boolean"
-          },
-          "last" : {
-            "type" : "boolean"
-          },
           "number" : {
-            "format" : "int32",
+            "format" : "int64",
             "type" : "integer"
-          },
-          "numberOfElements" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "pageable" : {
-            "$ref" : "#/components/schemas/PageableObject"
           },
           "size" : {
-            "format" : "int32",
+            "format" : "int64",
             "type" : "integer"
-          },
-          "sort" : {
-            "$ref" : "#/components/schemas/SortObject"
           },
           "totalElements" : {
             "format" : "int64",
             "type" : "integer"
           },
           "totalPages" : {
-            "format" : "int32",
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
-      "PageCommentResponse" : {
-        "properties" : {
-          "content" : {
-            "items" : {
-              "$ref" : "#/components/schemas/CommentResponse"
-            },
-            "type" : "array"
-          },
-          "empty" : {
-            "type" : "boolean"
-          },
-          "first" : {
-            "type" : "boolean"
-          },
-          "last" : {
-            "type" : "boolean"
-          },
-          "number" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "numberOfElements" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "pageable" : {
-            "$ref" : "#/components/schemas/PageableObject"
-          },
-          "size" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "sort" : {
-            "$ref" : "#/components/schemas/SortObject"
-          },
-          "totalElements" : {
             "format" : "int64",
-            "type" : "integer"
-          },
-          "totalPages" : {
-            "format" : "int32",
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
-      "PageCommunityMemberResponse" : {
-        "properties" : {
-          "content" : {
-            "items" : {
-              "$ref" : "#/components/schemas/CommunityMemberResponse"
-            },
-            "type" : "array"
-          },
-          "empty" : {
-            "type" : "boolean"
-          },
-          "first" : {
-            "type" : "boolean"
-          },
-          "last" : {
-            "type" : "boolean"
-          },
-          "number" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "numberOfElements" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "pageable" : {
-            "$ref" : "#/components/schemas/PageableObject"
-          },
-          "size" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "sort" : {
-            "$ref" : "#/components/schemas/SortObject"
-          },
-          "totalElements" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "totalPages" : {
-            "format" : "int32",
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
-      "PageCommunityResponse" : {
-        "properties" : {
-          "content" : {
-            "items" : {
-              "$ref" : "#/components/schemas/CommunityResponse"
-            },
-            "type" : "array"
-          },
-          "empty" : {
-            "type" : "boolean"
-          },
-          "first" : {
-            "type" : "boolean"
-          },
-          "last" : {
-            "type" : "boolean"
-          },
-          "number" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "numberOfElements" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "pageable" : {
-            "$ref" : "#/components/schemas/PageableObject"
-          },
-          "size" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "sort" : {
-            "$ref" : "#/components/schemas/SortObject"
-          },
-          "totalElements" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "totalPages" : {
-            "format" : "int32",
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
-      "PageFriendRequestResponse" : {
-        "properties" : {
-          "content" : {
-            "items" : {
-              "$ref" : "#/components/schemas/FriendRequestResponse"
-            },
-            "type" : "array"
-          },
-          "empty" : {
-            "type" : "boolean"
-          },
-          "first" : {
-            "type" : "boolean"
-          },
-          "last" : {
-            "type" : "boolean"
-          },
-          "number" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "numberOfElements" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "pageable" : {
-            "$ref" : "#/components/schemas/PageableObject"
-          },
-          "size" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "sort" : {
-            "$ref" : "#/components/schemas/SortObject"
-          },
-          "totalElements" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "totalPages" : {
-            "format" : "int32",
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
-      "PageFriendResponse" : {
-        "properties" : {
-          "content" : {
-            "items" : {
-              "$ref" : "#/components/schemas/FriendResponse"
-            },
-            "type" : "array"
-          },
-          "empty" : {
-            "type" : "boolean"
-          },
-          "first" : {
-            "type" : "boolean"
-          },
-          "last" : {
-            "type" : "boolean"
-          },
-          "number" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "numberOfElements" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "pageable" : {
-            "$ref" : "#/components/schemas/PageableObject"
-          },
-          "size" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "sort" : {
-            "$ref" : "#/components/schemas/SortObject"
-          },
-          "totalElements" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "totalPages" : {
-            "format" : "int32",
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
-      "PageGenreResponse" : {
-        "properties" : {
-          "content" : {
-            "items" : {
-              "$ref" : "#/components/schemas/GenreResponse"
-            },
-            "type" : "array"
-          },
-          "empty" : {
-            "type" : "boolean"
-          },
-          "first" : {
-            "type" : "boolean"
-          },
-          "last" : {
-            "type" : "boolean"
-          },
-          "number" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "numberOfElements" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "pageable" : {
-            "$ref" : "#/components/schemas/PageableObject"
-          },
-          "size" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "sort" : {
-            "$ref" : "#/components/schemas/SortObject"
-          },
-          "totalElements" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "totalPages" : {
-            "format" : "int32",
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
-      "PageMatchResponse" : {
-        "properties" : {
-          "content" : {
-            "items" : {
-              "$ref" : "#/components/schemas/MatchResponse"
-            },
-            "type" : "array"
-          },
-          "empty" : {
-            "type" : "boolean"
-          },
-          "first" : {
-            "type" : "boolean"
-          },
-          "last" : {
-            "type" : "boolean"
-          },
-          "number" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "numberOfElements" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "pageable" : {
-            "$ref" : "#/components/schemas/PageableObject"
-          },
-          "size" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "sort" : {
-            "$ref" : "#/components/schemas/SortObject"
-          },
-          "totalElements" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "totalPages" : {
-            "format" : "int32",
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
-      "PageNotificationResponse" : {
-        "properties" : {
-          "content" : {
-            "items" : {
-              "$ref" : "#/components/schemas/NotificationResponse"
-            },
-            "type" : "array"
-          },
-          "empty" : {
-            "type" : "boolean"
-          },
-          "first" : {
-            "type" : "boolean"
-          },
-          "last" : {
-            "type" : "boolean"
-          },
-          "number" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "numberOfElements" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "pageable" : {
-            "$ref" : "#/components/schemas/PageableObject"
-          },
-          "size" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "sort" : {
-            "$ref" : "#/components/schemas/SortObject"
-          },
-          "totalElements" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "totalPages" : {
-            "format" : "int32",
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
-      "PagePostResponse" : {
-        "properties" : {
-          "content" : {
-            "items" : {
-              "$ref" : "#/components/schemas/PostResponse"
-            },
-            "type" : "array"
-          },
-          "empty" : {
-            "type" : "boolean"
-          },
-          "first" : {
-            "type" : "boolean"
-          },
-          "last" : {
-            "type" : "boolean"
-          },
-          "number" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "numberOfElements" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "pageable" : {
-            "$ref" : "#/components/schemas/PageableObject"
-          },
-          "size" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "sort" : {
-            "$ref" : "#/components/schemas/SortObject"
-          },
-          "totalElements" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "totalPages" : {
-            "format" : "int32",
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
-      "PageUserSearchResponse" : {
-        "properties" : {
-          "content" : {
-            "items" : {
-              "$ref" : "#/components/schemas/UserSearchResponse"
-            },
-            "type" : "array"
-          },
-          "empty" : {
-            "type" : "boolean"
-          },
-          "first" : {
-            "type" : "boolean"
-          },
-          "last" : {
-            "type" : "boolean"
-          },
-          "number" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "numberOfElements" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "pageable" : {
-            "$ref" : "#/components/schemas/PageableObject"
-          },
-          "size" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "sort" : {
-            "$ref" : "#/components/schemas/SortObject"
-          },
-          "totalElements" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "totalPages" : {
-            "format" : "int32",
             "type" : "integer"
           }
         },
@@ -937,28 +452,156 @@
         },
         "type" : "object"
       },
-      "PageableObject" : {
+      "PagedModelBlockedUserResponse" : {
         "properties" : {
-          "offset" : {
-            "format" : "int64",
-            "type" : "integer"
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/BlockedUserResponse"
+            },
+            "type" : "array"
           },
-          "pageNumber" : {
-            "format" : "int32",
-            "type" : "integer"
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "type" : "object"
+      },
+      "PagedModelCommentResponse" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/CommentResponse"
+            },
+            "type" : "array"
           },
-          "pageSize" : {
-            "format" : "int32",
-            "type" : "integer"
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "type" : "object"
+      },
+      "PagedModelCommunityMemberResponse" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/CommunityMemberResponse"
+            },
+            "type" : "array"
           },
-          "paged" : {
-            "type" : "boolean"
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "type" : "object"
+      },
+      "PagedModelCommunityResponse" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/CommunityResponse"
+            },
+            "type" : "array"
           },
-          "sort" : {
-            "$ref" : "#/components/schemas/SortObject"
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "type" : "object"
+      },
+      "PagedModelFriendRequestResponse" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/FriendRequestResponse"
+            },
+            "type" : "array"
           },
-          "unpaged" : {
-            "type" : "boolean"
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "type" : "object"
+      },
+      "PagedModelFriendResponse" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/FriendResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "type" : "object"
+      },
+      "PagedModelGenreResponse" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/GenreResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "type" : "object"
+      },
+      "PagedModelMatchResponse" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/MatchResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "type" : "object"
+      },
+      "PagedModelNotificationResponse" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/NotificationResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "type" : "object"
+      },
+      "PagedModelPostResponse" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PostResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "type" : "object"
+      },
+      "PagedModelUserSearchResponse" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/UserSearchResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
           }
         },
         "type" : "object"
@@ -1098,20 +741,6 @@
           }
         },
         "required" : [ "genreIds" ],
-        "type" : "object"
-      },
-      "SortObject" : {
-        "properties" : {
-          "empty" : {
-            "type" : "boolean"
-          },
-          "sorted" : {
-            "type" : "boolean"
-          },
-          "unsorted" : {
-            "type" : "boolean"
-          }
-        },
         "type" : "object"
       },
       "UnreadCountResponse" : {
@@ -1367,7 +996,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/PageBlockedUserResponse"
+                  "$ref" : "#/components/schemas/PagedModelBlockedUserResponse"
                 }
               }
             },
@@ -1440,7 +1069,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/PageCommunityResponse"
+                  "$ref" : "#/components/schemas/PagedModelCommunityResponse"
                 }
               }
             },
@@ -1498,7 +1127,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/PageCommunityResponse"
+                  "$ref" : "#/components/schemas/PagedModelCommunityResponse"
                 }
               }
             },
@@ -1624,7 +1253,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/PageCommunityMemberResponse"
+                  "$ref" : "#/components/schemas/PagedModelCommunityMemberResponse"
                 }
               }
             },
@@ -1697,7 +1326,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/PagePostResponse"
+                  "$ref" : "#/components/schemas/PagedModelPostResponse"
                 }
               }
             },
@@ -1726,7 +1355,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/PageFriendResponse"
+                  "$ref" : "#/components/schemas/PagedModelFriendResponse"
                 }
               }
             },
@@ -1764,7 +1393,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/PageFriendRequestResponse"
+                  "$ref" : "#/components/schemas/PagedModelFriendRequestResponse"
                 }
               }
             },
@@ -1928,7 +1557,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/PageGenreResponse"
+                  "$ref" : "#/components/schemas/PagedModelGenreResponse"
                 }
               }
             },
@@ -1957,7 +1586,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/PageMatchResponse"
+                  "$ref" : "#/components/schemas/PagedModelMatchResponse"
                 }
               }
             },
@@ -1986,7 +1615,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/PageNotificationResponse"
+                  "$ref" : "#/components/schemas/PagedModelNotificationResponse"
                 }
               }
             },
@@ -2199,7 +1828,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/PagePostResponse"
+                  "$ref" : "#/components/schemas/PagedModelPostResponse"
                 }
               }
             },
@@ -2316,7 +1945,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/PageCommentResponse"
+                  "$ref" : "#/components/schemas/PagedModelCommentResponse"
                 }
               }
             },
@@ -2605,7 +2234,7 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/PageUserSearchResponse"
+                  "$ref" : "#/components/schemas/PagedModelUserSearchResponse"
                 }
               }
             },
