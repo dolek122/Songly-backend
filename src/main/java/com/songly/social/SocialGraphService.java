@@ -122,9 +122,9 @@ class SocialGraphService implements SocialGraph {
 				.collect(Collectors.toSet());
 		Map<UUID, String> names = profileDirectory.displayNames(friendIds);
 		Map<UUID, String> avatars = profileDirectory.avatarUrls(friendIds);
-		return page.map(friendship -> new FriendResponse(friendship.otherThan(userId),
-				names.get(friendship.otherThan(userId)), avatars.get(friendship.otherThan(userId)),
-				friendship.getCreatedAt()));
+		return page.map(
+				friendship -> new FriendResponse(friendship.otherThan(userId), names.get(friendship.otherThan(userId)),
+						avatars.get(friendship.otherThan(userId)), friendship.getCreatedAt()));
 	}
 
 	@Transactional

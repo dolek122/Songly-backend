@@ -177,7 +177,10 @@ class CommunityService {
 		}
 	}
 
-	/** Pojedyncza społeczność — dane założyciela dobieramy jednym zapytaniem po jego id. */
+	/**
+	 * Pojedyncza społeczność — dane założyciela dobieramy jednym zapytaniem po jego
+	 * id.
+	 */
 	private CommunityResponse toResponse(Community community, long memberCount, CommunityRole myRole) {
 		Set<UUID> ownerId = Set.of(community.getOwnerId());
 		return toResponse(community, memberCount, myRole, profileDirectory.displayNames(ownerId),
@@ -185,8 +188,8 @@ class CommunityService {
 	}
 
 	/**
-	 * Wariant wsadowy: nazwy/avatary założycieli podane z zewnątrz (jedno zapytanie na
-	 * całą stronę), żeby listy nie robiły N+1 do modułu profile.
+	 * Wariant wsadowy: nazwy/avatary założycieli podane z zewnątrz (jedno zapytanie
+	 * na całą stronę), żeby listy nie robiły N+1 do modułu profile.
 	 */
 	private CommunityResponse toResponse(Community community, long memberCount, CommunityRole myRole,
 			Map<UUID, String> ownerNames, Map<UUID, String> ownerAvatars) {

@@ -179,7 +179,8 @@ class SocialFlowIntegrationTest extends AbstractIntegrationTest {
 				"Bearer " + bono.accessToken())).andExpect(status().isOk())
 				.andExpect(jsonPath("$.content.length()").value(0));
 
-		// Naprawdę usunięte, nie tylko ukryte — to samo zaproszenie można wysłać od nowa.
+		// Naprawdę usunięte, nie tylko ukryte — to samo zaproszenie można wysłać od
+		// nowa.
 		mockMvc.perform(post("/api/v1/friends/requests").header("Authorization", "Bearer " + ada.accessToken())
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"addresseeId":"%s"}""".formatted(bono.userId()))).andExpect(status().isCreated());
@@ -196,8 +197,7 @@ class SocialFlowIntegrationTest extends AbstractIntegrationTest {
 
 		mockMvc.perform(
 				delete("/api/v1/friends/requests/" + requestId).header("Authorization", "Bearer " + ada.accessToken()))
-				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.code").value("FRIEND_REQUEST_ALREADY_HANDLED"));
+				.andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("FRIEND_REQUEST_ALREADY_HANDLED"));
 	}
 
 	@Test

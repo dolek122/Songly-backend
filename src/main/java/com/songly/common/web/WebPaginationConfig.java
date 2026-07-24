@@ -5,10 +5,11 @@ import org.springframework.data.web.config.EnableSpringDataWebSupport;
 import org.springframework.data.web.config.EnableSpringDataWebSupport.PageSerializationMode;
 
 /**
- * Serializuje strony Spring Data przez stabilne DTO ({@code PagedModel}) zamiast
- * surowego {@code PageImpl}. Bez tego Spring ostrzega, że kształt JSON-a dla
- * {@code Page<T>} nie jest gwarantowany i może się zmienić między wersjami — a to
- * kontrakt, z którego korzysta klient mobilny (KMP), więc musi być stabilny.
+ * Serializuje strony Spring Data przez stabilne DTO ({@code PagedModel})
+ * zamiast surowego {@code PageImpl}. Bez tego Spring ostrzega, że kształt
+ * JSON-a dla {@code Page<T>} nie jest gwarantowany i może się zmienić między
+ * wersjami — a to kontrakt, z którego korzysta klient mobilny (KMP), więc musi
+ * być stabilny.
  *
  * <p>
  * Efekt w JSON: metadane paginacji przenoszą się z pól najwyższego poziomu do

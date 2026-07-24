@@ -46,9 +46,8 @@ class NotificationService {
 		Map<UUID, String> names = profileDirectory.displayNames(actorIds);
 		Map<UUID, String> avatars = profileDirectory.avatarUrls(actorIds);
 		return page.map(notification -> new NotificationResponse(notification.getId(), notification.getType(),
-				notification.getActorId(), names.get(notification.getActorId()),
-				avatars.get(notification.getActorId()), notification.getResourceId(), notification.getCreatedAt(),
-				notification.getReadAt()));
+				notification.getActorId(), names.get(notification.getActorId()), avatars.get(notification.getActorId()),
+				notification.getResourceId(), notification.getCreatedAt(), notification.getReadAt()));
 	}
 
 	@Transactional(readOnly = true)
