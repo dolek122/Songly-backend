@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,11 +45,12 @@ class NowPlayingService {
 	private final NowPlayingProperties properties;
 	private final SocialGraph socialGraph;
 	private final ProfileDirectory profileDirectory;
+	private final ApplicationEventPublisher eventPublisher;
 	private final SecureRandom secureRandom = new SecureRandom();
 
 	NowPlayingService(MusicProvider musicProvider, MusicProviderLinkRepository linkRepository,
 			StringRedisTemplate redisTemplate, ObjectMapper objectMapper, NowPlayingProperties properties,
-			SocialGraph socialGraph, ProfileDirectory profileDirectory) {
+			SocialGraph socialGraph, ProfileDirectory profileDirectory, ApplicationEventPublisher eventPublisher) {
 		this.musicProvider = musicProvider;
 		this.linkRepository = linkRepository;
 		this.redisTemplate = redisTemplate;
@@ -56,6 +58,7 @@ class NowPlayingService {
 		this.properties = properties;
 		this.socialGraph = socialGraph;
 		this.profileDirectory = profileDirectory;
+		this.eventPublisher = eventPublisher;
 	}
 
 	String beginConnect(UUID userId) {
@@ -96,6 +99,7 @@ class NowPlayingService {
 				request.album(), null, true, Instant.now());
 		redisTemplate.opsForValue().set(MANUAL_KEY_PREFIX + userId, objectMapper.writeValueAsString(response),
 				properties.getManualStatusTtl());
+		eventPublisher.publishEvent(new NowPlayingStatusChangedEvent(userId, response));
 	}
 
 	void clearManualStatus(UUID userId) {
