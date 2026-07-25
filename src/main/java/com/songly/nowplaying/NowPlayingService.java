@@ -11,6 +11,7 @@ import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -110,10 +111,11 @@ class NowPlayingService {
 	 * Statusy "co teraz gra" znajomych — wyłącznie z cache'a (manual > provider),
 	 * bez odpytywania Spotify per znajomy: jeden request nie może wywołać N zapytań
 	 * do providera i pobić rate limitów (Claude.md §7). Cache zapełnia się, gdy
-	 * znajomi odczytują własny status; docelowo dołączy serwerowy poll (ADR 0007,
-	 * Etap 1). Pomija znajomych bez aktualnego statusu. Granice modułów przez
-	 * publiczne interfejsy {@link SocialGraph} i {@link ProfileDirectory} — bez
-	 * dostępu do encji innych modułów (Claude.md §2).
+	 * znajomi odczytują własny status, oraz z serwerowego polla obserwowanych
+	 * użytkowników ({@link NowPlayingPoller}). Pomija znajomych bez aktualnego
+	 * statusu. Granice modułów przez publiczne interfejsy {@link SocialGraph} i
+	 * {@link ProfileDirectory} — bez dostępu do encji innych modułów (Claude.md
+	 * §2).
 	 */
 	@Transactional(readOnly = true)
 	List<FriendNowPlayingResponse> friendsNowPlaying(UUID userId) {
@@ -150,13 +152,51 @@ class NowPlayingService {
 		if (manual != null) {
 			return Optional.of(objectMapper.readValue(manual, NowPlayingStatusResponse.class));
 		}
-		String cacheKey = CACHE_KEY_PREFIX + userId;
-		String cached = redisTemplate.opsForValue().get(cacheKey);
+		String cached = redisTemplate.opsForValue().get(CACHE_KEY_PREFIX + userId);
 		if (cached != null) {
 			return CACHE_NOTHING_PLAYING.equals(cached)
 					? Optional.empty()
 					: Optional.of(objectMapper.readValue(cached, NowPlayingStatusResponse.class));
 		}
+		return fetchAndCache(userId);
+	}
+
+	/**
+	 * Z podanych użytkowników ci, którzy mają podłączonego providera — jedno
+	 * zapytanie zamiast N sprawdzeń. Serwerowy poll (ADR 0007, Etap 1b) leci co
+	 * kilkadziesiąt sekund po wszystkich obserwowanych, więc nie może płacić
+	 * zapytaniem (ani wyjątkiem {@link ProviderNotConnectedException}) za każdego
+	 * użytkownika bez integracji — a tych jest większość.
+	 */
+	@Transactional(readOnly = true)
+	Set<UUID> pollableUserIds(Set<UUID> candidates) {
+		return candidates.isEmpty()
+				? Set.of()
+				: linkRepository.findUserIdsByProviderAndUserIdIn(musicProvider.name(), candidates);
+	}
+
+	/**
+	 * Odpytuje providera i odświeża cache <b>pomijając</b> cache'owaną wartość —
+	 * inaczej niż {@link #getStatus}, bo to poll ma cache zapełniać, a nie z niego
+	 * czytać (ADR 0007, Etap 1b). Zdarzenie leci tylko przy realnej zmianie utworu:
+	 * bez tego każdy przebieg polla pushowałby przez SSE ten sam status.
+	 *
+	 * <p>
+	 * Ręcznie ustawiony status ma pierwszeństwo przed providerem, więc dla takich
+	 * użytkowników poll jest pomijany — odpytanie Spotify i tak nie zmieniłoby
+	 * tego, co widzą znajomi.
+	 */
+	void refreshFromProvider(UUID userId) {
+		if (Boolean.TRUE.equals(redisTemplate.hasKey(MANUAL_KEY_PREFIX + userId))) {
+			return;
+		}
+		String previous = redisTemplate.opsForValue().get(CACHE_KEY_PREFIX + userId);
+		fetchAndCache(userId).filter(fresh -> isDifferentTrack(previous, fresh))
+				.ifPresent(fresh -> eventPublisher.publishEvent(new NowPlayingStatusChangedEvent(userId, fresh)));
+	}
+
+	private Optional<NowPlayingStatusResponse> fetchAndCache(UUID userId) {
+		String cacheKey = CACHE_KEY_PREFIX + userId;
 		Optional<NowPlayingTrack> track = musicProvider.getCurrentlyPlaying(userId);
 		if (track.isEmpty()) {
 			redisTemplate.opsForValue().set(cacheKey, CACHE_NOTHING_PLAYING, properties.getCacheTtl());
@@ -167,5 +207,18 @@ class NowPlayingService {
 				t.album(), t.imageUrl(), t.playing(), Instant.now());
 		redisTemplate.opsForValue().set(cacheKey, objectMapper.writeValueAsString(response), properties.getCacheTtl());
 		return Optional.of(response);
+	}
+
+	/**
+	 * Porównanie po samym utworze — {@code fetchedAt} zmienia się przy każdym
+	 * odczycie, więc równość całych rekordów uznałaby każdy poll za zmianę.
+	 */
+	private boolean isDifferentTrack(String previousJson, NowPlayingStatusResponse fresh) {
+		if (previousJson == null || CACHE_NOTHING_PLAYING.equals(previousJson)) {
+			return true;
+		}
+		NowPlayingStatusResponse previous = objectMapper.readValue(previousJson, NowPlayingStatusResponse.class);
+		return !Objects.equals(previous.title(), fresh.title()) || !Objects.equals(previous.artist(), fresh.artist())
+				|| !Objects.equals(previous.album(), fresh.album()) || previous.playing() != fresh.playing();
 	}
 }
