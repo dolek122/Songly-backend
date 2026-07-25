@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -178,10 +179,20 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	@Test
+	void stream_opensEventStream_forAuthenticatedUser() throws Exception {
+		TestUser viewer = registerUser("np-stream@songly.io");
+
+		mockMvc.perform(get("/api/v1/now-playing/stream").header("Authorization", "Bearer " + viewer.accessToken()))
+				.andExpect(status().isOk())
+				.andExpect(header().string("Content-Type", org.hamcrest.Matchers.containsString("text/event-stream")));
+	}
+
+	@Test
 	void nowPlayingEndpoints_requireAuthentication() throws Exception {
 		mockMvc.perform(post("/api/v1/now-playing/spotify/connect")).andExpect(status().isUnauthorized());
 		mockMvc.perform(get("/api/v1/now-playing/me")).andExpect(status().isUnauthorized());
 		mockMvc.perform(get("/api/v1/now-playing/friends")).andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/api/v1/now-playing/stream")).andExpect(status().isUnauthorized());
 		mockMvc.perform(put("/api/v1/now-playing/manual")).andExpect(status().isUnauthorized());
 		mockMvc.perform(delete("/api/v1/now-playing/manual")).andExpect(status().isUnauthorized());
 	}

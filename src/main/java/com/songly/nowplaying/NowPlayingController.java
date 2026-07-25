@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -18,15 +19,18 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/api/v1/now-playing")
 class NowPlayingController {
 
 	private final NowPlayingService nowPlayingService;
+	private final NowPlayingStreamHub streamHub;
 
-	NowPlayingController(NowPlayingService nowPlayingService) {
+	NowPlayingController(NowPlayingService nowPlayingService, NowPlayingStreamHub streamHub) {
 		this.nowPlayingService = nowPlayingService;
+		this.streamHub = streamHub;
 	}
 
 	@PostMapping("/spotify/connect")
@@ -68,6 +72,18 @@ class NowPlayingController {
 	@SecurityRequirement(name = "bearerAuth")
 	List<FriendNowPlayingResponse> friendsNowPlaying(Authentication authentication) {
 		return nowPlayingService.friendsNowPlaying(currentUserId(authentication));
+	}
+
+	/**
+	 * Strumień SSE ze statusami znajomych na żywo (ADR 0007, Etap 1). Klient trzyma
+	 * jedno połączenie; serwer pushuje zdarzenie {@code now-playing}
+	 * ({@link FriendNowPlayingResponse}), gdy status któregoś znajomego się zmieni.
+	 * Stan początkowy klient pobiera przez {@code GET /friends}.
+	 */
+	@GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	@SecurityRequirement(name = "bearerAuth")
+	SseEmitter stream(Authentication authentication) {
+		return streamHub.subscribe(currentUserId(authentication));
 	}
 
 	/**
