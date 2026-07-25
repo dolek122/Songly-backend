@@ -1,2 +1,6 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+# Kontrakt OpenAPI jest generowany z LF i porównywany bajt w bajt przez
+# OpenApiSpecExportTest. Bez tego core.autocrlf=true wypakowuje go na Windows
+# z CRLF i test pada mimo pustego diffa w gicie.
+*.json text eol=lf
