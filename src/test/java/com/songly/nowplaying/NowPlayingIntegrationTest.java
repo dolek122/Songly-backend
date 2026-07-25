@@ -26,7 +26,10 @@ import tools.jackson.databind.ObjectMapper;
 
 // Poll wyłączony: testowy strumień SSE zostaje w rejestrze do timeoutu, więc
 // harmonogram odpytywałby providera w tle w trakcie asercji (ADR 0007, Etap 1b).
-@TestPropertySource(properties = {"songly.security.rate-limit.enabled=false", "songly.now-playing.poll.enabled=false"})
+// Heartbeat też wyłączony: leci w te same emittery co realne zdarzenia, więc
+// testy liczące pushe łapałyby jego zamiast tego, co sprawdzają.
+@TestPropertySource(properties = {"songly.security.rate-limit.enabled=false", "songly.now-playing.poll.enabled=false",
+		"songly.now-playing.stream.heartbeat.enabled=false"})
 class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 
 	@Autowired

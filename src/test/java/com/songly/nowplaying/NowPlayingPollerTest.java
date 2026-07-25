@@ -88,6 +88,42 @@ class NowPlayingPollerTest {
 		verify(nowPlayingService, never()).refreshFromProvider(unlinkedFriend);
 	}
 
+	/**
+	 * Wygasły status wykrywamy u <b>wszystkich</b> obserwowanych, także tych bez
+	 * providera — to właśnie oni ustawiają status ręcznie i nie mają czego
+	 * odpytywać (ADR 0007).
+	 */
+	@Test
+	void checksExpiredStatus_alsoForUsersWithoutProviderLink() {
+		UUID viewer = UUID.randomUUID();
+		UUID linkedFriend = UUID.randomUUID();
+		UUID unlinkedFriend = UUID.randomUUID();
+		when(hub.connectedUserIds()).thenReturn(Set.of(viewer));
+		when(socialGraph.friendIds(viewer)).thenReturn(Set.of(linkedFriend, unlinkedFriend));
+		when(nowPlayingService.tryAcquirePollLock(linkedFriend)).thenReturn(true);
+		when(nowPlayingService.pollableUserIds(Set.of(linkedFriend, unlinkedFriend))).thenReturn(Set.of(linkedFriend));
+
+		poller.pollObservedUsers();
+
+		verify(nowPlayingService).publishStoppedIfStatusExpired(linkedFriend);
+		verify(nowPlayingService).publishStoppedIfStatusExpired(unlinkedFriend);
+	}
+
+	@Test
+	void oneFailedExpiryCheck_doesNotStopTheRest() {
+		UUID viewer = UUID.randomUUID();
+		UUID failing = UUID.randomUUID();
+		UUID healthy = UUID.randomUUID();
+		when(hub.connectedUserIds()).thenReturn(Set.of(viewer));
+		when(socialGraph.friendIds(viewer)).thenReturn(new LinkedHashSet<>(List.of(failing, healthy)));
+		when(nowPlayingService.pollableUserIds(any())).thenReturn(Set.of());
+		doThrow(new SpotifyApiException(503)).when(nowPlayingService).publishStoppedIfStatusExpired(failing);
+
+		poller.pollObservedUsers();
+
+		verify(nowPlayingService).publishStoppedIfStatusExpired(healthy);
+	}
+
 	@Test
 	void continuesWithNextUser_whenOneRefreshFails() {
 		UUID viewer = UUID.randomUUID();

@@ -38,6 +38,7 @@ class NowPlayingServiceRefreshTest {
 
 	private static final String CACHE_KEY_PREFIX = "now-playing:status:";
 	private static final String MANUAL_KEY_PREFIX = "now-playing:manual:";
+	private static final String ANNOUNCED_KEY_PREFIX = "now-playing:announced:";
 
 	@Mock
 	private MusicProvider musicProvider;
@@ -340,6 +341,46 @@ class NowPlayingServiceRefreshTest {
 		service.deleteAccountData(userId);
 
 		verify(statusPublisher).publishStopped(userId);
+	}
+
+	/**
+	 * Ręczny status wygasa sam (TTL w godzinach), a jego właściciel nie ma
+	 * providera do odpytania — bez tej ścieżki wisiałby na ekranie znajomego w
+	 * nieskończoność.
+	 */
+	@Test
+	void publishesStopped_whenAnnouncedStatusExpired() {
+		when(redisTemplate.hasKey(ANNOUNCED_KEY_PREFIX + userId)).thenReturn(true);
+		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+		when(valueOperations.get(MANUAL_KEY_PREFIX + userId)).thenReturn(null);
+		when(valueOperations.get(CACHE_KEY_PREFIX + userId)).thenReturn(null);
+
+		service.publishStoppedIfStatusExpired(userId);
+
+		verify(statusPublisher).publishStopped(userId);
+	}
+
+	@Test
+	void staysQuiet_whenAnnouncedStatusIsStillThere() {
+		when(redisTemplate.hasKey(ANNOUNCED_KEY_PREFIX + userId)).thenReturn(true);
+		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+		when(valueOperations.get(MANUAL_KEY_PREFIX + userId)).thenReturn(cachedJson("Bohemian Rhapsody"));
+
+		service.publishStoppedIfStatusExpired(userId);
+
+		verify(statusPublisher, never()).publishStopped(any());
+	}
+
+	/**
+	 * Bez znacznika nie ma czego odwoływać — inaczej „stopped" leciałoby w kółko.
+	 */
+	@Test
+	void staysQuiet_forUsersWhoNeverAnnouncedAnything() {
+		when(redisTemplate.hasKey(ANNOUNCED_KEY_PREFIX + userId)).thenReturn(false);
+
+		service.publishStoppedIfStatusExpired(userId);
+
+		verifyNoInteractions(statusPublisher);
 	}
 
 	@Test
