@@ -307,6 +307,35 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 		assertThat(received).hasSize(1);
 	}
 
+	/**
+	 * Wyłączenie widoczności musi dojść do znajomego, który <b>już</b> ma otwarty
+	 * strumień — dla niego nie ma żadnego kolejnego pushu, więc bez tego zdarzenia
+	 * widziałby ostatni status w nieskończoność (Claude.md §9).
+	 */
+	@Test
+	void turningSharingOff_reachesOpenFriendStream() throws Exception {
+		TestUser viewer = registerUser("np-optout-viewer@songly.io");
+		TestUser subject = registerUser("np-optout-subject@songly.io");
+		befriend(viewer, subject);
+		setManualStatus(subject, "Bohemian Rhapsody", "Queen", "Tidal");
+
+		CountDownLatch stopped = new CountDownLatch(1);
+		List<Object> received = new CopyOnWriteArrayList<>();
+		streamHub.register(UUID.fromString(viewer.userId()), new SseEmitter() {
+			@Override
+			public void send(SseEventBuilder builder) {
+				received.add(builder);
+				stopped.countDown();
+			}
+		});
+
+		mockMvc.perform(put("/api/v1/now-playing/settings").header("Authorization", "Bearer " + subject.accessToken())
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"shareWithFriends":false}""")).andExpect(status().isNoContent());
+
+		assertThat(stopped.await(10, TimeUnit.SECONDS)).as("push \"przestał słuchać\" po ukryciu statusu").isTrue();
+	}
+
 	@Test
 	void stream_isRejected_aboveLimitPerUser() throws Exception {
 		TestUser user = registerUser("np-stream-limit@songly.io");

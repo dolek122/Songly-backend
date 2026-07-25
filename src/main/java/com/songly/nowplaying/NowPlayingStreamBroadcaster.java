@@ -49,7 +49,12 @@ class NowPlayingStreamBroadcaster {
 		// Widoczność sprawdzana przy każdym pushu, nie tylko przy otwarciu strumienia
 		// (ADR 0007, Etap 4) — użytkownik mógł wyłączyć udostępnianie sekundę temu,
 		// a wiadomość mogła wyjść z instancji, która jeszcze o tym nie wiedziała.
-		if (!nowPlayingService.sharesStatus(subjectId)) {
+		//
+		// "Przestał słuchać" (status == null) przechodzi zawsze: nic nie ujawnia,
+		// tylko każe zdjąć wpis z listy. Leci m.in. przy wyłączeniu widoczności,
+		// więc odrzucenie go tutaj zostawiłoby ostatni status na ekranie znajomego
+		// dokładnie w chwili, w której miał zniknąć.
+		if (event.status() != null && !nowPlayingService.sharesStatus(subjectId)) {
 			return;
 		}
 		// Tylko znajomi, którzy naprawdę słuchają (mają otwarty strumień) — bez tego

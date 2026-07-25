@@ -89,6 +89,11 @@ class NowPlayingService {
 	void disconnect(UUID userId) {
 		linkRepository.deleteByUserIdAndProvider(userId, musicProvider.name());
 		redisTemplate.delete(CACHE_KEY_PREFIX + userId);
+		// Ręczny status ma pierwszeństwo i zostaje po odłączeniu providera, więc
+		// wtedy użytkownik nadal coś "gra" — "przestał słuchać" byłoby kłamstwem.
+		if (!Boolean.TRUE.equals(redisTemplate.hasKey(MANUAL_KEY_PREFIX + userId))) {
+			statusPublisher.publishStopped(userId);
+		}
 	}
 
 	@Transactional
@@ -97,6 +102,9 @@ class NowPlayingService {
 		preferenceRepository.deleteByUserId(userId);
 		redisTemplate.delete(CACHE_KEY_PREFIX + userId);
 		redisTemplate.delete(MANUAL_KEY_PREFIX + userId);
+		// Bez tego znajomi z otwartym strumieniem widzieliby status konta, którego
+		// już nie ma — aż do własnego reconnectu.
+		statusPublisher.publishStopped(userId);
 	}
 
 	@Transactional(readOnly = true)
@@ -105,10 +113,16 @@ class NowPlayingService {
 	}
 
 	/**
-	 * Wyłączenie widoczności działa od następnego odczytu/pushu — statusu z cache'a
-	 * nie kasujemy, bo jest filtrowany na każdej ścieżce wyjścia (Claude.md §9) i
-	 * tak czy tak wygasa w kilkadziesiąt sekund. Własny status w {@code /me}
-	 * zostaje widoczny dla właściciela.
+	 * Statusu z cache'a nie kasujemy — jest filtrowany na każdej ścieżce wyjścia
+	 * (Claude.md §9), a własny status w {@code /me} ma zostać widoczny dla
+	 * właściciela.
+	 *
+	 * <p>
+	 * Samo przestawienie flagi nie wystarcza: znajomy z <b>otwartym</b> strumieniem
+	 * nie dostaje już żadnego pushu, więc widziałby ostatni status w nieskończoność
+	 * (aż do własnego reconnectu). Dlatego wyłączenie wypycha „przestał słuchać", a
+	 * włączenie — aktualny status, żeby wrócił na listę od razu, nie przy
+	 * najbliższej zmianie utworu.
 	 */
 	@Transactional
 	void updateSettings(UUID userId, UpdateNowPlayingSettingsRequest request) {
@@ -116,6 +130,11 @@ class NowPlayingService {
 		preferenceRepository.findById(userId).ifPresentOrElse(
 				preference -> preference.updateShareWithFriends(request.shareWithFriends(), now),
 				() -> preferenceRepository.save(new NowPlayingPreference(userId, request.shareWithFriends(), now)));
+		if (request.shareWithFriends()) {
+			getCachedStatus(userId).ifPresent(status -> statusPublisher.publish(userId, status));
+		} else {
+			statusPublisher.publishStopped(userId);
+		}
 	}
 
 	/**

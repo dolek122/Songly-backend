@@ -2,8 +2,10 @@ package com.songly.nowplaying;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.net.http.HttpClient;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -11,7 +13,16 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
-/** Cienka warstwa HTTP do Spotify — bez logiki biznesowej. */
+/**
+ * Cienka warstwa HTTP do Spotify — bez logiki biznesowej.
+ *
+ * <p>
+ * Timeouty ustawiamy jawnie, bo domyślny klient JDK czeka na odpowiedź w
+ * nieskończoność. Te wywołania idą z wątku harmonogramu (ADR 0007, Etap 1b), a
+ * zawieszone połączenie do Spotify blokowałoby wtedy poll wszystkich
+ * obserwowanych użytkowników — awaria u jednego providera zamieniałaby się w
+ * awarię całego presence.
+ */
 @Component
 class SpotifyClient {
 
@@ -20,7 +31,10 @@ class SpotifyClient {
 
 	SpotifyClient(NowPlayingProperties properties) {
 		this.spotify = properties.getSpotify();
-		this.restClient = RestClient.create();
+		HttpClient httpClient = HttpClient.newBuilder().connectTimeout(spotify.getConnectTimeout()).build();
+		JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+		requestFactory.setReadTimeout(spotify.getReadTimeout());
+		this.restClient = RestClient.builder().requestFactory(requestFactory).build();
 	}
 
 	TokenResponse exchangeCode(String authorizationCode) {
