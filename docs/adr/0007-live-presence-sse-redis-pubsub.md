@@ -1,7 +1,7 @@
 # 7. Live presence w czasie rzeczywistym: SSE + Redis Pub/Sub
 
 Data: 2026-07-24
-Status: proponowane
+Status: zaakceptowane (Etapy 0–1 zaimplementowane)
 
 ## Kontekst
 
@@ -44,10 +44,10 @@ Claude.md §4 wprost przewiduje **Redis pub/sub** jako mechanizm live update fee
 
 Kolejność celowo dowozi wartość produktową jak najwcześniej i odracza infrastrukturę realtime do momentu, gdy podstawa działa (Claude.md §10).
 
-- **Etap 0 — Presence przez REST (bez realtime, natychmiastowa wartość).** `GET /api/v1/now-playing/friends` — batch aktualnych statusów znajomych z cache'a Redis (respektuje blokady/znajomości). Mobilka pokazuje "co słuchają znajomi" na pollingu. Zero nowej infrastruktury, de-ryzykuje resztę i już jest użyteczne.
-- **Etap 1 — Strumień SSE na jednej instancji.** `GET /api/v1/now-playing/stream` (`SseEmitter`) + wewnątrzprocesowa szyna (Spring events): zmiana statusu → push do lokalnych subskrybentów-znajomych. Serwerowy `@Scheduled` poll Spotify dla obserwowanych userów. Działa end-to-end na jednym węźle.
-- **Etap 2 — Fan-out przez Redis Pub/Sub (skala pozioma).** Zastąpienie szyny wewnątrzprocesowej publikacją na kanał Redis + `RedisMessageListenerContainer` na każdej instancji. To odblokowuje wiele instancji (Claude.md §10 krok 2).
+- **Etap 0 — Presence przez REST (bez realtime, natychmiastowa wartość). ✅** `GET /api/v1/now-playing/friends` — batch aktualnych statusów znajomych z cache'a Redis (respektuje blokady/znajomości). Mobilka pokazuje "co słuchają znajomi" na pollingu. Zero nowej infrastruktury, de-ryzykuje resztę i już jest użyteczne.
+- **Etap 1 — Strumień SSE na jednej instancji. ✅** `GET /api/v1/now-playing/stream` (`SseEmitter`) + wewnątrzprocesowa szyna (Spring events): zmiana statusu → push do lokalnych subskrybentów-znajomych (Etap 1a). Serwerowy `@Scheduled` poll Spotify dla obserwowanych userów, czyli znajomych osób z otwartym strumieniem — zdarzenie tylko przy realnej zmianie utworu (Etap 1b). Działa end-to-end na jednym węźle.
+- **Etap 2 — Fan-out przez Redis Pub/Sub (skala pozioma).** Zastąpienie szyny wewnątrzprocesowej publikacją na kanał Redis + `RedisMessageListenerContainer` na każdej instancji. To odblokowuje wiele instancji (Claude.md §10 krok 2). **Uwaga:** dopóki tego nie ma, poll z Etapu 1b odpytuje providera osobno na każdej instancji dla tego samego użytkownika — przy więcej niż jednym węźle to zwielokrotniony ruch do Spotify.
 - **Etap 3 — Klient mobilny.** Klient SSE w module `shared` (Ktor), UI presence, reconnect z backoffem, spięcie z modelami (objęte detekcją dryfu z #2).
-- **Etap 4 — Prywatność i hardening.** Przełącznik widoczności statusu, egzekwowanie przy każdym pushu, heartbeat/timeouty, limit strumieni na usera, metryki aktywnych połączeń (Micrometer z #6), test obciążeniowy fan-outu.
+- **Etap 4 — Prywatność i hardening.** Przełącznik widoczności statusu, egzekwowanie przy każdym pushu, heartbeat/timeouty, limit strumieni na usera, metryki aktywnych połączeń (Micrometer z #6), test obciążeniowy fan-outu. Dochodzi też **zdarzenie "przestał słuchać"**: dziś push niesie wyłącznie zagrany utwór, a koniec odtwarzania klient musi wywnioskować z wieku `fetchedAt` — to wymaga rozszerzenia kontraktu zdarzenia, więc świadomie poza Etapem 1b.
 
 Każdy etap to osobny PR (albo kilka) z zielonym CI po obu stronach. Etapy 0–2 są backendowe, 3 mobilny, 4 przekrojowy. Dopiero po Etapie 2 warto rozważyć, czy presence zasługuje na wydzielenie do osobnego serwisu (Claude.md §10 krok 3) — ale to następna decyzja, nie ta.

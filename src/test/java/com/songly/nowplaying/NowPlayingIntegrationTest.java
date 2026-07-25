@@ -18,7 +18,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.ObjectMapper;
 
-@TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
+// Poll wyłączony: testowy strumień SSE zostaje w rejestrze do timeoutu, więc
+// harmonogram odpytywałby providera w tle w trakcie asercji (ADR 0007, Etap 1b).
+@TestPropertySource(properties = {"songly.security.rate-limit.enabled=false", "songly.now-playing.poll.enabled=false"})
 class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 
 	@Autowired
