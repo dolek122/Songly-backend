@@ -265,11 +265,81 @@ class NowPlayingServiceRefreshTest {
 	void updateSettings_updatesExistingRow_withoutInsertingAnother() {
 		NowPlayingPreference existing = new NowPlayingPreference(userId, false, Instant.now().minusSeconds(60));
 		when(preferenceRepository.findById(userId)).thenReturn(Optional.of(existing));
+		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+		when(valueOperations.get(MANUAL_KEY_PREFIX + userId)).thenReturn(null);
+		when(valueOperations.get(CACHE_KEY_PREFIX + userId)).thenReturn(null);
 
 		service.updateSettings(userId, new UpdateNowPlayingSettingsRequest(true));
 
 		assertThat(existing.isShareWithFriends()).isTrue();
 		verify(preferenceRepository, never()).save(any());
+	}
+
+	/**
+	 * Sama flaga w bazie nie wystarcza: znajomy z otwartym strumieniem nie dostanie
+	 * już żadnego pushu, więc bez tego widziałby ostatni status w nieskończoność.
+	 */
+	@Test
+	void turningSharingOff_pushesStoppedToWatchingFriends() {
+		when(preferenceRepository.findById(userId)).thenReturn(Optional.empty());
+
+		service.updateSettings(userId, new UpdateNowPlayingSettingsRequest(false));
+
+		verify(statusPublisher).publishStopped(userId);
+	}
+
+	@Test
+	void turningSharingOn_pushesCurrentStatus_soFriendsSeeItWithoutWaitingForNextTrack() {
+		when(preferenceRepository.findById(userId)).thenReturn(Optional.empty());
+		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+		when(valueOperations.get(MANUAL_KEY_PREFIX + userId)).thenReturn(null);
+		when(valueOperations.get(CACHE_KEY_PREFIX + userId)).thenReturn(cachedJson("Bohemian Rhapsody"));
+
+		service.updateSettings(userId, new UpdateNowPlayingSettingsRequest(true));
+
+		ArgumentCaptor<NowPlayingStatusResponse> published = ArgumentCaptor.forClass(NowPlayingStatusResponse.class);
+		verify(statusPublisher).publish(eq(userId), published.capture());
+		assertThat(published.getValue().title()).isEqualTo("Bohemian Rhapsody");
+	}
+
+	@Test
+	void turningSharingOn_staysQuiet_whenNothingIsPlaying() {
+		when(preferenceRepository.findById(userId)).thenReturn(Optional.empty());
+		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+		when(valueOperations.get(MANUAL_KEY_PREFIX + userId)).thenReturn(null);
+		when(valueOperations.get(CACHE_KEY_PREFIX + userId)).thenReturn(null);
+
+		service.updateSettings(userId, new UpdateNowPlayingSettingsRequest(true));
+
+		verify(statusPublisher, never()).publish(any(), any());
+	}
+
+	@Test
+	void disconnectingProvider_pushesStopped() {
+		when(musicProvider.name()).thenReturn("spotify");
+		when(redisTemplate.hasKey(MANUAL_KEY_PREFIX + userId)).thenReturn(false);
+
+		service.disconnect(userId);
+
+		verify(statusPublisher).publishStopped(userId);
+	}
+
+	/** Ręczny status przeżywa odłączenie providera, więc user nadal coś gra. */
+	@Test
+	void disconnectingProvider_staysQuiet_whenManualStatusRemains() {
+		when(musicProvider.name()).thenReturn("spotify");
+		when(redisTemplate.hasKey(MANUAL_KEY_PREFIX + userId)).thenReturn(true);
+
+		service.disconnect(userId);
+
+		verify(statusPublisher, never()).publishStopped(any());
+	}
+
+	@Test
+	void deletingAccount_pushesStopped_soFriendsStopSeeingAGhost() {
+		service.deleteAccountData(userId);
+
+		verify(statusPublisher).publishStopped(userId);
 	}
 
 	@Test

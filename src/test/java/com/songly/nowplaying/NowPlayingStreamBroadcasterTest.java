@@ -128,4 +128,27 @@ class NowPlayingStreamBroadcasterTest {
 		verifyNoInteractions(socialGraph, profileDirectory);
 		verify(hub, never()).push(any(), any(), any());
 	}
+
+	/**
+	 * „Przestał słuchać" nie może wpaść pod filtr widoczności — to właśnie ta
+	 * wiadomość leci przy jej wyłączeniu i ma zdjąć wpis z ekranu znajomego.
+	 * Odrzucenie jej zostawiłoby ostatni status widoczny w nieskończoność.
+	 */
+	@Test
+	void deliversStoppedMessage_evenWhenSubjectTurnedSharingOff() {
+		UUID subject = UUID.randomUUID();
+		UUID friend = UUID.randomUUID();
+		when(hub.hasAnySubscriber()).thenReturn(true);
+		when(socialGraph.friendIds(subject)).thenReturn(Set.of(friend));
+		when(hub.hasSubscribers(friend)).thenReturn(true);
+		when(profileDirectory.displayNames(Set.of(subject))).thenReturn(Map.of(subject, "Ada"));
+		when(profileDirectory.avatarUrls(Set.of(subject))).thenReturn(Map.of());
+
+		broadcaster.broadcast(new NowPlayingStatusChangedMessage(subject, null));
+
+		ArgumentCaptor<FriendNowPlayingResponse> payload = ArgumentCaptor.forClass(FriendNowPlayingResponse.class);
+		verify(hub).push(eq(friend), eq("now-playing"), payload.capture());
+		assertThat(payload.getValue().status()).isNull();
+		verifyNoInteractions(nowPlayingService);
+	}
 }

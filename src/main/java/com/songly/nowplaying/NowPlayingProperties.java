@@ -106,6 +106,8 @@ class NowPlayingProperties {
 		private String authorizeUrl = "https://accounts.spotify.com/authorize";
 		private String tokenUrl = "https://accounts.spotify.com/api/token";
 		private String apiBaseUrl = "https://api.spotify.com/v1";
+		private Duration connectTimeout = Duration.ofSeconds(5);
+		private Duration readTimeout = Duration.ofSeconds(10);
 
 		String getClientId() {
 			return clientId;
@@ -153,6 +155,22 @@ class NowPlayingProperties {
 
 		void setApiBaseUrl(String apiBaseUrl) {
 			this.apiBaseUrl = apiBaseUrl;
+		}
+
+		Duration getConnectTimeout() {
+			return connectTimeout;
+		}
+
+		void setConnectTimeout(Duration connectTimeout) {
+			this.connectTimeout = connectTimeout;
+		}
+
+		Duration getReadTimeout() {
+			return readTimeout;
+		}
+
+		void setReadTimeout(Duration readTimeout) {
+			this.readTimeout = readTimeout;
 		}
 	}
 }
