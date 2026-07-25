@@ -109,6 +109,39 @@ class NowPlayingPollerTest {
 		verify(nowPlayingService).publishStoppedIfStatusExpired(unlinkedFriend);
 	}
 
+	/**
+	 * Padnięte zapytanie o listę do odpytania nie może zabrać sprawdzenia wygasłych
+	 * statusów — ono nie zależy od providera ani od tej listy.
+	 */
+	@Test
+	void expiryCheckStillRuns_whenPollableLookupFails() {
+		UUID viewer = UUID.randomUUID();
+		UUID friend = UUID.randomUUID();
+		when(hub.connectedUserIds()).thenReturn(Set.of(viewer));
+		when(socialGraph.friendIds(viewer)).thenReturn(Set.of(friend));
+		when(nowPlayingService.pollableUserIds(any())).thenThrow(new IllegalStateException("baza nie odpowiada"));
+
+		poller.pollObservedUsers();
+
+		verify(nowPlayingService).publishStoppedIfStatusExpired(friend);
+	}
+
+	@Test
+	void failedPollLock_doesNotStopTheRest() {
+		UUID viewer = UUID.randomUUID();
+		UUID failing = UUID.randomUUID();
+		UUID healthy = UUID.randomUUID();
+		when(hub.connectedUserIds()).thenReturn(Set.of(viewer));
+		when(socialGraph.friendIds(viewer)).thenReturn(new LinkedHashSet<>(List.of(failing, healthy)));
+		when(nowPlayingService.pollableUserIds(any())).thenReturn(new LinkedHashSet<>(List.of(failing, healthy)));
+		when(nowPlayingService.tryAcquirePollLock(failing)).thenThrow(new IllegalStateException("Redis padł"));
+		when(nowPlayingService.tryAcquirePollLock(healthy)).thenReturn(true);
+
+		poller.pollObservedUsers();
+
+		verify(nowPlayingService).refreshFromProvider(healthy);
+	}
+
 	@Test
 	void oneFailedExpiryCheck_doesNotStopTheRest() {
 		UUID viewer = UUID.randomUUID();

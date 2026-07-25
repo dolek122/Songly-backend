@@ -6,6 +6,10 @@ import com.songly.nowplaying.dto.ManualNowPlayingRequest;
 import com.songly.nowplaying.dto.NowPlayingSettingsResponse;
 import com.songly.nowplaying.dto.NowPlayingStatusResponse;
 import com.songly.nowplaying.dto.UpdateNowPlayingSettingsRequest;
+import com.songly.common.web.ApiError;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -94,6 +98,12 @@ class NowPlayingController {
 	 */
 	@GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	@SecurityRequirement(name = "bearerAuth")
+	// Bez tego springdoc opisuje ten endpoint typem zwracanym metody (SseEmitter),
+	// co klientowi nie mówi nic o treści zdarzeń — a to jedyna ścieżka, której
+	// kształtu nie da się wyczytać z kontraktu w żaden inny sposób.
+	@ApiResponse(responseCode = "200", description = "Strumień zdarzeń `now-playing`. "
+			+ "Każde zdarzenie niesie jeden obiekt; `status: null` znaczy, że znajomy przestał słuchać.", content = @Content(mediaType = MediaType.TEXT_EVENT_STREAM_VALUE, schema = @Schema(implementation = FriendNowPlayingResponse.class)))
+	@ApiResponse(responseCode = "429", description = "Przekroczony limit równoległych strumieni na użytkownika", content = @Content(schema = @Schema(implementation = ApiError.class)))
 	SseEmitter stream(Authentication authentication) {
 		return streamHub.subscribe(currentUserId(authentication));
 	}

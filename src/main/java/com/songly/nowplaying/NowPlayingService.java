@@ -11,6 +11,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -237,11 +238,43 @@ class NowPlayingService {
 		}
 		Map<UUID, String> names = profileDirectory.displayNames(friendIds);
 		Map<UUID, String> avatars = profileDirectory.avatarUrls(friendIds);
-		return friendIds.stream().flatMap(friendId -> getCachedStatus(friendId).stream().map(
-				status -> new FriendNowPlayingResponse(friendId, names.get(friendId), avatars.get(friendId), status)))
+		Map<UUID, NowPlayingStatusResponse> statuses = cachedStatuses(List.copyOf(friendIds));
+		return statuses.entrySet().stream()
+				.map(entry -> new FriendNowPlayingResponse(entry.getKey(), names.get(entry.getKey()),
+						avatars.get(entry.getKey()), entry.getValue()))
 				.sorted(Comparator.comparing(FriendNowPlayingResponse::displayName,
 						Comparator.nullsLast(Comparator.naturalOrder())))
 				.toList();
+	}
+
+	/**
+	 * Statusy wielu użytkowników dwoma zapytaniami zamiast dwóch na osobę — lista
+	 * znajomych potrafi mieć setki pozycji, a każdy odczyt to osobna runda do
+	 * Redisa. Pomija tych, którzy nic nie grają.
+	 */
+	private Map<UUID, NowPlayingStatusResponse> cachedStatuses(List<UUID> userIds) {
+		List<String> manualRaw = redisTemplate.opsForValue()
+				.multiGet(userIds.stream().map(id -> MANUAL_KEY_PREFIX + id).toList());
+		List<String> providerRaw = redisTemplate.opsForValue()
+				.multiGet(userIds.stream().map(id -> CACHE_KEY_PREFIX + id).toList());
+		Map<UUID, NowPlayingStatusResponse> statuses = new LinkedHashMap<>();
+		for (int i = 0; i < userIds.size(); i++) {
+			// Ręczny status ma pierwszeństwo przed providerem — tak samo jak w
+			// odczycie pojedynczego użytkownika (Claude.md §7).
+			String manual = valueAt(manualRaw, i);
+			String provider = valueAt(providerRaw, i);
+			String raw = manual != null ? manual : provider;
+			if (raw == null || CACHE_NOTHING_PLAYING.equals(raw)) {
+				continue;
+			}
+			statuses.put(userIds.get(i), objectMapper.readValue(raw, NowPlayingStatusResponse.class));
+		}
+		return statuses;
+	}
+
+	/** {@code MGET} zwraca listę z {@code null} na brakujących kluczach. */
+	private String valueAt(List<String> values, int index) {
+		return values == null || index >= values.size() ? null : values.get(index);
 	}
 
 	/**
