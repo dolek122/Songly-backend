@@ -10,12 +10,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.songly.AbstractIntegrationTest;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import tools.jackson.databind.ObjectMapper;
 
 // Poll wyłączony: testowy strumień SSE zostaje w rejestrze do timeoutu, więc
@@ -28,6 +34,9 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 
 	@Autowired
 	private ObjectMapper objectMapper;
+
+	@Autowired
+	private NowPlayingStreamHub streamHub;
 
 	private String registerAndGetAccessToken(String email) throws Exception {
 		MvcResult result = mockMvc
@@ -187,6 +196,38 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 		mockMvc.perform(get("/api/v1/now-playing/stream").header("Authorization", "Bearer " + viewer.accessToken()))
 				.andExpect(status().isOk())
 				.andExpect(header().string("Content-Type", org.hamcrest.Matchers.containsString("text/event-stream")));
+	}
+
+	/**
+	 * Etap 2 end-to-end: zmiana statusu wychodzi na kanał Redis, wraca do tej samej
+	 * instancji przez {@code RedisMessageListenerContainer} i ląduje w strumieniu
+	 * SSE znajomego. Ta sama ścieżka niesie zmianę między instancjami — tam, gdzie
+	 * tu jest jeden proces, w produkcji stoi drugi węzeł.
+	 */
+	@Test
+	void statusChange_reachesFriendStream_throughRedisChannel() throws Exception {
+		TestUser viewer = registerUser("np-fanout-viewer@songly.io");
+		TestUser subject = registerUser("np-fanout-subject@songly.io");
+		TestUser stranger = registerUser("np-fanout-stranger@songly.io");
+		befriend(viewer, subject);
+
+		CountDownLatch delivered = new CountDownLatch(1);
+		List<Object> received = new CopyOnWriteArrayList<>();
+		streamHub.register(UUID.fromString(viewer.userId()), new SseEmitter() {
+			@Override
+			public void send(SseEventBuilder builder) {
+				received.add(builder);
+				delivered.countDown();
+			}
+		});
+
+		// Obcy nie ma prawa trafić do cudzego strumienia — publikujemy go pierwszego,
+		// żeby jego wiadomość zdążyła przejść przez kanał przed asercją.
+		setManualStatus(stranger, "Come As You Are", "Nirvana", "Tidal");
+		setManualStatus(subject, "Bohemian Rhapsody", "Queen", "Tidal");
+
+		assertThat(delivered.await(10, TimeUnit.SECONDS)).as("push SSE po zmianie statusu znajomego").isTrue();
+		assertThat(received).hasSize(1);
 	}
 
 	@Test
