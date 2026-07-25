@@ -418,6 +418,14 @@
         },
         "type" : "object"
       },
+      "NowPlayingSettingsResponse" : {
+        "properties" : {
+          "shareWithFriends" : {
+            "type" : "boolean"
+          }
+        },
+        "type" : "object"
+      },
       "NowPlayingStatusResponse" : {
         "properties" : {
           "album" : {
@@ -810,6 +818,15 @@
           }
         },
         "required" : [ "name" ],
+        "type" : "object"
+      },
+      "UpdateNowPlayingSettingsRequest" : {
+        "properties" : {
+          "shareWithFriends" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "shareWithFriends" ],
         "type" : "object"
       },
       "UpdateProfileRequest" : {
@@ -1802,6 +1819,49 @@
                 }
               }
             },
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "now-playing-controller" ]
+      }
+    },
+    "/api/v1/now-playing/settings" : {
+      "get" : {
+        "operationId" : "settings",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NowPlayingSettingsResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "now-playing-controller" ]
+      },
+      "put" : {
+        "operationId" : "updateSettings",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateNowPlayingSettingsRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
             "description" : "OK"
           }
         },

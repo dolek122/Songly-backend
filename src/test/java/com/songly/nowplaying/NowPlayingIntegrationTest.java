@@ -231,12 +231,103 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	@Test
+	void settings_defaultToVisible_andCanBeTurnedOff() throws Exception {
+		TestUser user = registerUser("np-settings@songly.io");
+
+		mockMvc.perform(get("/api/v1/now-playing/settings").header("Authorization", "Bearer " + user.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.shareWithFriends").value(true));
+
+		mockMvc.perform(put("/api/v1/now-playing/settings").header("Authorization", "Bearer " + user.accessToken())
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"shareWithFriends":false}""")).andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/api/v1/now-playing/settings").header("Authorization", "Bearer " + user.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.shareWithFriends").value(false));
+	}
+
+	@Test
+	void settings_rejectMissingFlag() throws Exception {
+		TestUser user = registerUser("np-settings-invalid@songly.io");
+
+		mockMvc.perform(put("/api/v1/now-playing/settings").header("Authorization", "Bearer " + user.accessToken())
+				.contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isBadRequest());
+	}
+
+	/**
+	 * Wyłączona widoczność chowa status przed znajomymi (ADR 0007, Etap 4), ale
+	 * właściciel nadal widzi swój własny w {@code /me}.
+	 */
+	@Test
+	void hiddenStatus_disappearsFromFriendsList_butStaysVisibleToOwner() throws Exception {
+		TestUser viewer = registerUser("np-hidden-viewer@songly.io");
+		TestUser hidden = registerUser("np-hidden-subject@songly.io");
+		befriend(viewer, hidden);
+		setManualStatus(hidden, "Bohemian Rhapsody", "Queen", "Tidal");
+
+		mockMvc.perform(get("/api/v1/now-playing/friends").header("Authorization", "Bearer " + viewer.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1));
+
+		mockMvc.perform(put("/api/v1/now-playing/settings").header("Authorization", "Bearer " + hidden.accessToken())
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"shareWithFriends":false}""")).andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/api/v1/now-playing/friends").header("Authorization", "Bearer " + viewer.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+		mockMvc.perform(get("/api/v1/now-playing/me").header("Authorization", "Bearer " + hidden.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.title").value("Bohemian Rhapsody"));
+	}
+
+	@Test
+	void hiddenStatus_doesNotReachFriendStream() throws Exception {
+		TestUser viewer = registerUser("np-hidden-stream-viewer@songly.io");
+		TestUser hidden = registerUser("np-hidden-stream-subject@songly.io");
+		TestUser visible = registerUser("np-hidden-stream-visible@songly.io");
+		befriend(viewer, hidden);
+		befriend(viewer, visible);
+		mockMvc.perform(put("/api/v1/now-playing/settings").header("Authorization", "Bearer " + hidden.accessToken())
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"shareWithFriends":false}""")).andExpect(status().isNoContent());
+
+		CountDownLatch delivered = new CountDownLatch(1);
+		List<Object> received = new CopyOnWriteArrayList<>();
+		streamHub.register(UUID.fromString(viewer.userId()), new SseEmitter() {
+			@Override
+			public void send(SseEventBuilder builder) {
+				received.add(builder);
+				delivered.countDown();
+			}
+		});
+
+		setManualStatus(hidden, "Come As You Are", "Nirvana", "Tidal");
+		// Status widocznego znajomego jest sondą: gdy on dojdzie, wiadomość ukrytego
+		// też zdążyła już przejść przez kanał — i skoro jej nie ma, to jej nie będzie.
+		setManualStatus(visible, "Bohemian Rhapsody", "Queen", "Tidal");
+
+		assertThat(delivered.await(10, TimeUnit.SECONDS)).isTrue();
+		assertThat(received).hasSize(1);
+	}
+
+	@Test
+	void stream_isRejected_aboveLimitPerUser() throws Exception {
+		TestUser user = registerUser("np-stream-limit@songly.io");
+		UUID userId = UUID.fromString(user.userId());
+		for (int i = 0; i < 3; i++) {
+			streamHub.register(userId, new SseEmitter());
+		}
+
+		mockMvc.perform(get("/api/v1/now-playing/stream").header("Authorization", "Bearer " + user.accessToken()))
+				.andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.code").value("TOO_MANY_STREAMS"));
+	}
+
+	@Test
 	void nowPlayingEndpoints_requireAuthentication() throws Exception {
 		mockMvc.perform(post("/api/v1/now-playing/spotify/connect")).andExpect(status().isUnauthorized());
 		mockMvc.perform(get("/api/v1/now-playing/me")).andExpect(status().isUnauthorized());
 		mockMvc.perform(get("/api/v1/now-playing/friends")).andExpect(status().isUnauthorized());
 		mockMvc.perform(get("/api/v1/now-playing/stream")).andExpect(status().isUnauthorized());
 		mockMvc.perform(put("/api/v1/now-playing/manual")).andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/api/v1/now-playing/settings")).andExpect(status().isUnauthorized());
+		mockMvc.perform(put("/api/v1/now-playing/settings")).andExpect(status().isUnauthorized());
 		mockMvc.perform(delete("/api/v1/now-playing/manual")).andExpect(status().isUnauthorized());
 	}
 }

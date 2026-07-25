@@ -11,6 +11,8 @@ class NowPlayingProperties {
 	private Duration oauthStateTtl = Duration.ofMinutes(10);
 	private Duration manualStatusTtl = Duration.ofHours(3);
 	private final Spotify spotify = new Spotify();
+	private final Stream stream = new Stream();
+	private final Poll poll = new Poll();
 
 	String getTokenEncryptionKey() {
 		return tokenEncryptionKey;
@@ -46,6 +48,54 @@ class NowPlayingProperties {
 
 	Spotify getSpotify() {
 		return spotify;
+	}
+
+	Stream getStream() {
+		return stream;
+	}
+
+	Poll getPoll() {
+		return poll;
+	}
+
+	/** Limity długo żyjących połączeń SSE (ADR 0007, Etap 4). */
+	static class Stream {
+
+		private Duration timeout = Duration.ofMinutes(30);
+		private int maxPerUser = 3;
+
+		Duration getTimeout() {
+			return timeout;
+		}
+
+		void setTimeout(Duration timeout) {
+			this.timeout = timeout;
+		}
+
+		int getMaxPerUser() {
+			return maxPerUser;
+		}
+
+		void setMaxPerUser(int maxPerUser) {
+			this.maxPerUser = maxPerUser;
+		}
+	}
+
+	/**
+	 * Sam interwał i włącznik polla czyta {@code @Scheduled} wprost z propercji —
+	 * tu jest tylko to, czego potrzebuje kod.
+	 */
+	static class Poll {
+
+		private Duration lockTtl = Duration.ofSeconds(25);
+
+		Duration getLockTtl() {
+			return lockTtl;
+		}
+
+		void setLockTtl(Duration lockTtl) {
+			this.lockTtl = lockTtl;
+		}
 	}
 
 	static class Spotify {

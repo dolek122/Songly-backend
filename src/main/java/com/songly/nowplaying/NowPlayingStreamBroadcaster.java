@@ -29,11 +29,14 @@ class NowPlayingStreamBroadcaster {
 	private final NowPlayingStreamHub hub;
 	private final SocialGraph socialGraph;
 	private final ProfileDirectory profileDirectory;
+	private final NowPlayingService nowPlayingService;
 
-	NowPlayingStreamBroadcaster(NowPlayingStreamHub hub, SocialGraph socialGraph, ProfileDirectory profileDirectory) {
+	NowPlayingStreamBroadcaster(NowPlayingStreamHub hub, SocialGraph socialGraph, ProfileDirectory profileDirectory,
+			NowPlayingService nowPlayingService) {
 		this.hub = hub;
 		this.socialGraph = socialGraph;
 		this.profileDirectory = profileDirectory;
+		this.nowPlayingService = nowPlayingService;
 	}
 
 	void broadcast(NowPlayingStatusChangedMessage event) {
@@ -43,6 +46,12 @@ class NowPlayingStreamBroadcaster {
 			return;
 		}
 		UUID subjectId = event.userId();
+		// Widoczność sprawdzana przy każdym pushu, nie tylko przy otwarciu strumienia
+		// (ADR 0007, Etap 4) — użytkownik mógł wyłączyć udostępnianie sekundę temu,
+		// a wiadomość mogła wyjść z instancji, która jeszcze o tym nie wiedziała.
+		if (!nowPlayingService.sharesStatus(subjectId)) {
+			return;
+		}
 		// Tylko znajomi, którzy naprawdę słuchają (mają otwarty strumień) — bez tego
 		// filtra liczylibyśmy profil i iterowali po znajomych bez żadnego odbiorcy.
 		Set<UUID> listeningFriends = socialGraph.friendIds(subjectId).stream().filter(hub::hasSubscribers)

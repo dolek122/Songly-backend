@@ -35,6 +35,9 @@ class NowPlayingStreamBroadcasterTest {
 	@Mock
 	private ProfileDirectory profileDirectory;
 
+	@Mock
+	private NowPlayingService nowPlayingService;
+
 	@InjectMocks
 	private NowPlayingStreamBroadcaster broadcaster;
 
@@ -49,6 +52,7 @@ class NowPlayingStreamBroadcasterTest {
 		UUID offlineFriend = UUID.randomUUID();
 		NowPlayingStatusResponse status = status();
 		when(hub.hasAnySubscriber()).thenReturn(true);
+		when(nowPlayingService.sharesStatus(subject)).thenReturn(true);
 		when(socialGraph.friendIds(subject)).thenReturn(Set.of(connectedFriend, offlineFriend));
 		when(hub.hasSubscribers(connectedFriend)).thenReturn(true);
 		when(hub.hasSubscribers(offlineFriend)).thenReturn(false);
@@ -70,6 +74,7 @@ class NowPlayingStreamBroadcasterTest {
 	void noPushNorProfileLookup_whenSubjectHasNoFriends() {
 		UUID subject = UUID.randomUUID();
 		when(hub.hasAnySubscriber()).thenReturn(true);
+		when(nowPlayingService.sharesStatus(subject)).thenReturn(true);
 		when(socialGraph.friendIds(subject)).thenReturn(Set.of());
 
 		broadcaster.broadcast(new NowPlayingStatusChangedMessage(subject, status()));
@@ -83,6 +88,7 @@ class NowPlayingStreamBroadcasterTest {
 		UUID subject = UUID.randomUUID();
 		UUID friend = UUID.randomUUID();
 		when(hub.hasAnySubscriber()).thenReturn(true);
+		when(nowPlayingService.sharesStatus(subject)).thenReturn(true);
 		when(socialGraph.friendIds(subject)).thenReturn(Set.of(friend));
 		when(hub.hasSubscribers(friend)).thenReturn(false);
 
@@ -101,6 +107,23 @@ class NowPlayingStreamBroadcasterTest {
 		when(hub.hasAnySubscriber()).thenReturn(false);
 
 		broadcaster.broadcast(new NowPlayingStatusChangedMessage(UUID.randomUUID(), status()));
+
+		verifyNoInteractions(socialGraph, profileDirectory);
+		verify(hub, never()).push(any(), any(), any());
+	}
+
+	/**
+	 * Widoczność egzekwowana przy pushu, nie przy otwarciu strumienia (ADR 0007,
+	 * Etap 4): wiadomość mogła wyjść z instancji, która o wyłączeniu jeszcze nie
+	 * wiedziała.
+	 */
+	@Test
+	void dropsMessage_whenSubjectTurnedSharingOff() {
+		UUID subject = UUID.randomUUID();
+		when(hub.hasAnySubscriber()).thenReturn(true);
+		when(nowPlayingService.sharesStatus(subject)).thenReturn(false);
+
+		broadcaster.broadcast(new NowPlayingStatusChangedMessage(subject, status()));
 
 		verifyNoInteractions(socialGraph, profileDirectory);
 		verify(hub, never()).push(any(), any(), any());

@@ -2,7 +2,9 @@ package com.songly.nowplaying;
 
 import com.songly.nowplaying.dto.FriendNowPlayingResponse;
 import com.songly.nowplaying.dto.ManualNowPlayingRequest;
+import com.songly.nowplaying.dto.NowPlayingSettingsResponse;
 import com.songly.nowplaying.dto.NowPlayingStatusResponse;
+import com.songly.nowplaying.dto.UpdateNowPlayingSettingsRequest;
 import com.songly.profile.ProfileDirectory;
 import com.songly.social.SocialGraph;
 import java.security.SecureRandom;
@@ -15,6 +17,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -35,11 +38,13 @@ class NowPlayingService {
 	private static final String STATE_KEY_PREFIX = "now-playing:oauth-state:";
 	private static final String CACHE_KEY_PREFIX = "now-playing:status:";
 	private static final String MANUAL_KEY_PREFIX = "now-playing:manual:";
+	private static final String POLL_LOCK_KEY_PREFIX = "now-playing:poll-lock:";
 	private static final String CACHE_NOTHING_PLAYING = "NOTHING_PLAYING";
 	private static final String DEFAULT_MANUAL_SOURCE = "manual";
 
 	private final MusicProvider musicProvider;
 	private final MusicProviderLinkRepository linkRepository;
+	private final NowPlayingPreferenceRepository preferenceRepository;
 	private final StringRedisTemplate redisTemplate;
 	private final ObjectMapper objectMapper;
 	private final NowPlayingProperties properties;
@@ -49,10 +54,12 @@ class NowPlayingService {
 	private final SecureRandom secureRandom = new SecureRandom();
 
 	NowPlayingService(MusicProvider musicProvider, MusicProviderLinkRepository linkRepository,
-			StringRedisTemplate redisTemplate, ObjectMapper objectMapper, NowPlayingProperties properties,
-			SocialGraph socialGraph, ProfileDirectory profileDirectory, NowPlayingStatusPublisher statusPublisher) {
+			NowPlayingPreferenceRepository preferenceRepository, StringRedisTemplate redisTemplate,
+			ObjectMapper objectMapper, NowPlayingProperties properties, SocialGraph socialGraph,
+			ProfileDirectory profileDirectory, NowPlayingStatusPublisher statusPublisher) {
 		this.musicProvider = musicProvider;
 		this.linkRepository = linkRepository;
+		this.preferenceRepository = preferenceRepository;
 		this.redisTemplate = redisTemplate;
 		this.objectMapper = objectMapper;
 		this.properties = properties;
@@ -87,8 +94,59 @@ class NowPlayingService {
 	@Transactional
 	void deleteAccountData(UUID userId) {
 		linkRepository.deleteByUserId(userId);
+		preferenceRepository.deleteByUserId(userId);
 		redisTemplate.delete(CACHE_KEY_PREFIX + userId);
 		redisTemplate.delete(MANUAL_KEY_PREFIX + userId);
+	}
+
+	@Transactional(readOnly = true)
+	NowPlayingSettingsResponse getSettings(UUID userId) {
+		return new NowPlayingSettingsResponse(!preferenceRepository.existsByUserIdAndShareWithFriendsFalse(userId));
+	}
+
+	/**
+	 * Wyłączenie widoczności działa od następnego odczytu/pushu — statusu z cache'a
+	 * nie kasujemy, bo jest filtrowany na każdej ścieżce wyjścia (Claude.md §9) i
+	 * tak czy tak wygasa w kilkadziesiąt sekund. Własny status w {@code /me}
+	 * zostaje widoczny dla właściciela.
+	 */
+	@Transactional
+	void updateSettings(UUID userId, UpdateNowPlayingSettingsRequest request) {
+		Instant now = Instant.now();
+		preferenceRepository.findById(userId).ifPresentOrElse(
+				preference -> preference.updateShareWithFriends(request.shareWithFriends(), now),
+				() -> preferenceRepository.save(new NowPlayingPreference(userId, request.shareWithFriends(), now)));
+	}
+
+	/**
+	 * Czy użytkownik zgadza się pokazywać status znajomym (ADR 0007, Etap 4).
+	 * Sprawdzane przy <b>każdym</b> pushu, nie tylko przy otwarciu strumienia —
+	 * ustawienie może się zmienić w trakcie trwania połączenia.
+	 */
+	@Transactional(readOnly = true)
+	boolean sharesStatus(UUID userId) {
+		return !preferenceRepository.existsByUserIdAndShareWithFriendsFalse(userId);
+	}
+
+	/** Z podanych użytkowników ci, którzy nie wyłączyli widoczności statusu. */
+	@Transactional(readOnly = true)
+	Set<UUID> sharingUserIds(Set<UUID> candidates) {
+		if (candidates.isEmpty()) {
+			return Set.of();
+		}
+		Set<UUID> optedOut = preferenceRepository.findOptedOutUserIds(candidates);
+		return candidates.stream().filter(userId -> !optedOut.contains(userId)).collect(Collectors.toSet());
+	}
+
+	/**
+	 * Krótki lock w Redis, żeby przy wielu instancjach tego samego obserwowanego
+	 * użytkownika odpytywał w danym cyklu tylko jeden węzeł (ADR 0007, Etap 4) —
+	 * inaczej ruch do Spotify rósłby liniowo z liczbą instancji. Nieodebrany lock
+	 * nie boli: zmianę i tak rozniesie kanał presence do wszystkich instancji.
+	 */
+	boolean tryAcquirePollLock(UUID userId) {
+		return Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(POLL_LOCK_KEY_PREFIX + userId, "1",
+				properties.getPoll().getLockTtl()));
 	}
 
 	void setManualStatus(UUID userId, ManualNowPlayingRequest request) {
@@ -104,6 +162,12 @@ class NowPlayingService {
 
 	void clearManualStatus(UUID userId) {
 		redisTemplate.delete(MANUAL_KEY_PREFIX + userId);
+		// Gdy pod spodem jest świeży status z providera, to on staje się aktualny —
+		// "przestał słuchać" wysyłamy tylko wtedy, gdy nie zostało nic do pokazania.
+		String providerCached = redisTemplate.opsForValue().get(CACHE_KEY_PREFIX + userId);
+		if (providerCached == null || CACHE_NOTHING_PLAYING.equals(providerCached)) {
+			statusPublisher.publishStopped(userId);
+		}
 	}
 
 	/**
@@ -118,7 +182,7 @@ class NowPlayingService {
 	 */
 	@Transactional(readOnly = true)
 	List<FriendNowPlayingResponse> friendsNowPlaying(UUID userId) {
-		Set<UUID> friendIds = socialGraph.friendIds(userId);
+		Set<UUID> friendIds = sharingUserIds(socialGraph.friendIds(userId));
 		if (friendIds.isEmpty()) {
 			return List.of();
 		}
@@ -169,9 +233,12 @@ class NowPlayingService {
 	 */
 	@Transactional(readOnly = true)
 	Set<UUID> pollableUserIds(Set<UUID> candidates) {
-		return candidates.isEmpty()
-				? Set.of()
-				: linkRepository.findUserIdsByProviderAndUserIdIn(musicProvider.name(), candidates);
+		if (candidates.isEmpty()) {
+			return Set.of();
+		}
+		// Kto wyłączył widoczność, tego nie ma sensu (ani prawa) odpytywać — jego
+		// status i tak nie opuściłby serwera.
+		return sharingUserIds(linkRepository.findUserIdsByProviderAndUserIdIn(musicProvider.name(), candidates));
 	}
 
 	/**
@@ -190,8 +257,16 @@ class NowPlayingService {
 			return;
 		}
 		String previous = redisTemplate.opsForValue().get(CACHE_KEY_PREFIX + userId);
-		fetchAndCache(userId).filter(fresh -> isDifferentTrack(previous, fresh))
-				.ifPresent(fresh -> statusPublisher.publish(userId, fresh));
+		Optional<NowPlayingStatusResponse> fresh = fetchAndCache(userId);
+		if (fresh.isEmpty()) {
+			if (previous != null && !CACHE_NOTHING_PLAYING.equals(previous)) {
+				statusPublisher.publishStopped(userId);
+			}
+			return;
+		}
+		if (isDifferentTrack(previous, fresh.get())) {
+			statusPublisher.publish(userId, fresh.get());
+		}
 	}
 
 	private Optional<NowPlayingStatusResponse> fetchAndCache(UUID userId) {

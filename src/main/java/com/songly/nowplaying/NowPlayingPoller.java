@@ -51,6 +51,12 @@ class NowPlayingPoller {
 		}
 		int refreshed = 0;
 		for (UUID userId : nowPlayingService.pollableUserIds(observed)) {
+			// Przy wielu instancjach ten sam obserwowany user siedzi na liście u każdej
+			// z nich — lock sprawia, że w danym cyklu odpytuje go dokładnie jedna
+			// (ADR 0007, Etap 4). Zmianę i tak roznosi kanał presence do pozostałych.
+			if (!nowPlayingService.tryAcquirePollLock(userId)) {
+				continue;
+			}
 			try {
 				nowPlayingService.refreshFromProvider(userId);
 				refreshed++;
