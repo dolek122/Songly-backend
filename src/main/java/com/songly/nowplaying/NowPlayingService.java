@@ -158,6 +158,36 @@ class NowPlayingService {
 	}
 
 	/**
+	 * Wysyła „przestał słuchać", gdy status użytkownika zniknął sam z siebie —
+	 * przez wygaśnięcie TTL, nie przez żadną jego akcję (ADR 0007).
+	 *
+	 * <p>
+	 * Bez tego ręcznie ustawiony status (TTL liczony w godzinach) wisiałby na
+	 * ekranie znajomego w nieskończoność: użytkownik bez podłączonego providera nie
+	 * jest odpytywany, więc nic nie zauważa jego zniknięcia. Redis nie mówi nam o
+	 * wygaśnięciu klucza — zamiast włączać keyspace notifications (konfiguracja
+	 * serwera, kolejny kanał do utrzymania) sprawdzamy to w przebiegu polla, który
+	 * i tak przechodzi po obserwowanych użytkownikach.
+	 *
+	 * <p>
+	 * Znacznik z {@link NowPlayingStatusPublisher} odróżnia „status wygasł" od
+	 * „nigdy nic nie grał" — bez niego wysyłalibyśmy „przestał słuchać" w kółko dla
+	 * wszystkich milczących użytkowników. Przy wielu instancjach może się zdarzyć
+	 * podwójna publikacja (obie sprawdzą znacznik zanim któraś go skasuje); to
+	 * nieszkodliwe, bo klient po prostu drugi raz zdejmuje wpis, którego już nie
+	 * ma.
+	 */
+	void publishStoppedIfStatusExpired(UUID userId) {
+		if (!Boolean.TRUE.equals(redisTemplate.hasKey(NowPlayingStatusPublisher.ANNOUNCED_KEY_PREFIX + userId))) {
+			return;
+		}
+		if (getCachedStatus(userId).isPresent()) {
+			return;
+		}
+		statusPublisher.publishStopped(userId);
+	}
+
+	/**
 	 * Krótki lock w Redis, żeby przy wielu instancjach tego samego obserwowanego
 	 * użytkownika odpytywał w danym cyklu tylko jeden węzeł (ADR 0007, Etap 4) —
 	 * inaczej ruch do Spotify rósłby liniowo z liczbą instancji. Nieodebrany lock

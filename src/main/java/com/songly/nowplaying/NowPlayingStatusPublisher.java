@@ -15,23 +15,38 @@ import tools.jackson.databind.ObjectMapper;
  * Publikujący nie omija kanału dla samego siebie — własna instancja dostaje tę
  * samą wiadomość co pozostałe, więc jest dokładnie jedna ścieżka dostarczania
  * do przetestowania i utrzymania.
+ *
+ * <p>
+ * Przy okazji każdej publikacji utrzymywany jest znacznik „ogłosiliśmy, że ten
+ * użytkownik gra". Trzymanie go tutaj, a nie w wywołujących, jest celowe: to
+ * jedyne miejsce, przez które przechodzą wszystkie ścieżki publikacji, więc
+ * znacznik nie może się rozjechać ze stanem, który widzą klienci.
  */
 @Component
 class NowPlayingStatusPublisher {
 
 	static final String CHANNEL = "now-playing:status-changed";
+	static final String ANNOUNCED_KEY_PREFIX = "now-playing:announced:";
 
 	private final StringRedisTemplate redisTemplate;
 	private final ObjectMapper objectMapper;
+	private final NowPlayingProperties properties;
 
-	NowPlayingStatusPublisher(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
+	NowPlayingStatusPublisher(StringRedisTemplate redisTemplate, ObjectMapper objectMapper,
+			NowPlayingProperties properties) {
 		this.redisTemplate = redisTemplate;
 		this.objectMapper = objectMapper;
+		this.properties = properties;
 	}
 
 	void publish(UUID userId, NowPlayingStatusResponse status) {
 		NowPlayingStatusChangedMessage message = new NowPlayingStatusChangedMessage(userId, status);
 		redisTemplate.convertAndSend(CHANNEL, objectMapper.writeValueAsString(message));
+		if (status == null) {
+			redisTemplate.delete(ANNOUNCED_KEY_PREFIX + userId);
+		} else {
+			redisTemplate.opsForValue().set(ANNOUNCED_KEY_PREFIX + userId, "1", properties.getAnnouncedTtl());
+		}
 	}
 
 	/**

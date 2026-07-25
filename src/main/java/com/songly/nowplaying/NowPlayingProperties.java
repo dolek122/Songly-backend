@@ -10,6 +10,7 @@ class NowPlayingProperties {
 	private Duration cacheTtl = Duration.ofSeconds(45);
 	private Duration oauthStateTtl = Duration.ofMinutes(10);
 	private Duration manualStatusTtl = Duration.ofHours(3);
+	private Duration announcedTtl = Duration.ofHours(6);
 	private final Spotify spotify = new Spotify();
 	private final Stream stream = new Stream();
 	private final Poll poll = new Poll();
@@ -44,6 +45,20 @@ class NowPlayingProperties {
 
 	void setManualStatusTtl(Duration manualStatusTtl) {
 		this.manualStatusTtl = manualStatusTtl;
+	}
+
+	/**
+	 * Jak długo pamiętamy, że ogłosiliśmy granie danego użytkownika. Musi być
+	 * dłuższe niż najdłużej żyjący status ({@link #getManualStatusTtl()}) — inaczej
+	 * znacznik zniknąłby przed samym statusem i nie byłoby po czym poznać, że
+	 * status wygasł.
+	 */
+	Duration getAnnouncedTtl() {
+		return announcedTtl;
+	}
+
+	void setAnnouncedTtl(Duration announcedTtl) {
+		this.announcedTtl = announcedTtl;
 	}
 
 	Spotify getSpotify() {

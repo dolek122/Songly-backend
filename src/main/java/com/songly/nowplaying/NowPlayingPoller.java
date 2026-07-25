@@ -66,6 +66,16 @@ class NowPlayingPoller {
 				log.warn("Poll statusu nie powiódł się dla {}: {}", userId, ex.toString());
 			}
 		}
+		// Osobno po *wszystkich* obserwowanych, nie tylko po tych z providerem: status
+		// ręczny wygasa sam z siebie, a jego właściciel z definicji nie ma czego
+		// odpytywać, więc tylko tędy da się zauważyć, że przestał grać.
+		for (UUID userId : observed) {
+			try {
+				nowPlayingService.publishStoppedIfStatusExpired(userId);
+			} catch (RuntimeException ex) {
+				log.warn("Nie udało się sprawdzić wygaśnięcia statusu dla {}: {}", userId, ex.toString());
+			}
+		}
 		log.debug("Poll now-playing: odświeżono {} z {} obserwowanych użytkowników", refreshed, observed.size());
 	}
 
