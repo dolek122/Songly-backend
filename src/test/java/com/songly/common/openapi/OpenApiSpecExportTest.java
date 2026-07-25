@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.core.util.DefaultIndenter;
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.songly.AbstractIntegrationTest;
@@ -58,7 +60,7 @@ class OpenApiSpecExportTest extends AbstractIntegrationTest {
 		ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT)
 				.enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 		Object tree = mapper.readValue(rawSpec, Object.class);
-		String expected = mapper.writeValueAsString(tree) + "\n";
+		String expected = mapper.writer(lineFeedPrettyPrinter()).writeValueAsString(tree) + "\n";
 
 		if (Boolean.getBoolean("openapi.export")) {
 			Files.createDirectories(SPEC_PATH.getParent());
@@ -69,5 +71,18 @@ class OpenApiSpecExportTest extends AbstractIntegrationTest {
 		assertThat(SPEC_PATH).as(REGENERATE_HINT).exists();
 		String committed = Files.readString(SPEC_PATH, StandardCharsets.UTF_8);
 		assertThat(committed).as(REGENERATE_HINT).isEqualTo(expected);
+	}
+
+	/**
+	 * Domyślny pretty printer Jacksona łamie linie {@code System.lineSeparator()},
+	 * więc na Windows generowałby CRLF i rozjeżdżał się z plikiem trzymanym w
+	 * repozytorium z LF — test padałby lokalnie mimo braku jakiejkolwiek zmiany w
+	 * API. Wcięcia tablic zostawiamy domyślne (inline), żeby nie przeformatować
+	 * całego kontraktu.
+	 */
+	private static DefaultPrettyPrinter lineFeedPrettyPrinter() {
+		DefaultPrettyPrinter printer = new DefaultPrettyPrinter();
+		printer.indentObjectsWith(new DefaultIndenter("  ", "\n"));
+		return printer;
 	}
 }
