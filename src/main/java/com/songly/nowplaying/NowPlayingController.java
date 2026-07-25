@@ -103,7 +103,7 @@ class NowPlayingController {
 	// kształtu nie da się wyczytać z kontraktu w żaden inny sposób.
 	@ApiResponse(responseCode = "200", description = "Strumień zdarzeń `now-playing`. "
 			+ "Każde zdarzenie niesie jeden obiekt; `status: null` znaczy, że znajomy przestał słuchać.", content = @Content(mediaType = MediaType.TEXT_EVENT_STREAM_VALUE, schema = @Schema(implementation = FriendNowPlayingResponse.class)))
-	@ApiResponse(responseCode = "429", description = "Przekroczony limit równoległych strumieni na użytkownika", content = @Content(schema = @Schema(implementation = ApiError.class)))
+	@ApiResponse(responseCode = "429", description = "Przekroczony limit równoległych strumieni na użytkownika", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiError.class)))
 	SseEmitter stream(Authentication authentication) {
 		return streamHub.subscribe(currentUserId(authentication));
 	}
