@@ -1939,7 +1939,7 @@
           },
           "429" : {
             "content" : {
-              "text/event-stream" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/ApiError"
                 }
