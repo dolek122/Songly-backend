@@ -42,6 +42,7 @@ class NowPlayingPollerTest {
 		when(hub.connectedUserIds()).thenReturn(Set.of(viewerA, viewerB));
 		when(socialGraph.friendIds(viewerA)).thenReturn(Set.of(sharedFriend));
 		when(socialGraph.friendIds(viewerB)).thenReturn(Set.of(sharedFriend, onlyBsFriend));
+		when(nowPlayingService.tryAcquirePollLock(any())).thenReturn(true);
 		when(nowPlayingService.pollableUserIds(Set.of(sharedFriend, onlyBsFriend)))
 				.thenReturn(Set.of(sharedFriend, onlyBsFriend));
 
@@ -78,6 +79,7 @@ class NowPlayingPollerTest {
 		UUID unlinkedFriend = UUID.randomUUID();
 		when(hub.connectedUserIds()).thenReturn(Set.of(viewer));
 		when(socialGraph.friendIds(viewer)).thenReturn(Set.of(linkedFriend, unlinkedFriend));
+		when(nowPlayingService.tryAcquirePollLock(linkedFriend)).thenReturn(true);
 		when(nowPlayingService.pollableUserIds(Set.of(linkedFriend, unlinkedFriend))).thenReturn(Set.of(linkedFriend));
 
 		poller.pollObservedUsers();
@@ -93,6 +95,7 @@ class NowPlayingPollerTest {
 		UUID healthy = UUID.randomUUID();
 		when(hub.connectedUserIds()).thenReturn(Set.of(viewer));
 		when(socialGraph.friendIds(viewer)).thenReturn(Set.of(failing, healthy));
+		when(nowPlayingService.tryAcquirePollLock(any())).thenReturn(true);
 		when(nowPlayingService.pollableUserIds(any())).thenReturn(new LinkedHashSet<>(List.of(failing, healthy)));
 		doThrow(new SpotifyApiException(503)).when(nowPlayingService).refreshFromProvider(failing);
 

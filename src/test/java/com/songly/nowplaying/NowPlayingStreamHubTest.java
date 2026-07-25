@@ -7,7 +7,15 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -15,7 +23,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEvent
 
 class NowPlayingStreamHubTest {
 
-	private final NowPlayingStreamHub hub = new NowPlayingStreamHub();
+	private final NowPlayingProperties properties = new NowPlayingProperties();
+	private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+	private final NowPlayingStreamHub hub = new NowPlayingStreamHub(properties, meterRegistry);
 
 	@Test
 	void push_deliversToTargetUserOnly() throws IOException {
@@ -56,5 +66,85 @@ class NowPlayingStreamHubTest {
 		hub.register(alice, mock(SseEmitter.class));
 
 		assertThat(hub.connectedUserIds()).containsExactly(alice);
+	}
+
+	@Test
+	void register_rejectsStreamAboveLimit_leavingEarlierOnesUntouched() {
+		UUID user = UUID.randomUUID();
+		properties.getStream().setMaxPerUser(2);
+		hub.register(user, mock(SseEmitter.class));
+		hub.register(user, mock(SseEmitter.class));
+
+		assertThatThrownBy(() -> hub.register(user, mock(SseEmitter.class)))
+				.isInstanceOf(TooManyStreamsException.class);
+		assertThat(hub.openStreamCount()).isEqualTo(2);
+	}
+
+	@Test
+	void limitIsPerUser_notGlobal() {
+		properties.getStream().setMaxPerUser(1);
+		hub.register(UUID.randomUUID(), mock(SseEmitter.class));
+
+		hub.register(UUID.randomUUID(), mock(SseEmitter.class));
+
+		assertThat(hub.openStreamCount()).isEqualTo(2);
+	}
+
+	@Test
+	void heartbeat_reachesEveryStream_andCleansUpDeadOnes() throws IOException {
+		UUID alive = UUID.randomUUID();
+		UUID dead = UUID.randomUUID();
+		SseEmitter aliveEmitter = mock(SseEmitter.class);
+		SseEmitter deadEmitter = mock(SseEmitter.class);
+		doThrow(new IOException("zerwane")).when(deadEmitter).send(any(SseEventBuilder.class));
+		hub.register(alive, aliveEmitter);
+		hub.register(dead, deadEmitter);
+
+		hub.heartbeat();
+
+		verify(aliveEmitter).send(any(SseEventBuilder.class));
+		assertThat(hub.hasSubscribers(alive)).isTrue();
+		// O zerwanym gnieździe dowiadujemy się dopiero przy próbie zapisu — po to jest
+		// heartbeat, żeby taki strumień nie siedział w rejestrze do timeoutu.
+		assertThat(hub.hasSubscribers(dead)).isFalse();
+	}
+
+	@Test
+	void metricsReportOpenStreams() {
+		hub.register(UUID.randomUUID(), mock(SseEmitter.class));
+
+		assertThat(meterRegistry.get("songly.nowplaying.streams.active").gauge().value()).isEqualTo(1);
+	}
+
+	@Test
+	void concurrentRegistrations_respectLimit_withoutLosingStreams() throws Exception {
+		UUID user = UUID.randomUUID();
+		properties.getStream().setMaxPerUser(10);
+		int threads = 32;
+		ExecutorService pool = Executors.newFixedThreadPool(8);
+		AtomicInteger accepted = new AtomicInteger();
+		CountDownLatch start = new CountDownLatch(1);
+		CountDownLatch done = new CountDownLatch(threads);
+		for (int i = 0; i < threads; i++) {
+			pool.execute(() -> {
+				try {
+					start.await();
+					hub.register(user, mock(SseEmitter.class));
+					accepted.incrementAndGet();
+				} catch (TooManyStreamsException ignored) {
+					// oczekiwane dla nadmiarowych prób
+				} catch (InterruptedException ex) {
+					Thread.currentThread().interrupt();
+				} finally {
+					done.countDown();
+				}
+			});
+		}
+		start.countDown();
+		assertThat(done.await(10, TimeUnit.SECONDS)).isTrue();
+		pool.shutdownNow();
+
+		assertThat(accepted.get()).isEqualTo(10);
+		assertThat(hub.openStreamCount()).isEqualTo(10);
 	}
 }

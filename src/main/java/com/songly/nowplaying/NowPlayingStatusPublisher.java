@@ -33,4 +33,14 @@ class NowPlayingStatusPublisher {
 		NowPlayingStatusChangedMessage message = new NowPlayingStatusChangedMessage(userId, status);
 		redisTemplate.convertAndSend(CHANNEL, objectMapper.writeValueAsString(message));
 	}
+
+	/**
+	 * "Przestał słuchać" (ADR 0007, Etap 4) — pusty status zamiast utworu. Bez tego
+	 * klient musiałby zgadywać koniec odtwarzania z wieku {@code fetchedAt} i
+	 * pokazywałby znajomego jako grającego jeszcze długo po tym, jak wyłączył
+	 * muzykę.
+	 */
+	void publishStopped(UUID userId) {
+		publish(userId, null);
+	}
 }

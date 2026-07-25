@@ -117,6 +117,12 @@ class AccountDeletionFlowIntegrationTest extends AbstractIntegrationTest {
 		mockMvc.perform(put("/api/v1/communities/" + communityId + "/membership").header("Authorization",
 				"Bearer " + staying.accessToken())).andExpect(status().isNoContent());
 
+		// now-playing: ustawienie widocznosci to jedyny wiersz tego modulu z FK do
+		// users, wiec bez niego kasowanie konta nigdy by o ten klucz nie zahaczylo
+		mockMvc.perform(put("/api/v1/now-playing/settings").header("Authorization", "Bearer " + leaving.accessToken())
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"shareWithFriends":false}""")).andExpect(status().isNoContent());
+
 		// usuniecie konta wymaga poprawnego hasla
 		mockMvc.perform(delete("/api/v1/auth/me").header("Authorization", "Bearer " + leaving.accessToken())
 				.contentType(MediaType.APPLICATION_JSON).content("""

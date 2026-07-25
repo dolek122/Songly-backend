@@ -3,7 +3,9 @@ package com.songly.nowplaying;
 import com.songly.nowplaying.dto.ConnectResponse;
 import com.songly.nowplaying.dto.FriendNowPlayingResponse;
 import com.songly.nowplaying.dto.ManualNowPlayingRequest;
+import com.songly.nowplaying.dto.NowPlayingSettingsResponse;
 import com.songly.nowplaying.dto.NowPlayingStatusResponse;
+import com.songly.nowplaying.dto.UpdateNowPlayingSettingsRequest;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -79,11 +81,40 @@ class NowPlayingController {
 	 * jedno połączenie; serwer pushuje zdarzenie {@code now-playing}
 	 * ({@link FriendNowPlayingResponse}), gdy status któregoś znajomego się zmieni.
 	 * Stan początkowy klient pobiera przez {@code GET /friends}.
+	 *
+	 * <p>
+	 * {@code status == null} w zdarzeniu znaczy "przestał słuchać" — znajomego
+	 * należy wtedy zdjąć z listy grających. Serwer wysyła też co kilkanaście sekund
+	 * komentarz SSE (linia zaczynająca się od {@code :}), który klient ignoruje;
+	 * jego brak przez dłuższy czas to sygnał do reconnectu.
+	 *
+	 * <p>
+	 * Liczba równoległych strumieni na użytkownika jest limitowana — nadmiarowe
+	 * połączenie dostaje 429 {@code TOO_MANY_STREAMS}.
 	 */
 	@GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	@SecurityRequirement(name = "bearerAuth")
 	SseEmitter stream(Authentication authentication) {
 		return streamHub.subscribe(currentUserId(authentication));
+	}
+
+	/**
+	 * Widoczność statusu dla znajomych (ADR 0007, Etap 4). Domyślnie włączona —
+	 * status i tak pojawia się dopiero, gdy użytkownik sam podłączy serwis muzyczny
+	 * albo ustawi status ręcznie.
+	 */
+	@GetMapping("/settings")
+	@SecurityRequirement(name = "bearerAuth")
+	NowPlayingSettingsResponse settings(Authentication authentication) {
+		return nowPlayingService.getSettings(currentUserId(authentication));
+	}
+
+	@PutMapping("/settings")
+	@SecurityRequirement(name = "bearerAuth")
+	ResponseEntity<Void> updateSettings(Authentication authentication,
+			@Valid @RequestBody UpdateNowPlayingSettingsRequest request) {
+		nowPlayingService.updateSettings(currentUserId(authentication), request);
+		return ResponseEntity.noContent().build();
 	}
 
 	/**

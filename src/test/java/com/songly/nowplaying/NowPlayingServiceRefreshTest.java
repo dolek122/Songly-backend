@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.songly.nowplaying.dto.NowPlayingStatusResponse;
+import com.songly.nowplaying.dto.UpdateNowPlayingSettingsRequest;
 import com.songly.profile.ProfileDirectory;
 import com.songly.social.SocialGraph;
 import java.time.Duration;
@@ -45,6 +46,9 @@ class NowPlayingServiceRefreshTest {
 	private MusicProviderLinkRepository linkRepository;
 
 	@Mock
+	private NowPlayingPreferenceRepository preferenceRepository;
+
+	@Mock
 	private StringRedisTemplate redisTemplate;
 
 	@Mock
@@ -67,8 +71,8 @@ class NowPlayingServiceRefreshTest {
 
 	@BeforeEach
 	void setUp() {
-		service = new NowPlayingService(musicProvider, linkRepository, redisTemplate, objectMapper, properties,
-				socialGraph, profileDirectory, statusPublisher);
+		service = new NowPlayingService(musicProvider, linkRepository, preferenceRepository, redisTemplate,
+				objectMapper, properties, socialGraph, profileDirectory, statusPublisher);
 	}
 
 	private void provider(String title) {
@@ -121,10 +125,11 @@ class NowPlayingServiceRefreshTest {
 		// TTL trzeba odnowić mimo braku zmiany, inaczej status zniknie z /friends
 		verify(valueOperations).set(eq(CACHE_KEY_PREFIX + userId), anyString(), eq(Duration.ofSeconds(45)));
 		verify(statusPublisher, never()).publish(any(), any());
+		verify(statusPublisher, never()).publishStopped(any());
 	}
 
 	@Test
-	void cachesNothingPlaying_withoutEvent_whenProviderReturnsNothing() {
+	void cachesNothingPlaying_whenProviderReturnsNothing() {
 		when(redisTemplate.hasKey(MANUAL_KEY_PREFIX + userId)).thenReturn(false);
 		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 		when(valueOperations.get(CACHE_KEY_PREFIX + userId)).thenReturn(cachedJson("Bohemian Rhapsody"));
@@ -132,8 +137,62 @@ class NowPlayingServiceRefreshTest {
 
 		service.refreshFromProvider(userId);
 
+		// Sentinel w cache'u, żeby kolejny odczyt nie poszedł znowu do providera
 		verify(valueOperations).set(CACHE_KEY_PREFIX + userId, "NOTHING_PLAYING", Duration.ofSeconds(45));
+	}
+
+	/**
+	 * "Przestał słuchać" (ADR 0007, Etap 4) — bez tego znajomy zostawałby na liście
+	 * grających do wygaśnięcia cache'a.
+	 */
+	@Test
+	void publishesStopped_whenPlaybackEnded() {
+		when(redisTemplate.hasKey(MANUAL_KEY_PREFIX + userId)).thenReturn(false);
+		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+		when(valueOperations.get(CACHE_KEY_PREFIX + userId)).thenReturn(cachedJson("Bohemian Rhapsody"));
+		when(musicProvider.getCurrentlyPlaying(userId)).thenReturn(Optional.empty());
+
+		service.refreshFromProvider(userId);
+
+		verify(statusPublisher).publishStopped(userId);
+	}
+
+	@Test
+	void doesNotRepeatStopped_whenNothingWasPlayingBefore() {
+		when(redisTemplate.hasKey(MANUAL_KEY_PREFIX + userId)).thenReturn(false);
+		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+		when(valueOperations.get(CACHE_KEY_PREFIX + userId)).thenReturn("NOTHING_PLAYING");
+		when(musicProvider.getCurrentlyPlaying(userId)).thenReturn(Optional.empty());
+
+		service.refreshFromProvider(userId);
+
 		verify(statusPublisher, never()).publish(any(), any());
+		verify(statusPublisher, never()).publishStopped(any());
+	}
+
+	@Test
+	void clearingManualStatus_publishesStopped_whenNothingElseIsPlaying() {
+		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+		when(valueOperations.get(CACHE_KEY_PREFIX + userId)).thenReturn(null);
+
+		service.clearManualStatus(userId);
+
+		verify(statusPublisher).publishStopped(userId);
+	}
+
+	/**
+	 * Ręczny status zdjęty z wierzchu odsłania świeży status z providera — wtedy
+	 * użytkownik nadal coś gra i "przestał słuchać" byłoby kłamstwem.
+	 */
+	@Test
+	void clearingManualStatus_staysQuiet_whenProviderStatusIsStillCached() {
+		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+		when(valueOperations.get(CACHE_KEY_PREFIX + userId)).thenReturn(cachedJson("Bohemian Rhapsody"));
+
+		service.clearManualStatus(userId);
+
+		verify(statusPublisher, never()).publish(any(), any());
+		verify(statusPublisher, never()).publishStopped(any());
 	}
 
 	@Test
@@ -150,6 +209,7 @@ class NowPlayingServiceRefreshTest {
 		Set<UUID> candidates = Set.of(userId, UUID.randomUUID());
 		when(musicProvider.name()).thenReturn("spotify");
 		when(linkRepository.findUserIdsByProviderAndUserIdIn("spotify", candidates)).thenReturn(Set.of(userId));
+		when(preferenceRepository.findOptedOutUserIds(Set.of(userId))).thenReturn(Set.of());
 
 		assertThat(service.pollableUserIds(candidates)).containsExactly(userId);
 	}
@@ -158,5 +218,67 @@ class NowPlayingServiceRefreshTest {
 	void pollableUserIds_shortCircuitsOnEmptyInput() {
 		assertThat(service.pollableUserIds(Set.of())).isEmpty();
 		verifyNoInteractions(linkRepository);
+	}
+
+	/**
+	 * Kto wyłączył widoczność, tego nie ma po co odpytywać — jego status i tak nie
+	 * opuściłby serwera (ADR 0007, Etap 4).
+	 */
+	@Test
+	void pollableUserIds_skipsUsersWhoTurnedSharingOff() {
+		UUID hidden = UUID.randomUUID();
+		Set<UUID> candidates = Set.of(userId, hidden);
+		when(musicProvider.name()).thenReturn("spotify");
+		when(linkRepository.findUserIdsByProviderAndUserIdIn("spotify", candidates)).thenReturn(candidates);
+		when(preferenceRepository.findOptedOutUserIds(candidates)).thenReturn(Set.of(hidden));
+
+		assertThat(service.pollableUserIds(candidates)).containsExactly(userId);
+	}
+
+	@Test
+	void sharesStatus_defaultsToTrue_whenUserNeverTouchedSettings() {
+		when(preferenceRepository.existsByUserIdAndShareWithFriendsFalse(userId)).thenReturn(false);
+
+		assertThat(service.sharesStatus(userId)).isTrue();
+		assertThat(service.getSettings(userId).shareWithFriends()).isTrue();
+	}
+
+	@Test
+	void sharesStatus_isFalse_afterOptOut() {
+		when(preferenceRepository.existsByUserIdAndShareWithFriendsFalse(userId)).thenReturn(true);
+
+		assertThat(service.sharesStatus(userId)).isFalse();
+	}
+
+	@Test
+	void updateSettings_createsRow_whenUserHasNoneYet() {
+		when(preferenceRepository.findById(userId)).thenReturn(Optional.empty());
+
+		service.updateSettings(userId, new UpdateNowPlayingSettingsRequest(false));
+
+		ArgumentCaptor<NowPlayingPreference> saved = ArgumentCaptor.forClass(NowPlayingPreference.class);
+		verify(preferenceRepository).save(saved.capture());
+		assertThat(saved.getValue().isShareWithFriends()).isFalse();
+	}
+
+	@Test
+	void updateSettings_updatesExistingRow_withoutInsertingAnother() {
+		NowPlayingPreference existing = new NowPlayingPreference(userId, false, Instant.now().minusSeconds(60));
+		when(preferenceRepository.findById(userId)).thenReturn(Optional.of(existing));
+
+		service.updateSettings(userId, new UpdateNowPlayingSettingsRequest(true));
+
+		assertThat(existing.isShareWithFriends()).isTrue();
+		verify(preferenceRepository, never()).save(any());
+	}
+
+	@Test
+	void pollLock_isTakenByFirstCallerOnly() {
+		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+		when(valueOperations.setIfAbsent("now-playing:poll-lock:" + userId, "1", Duration.ofSeconds(25)))
+				.thenReturn(true, false);
+
+		assertThat(service.tryAcquirePollLock(userId)).isTrue();
+		assertThat(service.tryAcquirePollLock(userId)).isFalse();
 	}
 }
