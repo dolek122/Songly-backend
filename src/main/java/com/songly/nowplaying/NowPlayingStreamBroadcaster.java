@@ -7,13 +7,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /**
- * Most między zmianą statusu a strumieniami SSE (ADR 0007, Etap 1): na
- * {@link NowPlayingStatusChangedEvent} pushuje nowy status do połączonych
- * <b>znajomych</b> użytkownika, którego status się zmienił.
+ * Most między zmianą statusu a strumieniami SSE (ADR 0007, Etapy 1–2): dla
+ * {@link NowPlayingStatusChangedMessage} odebranej z kanału Redis pushuje nowy
+ * status do połączonych <b>znajomych</b> użytkownika, którego status się
+ * zmienił.
  *
  * <p>
  * Prywatność (Claude.md §9): odbiorcy to znajomi liczeni <b>w momencie
@@ -36,8 +36,12 @@ class NowPlayingStreamBroadcaster {
 		this.profileDirectory = profileDirectory;
 	}
 
-	@EventListener
-	void onStatusChanged(NowPlayingStatusChangedEvent event) {
+	void broadcast(NowPlayingStatusChangedMessage event) {
+		// Fan-out z Etapu 2 dowozi każdą zmianę na każdą instancję, także taką, na
+		// której nikt nie ma otwartego strumienia — tam nie ma po co pytać o graf.
+		if (!hub.hasAnySubscriber()) {
+			return;
+		}
 		UUID subjectId = event.userId();
 		// Tylko znajomi, którzy naprawdę słuchają (mają otwarty strumień) — bez tego
 		// filtra liczylibyśmy profil i iterowali po znajomych bez żadnego odbiorcy.

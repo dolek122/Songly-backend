@@ -48,13 +48,14 @@ class NowPlayingStreamBroadcasterTest {
 		UUID connectedFriend = UUID.randomUUID();
 		UUID offlineFriend = UUID.randomUUID();
 		NowPlayingStatusResponse status = status();
+		when(hub.hasAnySubscriber()).thenReturn(true);
 		when(socialGraph.friendIds(subject)).thenReturn(Set.of(connectedFriend, offlineFriend));
 		when(hub.hasSubscribers(connectedFriend)).thenReturn(true);
 		when(hub.hasSubscribers(offlineFriend)).thenReturn(false);
 		when(profileDirectory.displayNames(Set.of(subject))).thenReturn(Map.of(subject, "Ada"));
 		when(profileDirectory.avatarUrls(Set.of(subject))).thenReturn(Map.of(subject, "http://a/ada.png"));
 
-		broadcaster.onStatusChanged(new NowPlayingStatusChangedEvent(subject, status));
+		broadcaster.broadcast(new NowPlayingStatusChangedMessage(subject, status));
 
 		ArgumentCaptor<FriendNowPlayingResponse> payload = ArgumentCaptor.forClass(FriendNowPlayingResponse.class);
 		verify(hub).push(eq(connectedFriend), eq("now-playing"), payload.capture());
@@ -68,9 +69,10 @@ class NowPlayingStreamBroadcasterTest {
 	@Test
 	void noPushNorProfileLookup_whenSubjectHasNoFriends() {
 		UUID subject = UUID.randomUUID();
+		when(hub.hasAnySubscriber()).thenReturn(true);
 		when(socialGraph.friendIds(subject)).thenReturn(Set.of());
 
-		broadcaster.onStatusChanged(new NowPlayingStatusChangedEvent(subject, status()));
+		broadcaster.broadcast(new NowPlayingStatusChangedMessage(subject, status()));
 
 		verifyNoInteractions(profileDirectory);
 		verify(hub, never()).push(any(), any(), any());
@@ -80,12 +82,27 @@ class NowPlayingStreamBroadcasterTest {
 	void noPushNorProfileLookup_whenNoFriendIsConnected() {
 		UUID subject = UUID.randomUUID();
 		UUID friend = UUID.randomUUID();
+		when(hub.hasAnySubscriber()).thenReturn(true);
 		when(socialGraph.friendIds(subject)).thenReturn(Set.of(friend));
 		when(hub.hasSubscribers(friend)).thenReturn(false);
 
-		broadcaster.onStatusChanged(new NowPlayingStatusChangedEvent(subject, status()));
+		broadcaster.broadcast(new NowPlayingStatusChangedMessage(subject, status()));
 
 		verifyNoInteractions(profileDirectory);
+		verify(hub, never()).push(any(), any(), any());
+	}
+
+	/**
+	 * Fan-out z Etapu 2 dowozi każdą zmianę na każdą instancję — ta bez ani jednego
+	 * strumienia nie może za to płacić zapytaniem o graf znajomych.
+	 */
+	@Test
+	void dropsMessage_withoutTouchingGraph_whenInstanceHoldsNoStreams() {
+		when(hub.hasAnySubscriber()).thenReturn(false);
+
+		broadcaster.broadcast(new NowPlayingStatusChangedMessage(UUID.randomUUID(), status()));
+
+		verifyNoInteractions(socialGraph, profileDirectory);
 		verify(hub, never()).push(any(), any(), any());
 	}
 }

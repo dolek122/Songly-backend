@@ -16,7 +16,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,12 +45,12 @@ class NowPlayingService {
 	private final NowPlayingProperties properties;
 	private final SocialGraph socialGraph;
 	private final ProfileDirectory profileDirectory;
-	private final ApplicationEventPublisher eventPublisher;
+	private final NowPlayingStatusPublisher statusPublisher;
 	private final SecureRandom secureRandom = new SecureRandom();
 
 	NowPlayingService(MusicProvider musicProvider, MusicProviderLinkRepository linkRepository,
 			StringRedisTemplate redisTemplate, ObjectMapper objectMapper, NowPlayingProperties properties,
-			SocialGraph socialGraph, ProfileDirectory profileDirectory, ApplicationEventPublisher eventPublisher) {
+			SocialGraph socialGraph, ProfileDirectory profileDirectory, NowPlayingStatusPublisher statusPublisher) {
 		this.musicProvider = musicProvider;
 		this.linkRepository = linkRepository;
 		this.redisTemplate = redisTemplate;
@@ -59,7 +58,7 @@ class NowPlayingService {
 		this.properties = properties;
 		this.socialGraph = socialGraph;
 		this.profileDirectory = profileDirectory;
-		this.eventPublisher = eventPublisher;
+		this.statusPublisher = statusPublisher;
 	}
 
 	String beginConnect(UUID userId) {
@@ -100,7 +99,7 @@ class NowPlayingService {
 				request.album(), null, true, Instant.now());
 		redisTemplate.opsForValue().set(MANUAL_KEY_PREFIX + userId, objectMapper.writeValueAsString(response),
 				properties.getManualStatusTtl());
-		eventPublisher.publishEvent(new NowPlayingStatusChangedEvent(userId, response));
+		statusPublisher.publish(userId, response);
 	}
 
 	void clearManualStatus(UUID userId) {
@@ -192,7 +191,7 @@ class NowPlayingService {
 		}
 		String previous = redisTemplate.opsForValue().get(CACHE_KEY_PREFIX + userId);
 		fetchAndCache(userId).filter(fresh -> isDifferentTrack(previous, fresh))
-				.ifPresent(fresh -> eventPublisher.publishEvent(new NowPlayingStatusChangedEvent(userId, fresh)));
+				.ifPresent(fresh -> statusPublisher.publish(userId, fresh));
 	}
 
 	private Optional<NowPlayingStatusResponse> fetchAndCache(UUID userId) {

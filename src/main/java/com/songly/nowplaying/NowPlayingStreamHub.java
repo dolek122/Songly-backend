@@ -13,8 +13,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * Rejestr otwartych strumieni SSE per użytkownik (ADR 0007, Etap 1). Trzyma
- * połączenia w pamięci instancji — przy horyzontalnym skalowaniu fan-out między
- * instancjami dołoży Redis Pub/Sub (Etap 2), ale sam rejestr pozostaje lokalny.
+ * połączenia w pamięci instancji — fan-out między instancjami robi Redis
+ * Pub/Sub (Etap 2), ale sam rejestr z natury pozostaje lokalny: emitter to
+ * otwarte gniazdo tego konkretnego procesu.
  *
  * <p>
  * Stan ulotny: po restarcie instancji klienci się rozłączają i
@@ -74,6 +75,14 @@ class NowPlayingStreamHub {
 	/** Czy użytkownik ma choć jeden otwarty strumień (kogoś, kto go obserwuje). */
 	boolean hasSubscribers(UUID userId) {
 		return emitters.containsKey(userId);
+	}
+
+	/**
+	 * Czy ta instancja trzyma jakikolwiek strumień — pozwala odrzucić wiadomość z
+	 * kanału Redis (ADR 0007, Etap 2) bez zapytania o graf znajomych.
+	 */
+	boolean hasAnySubscriber() {
+		return !emitters.isEmpty();
 	}
 
 	/**

@@ -23,7 +23,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
+
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import tools.jackson.databind.ObjectMapper;
@@ -57,7 +57,7 @@ class NowPlayingServiceRefreshTest {
 	private ProfileDirectory profileDirectory;
 
 	@Mock
-	private ApplicationEventPublisher eventPublisher;
+	private NowPlayingStatusPublisher statusPublisher;
 
 	private final ObjectMapper objectMapper = new ObjectMapper();
 	private final NowPlayingProperties properties = new NowPlayingProperties();
@@ -68,7 +68,7 @@ class NowPlayingServiceRefreshTest {
 	@BeforeEach
 	void setUp() {
 		service = new NowPlayingService(musicProvider, linkRepository, redisTemplate, objectMapper, properties,
-				socialGraph, profileDirectory, eventPublisher);
+				socialGraph, profileDirectory, statusPublisher);
 	}
 
 	private void provider(String title) {
@@ -92,11 +92,9 @@ class NowPlayingServiceRefreshTest {
 		service.refreshFromProvider(userId);
 
 		verify(valueOperations).set(eq(CACHE_KEY_PREFIX + userId), anyString(), eq(Duration.ofSeconds(45)));
-		ArgumentCaptor<NowPlayingStatusChangedEvent> event = ArgumentCaptor
-				.forClass(NowPlayingStatusChangedEvent.class);
-		verify(eventPublisher).publishEvent(event.capture());
-		assertThat(event.getValue().userId()).isEqualTo(userId);
-		assertThat(event.getValue().status().title()).isEqualTo("Love of My Life");
+		ArgumentCaptor<NowPlayingStatusResponse> published = ArgumentCaptor.forClass(NowPlayingStatusResponse.class);
+		verify(statusPublisher).publish(eq(userId), published.capture());
+		assertThat(published.getValue().title()).isEqualTo("Love of My Life");
 	}
 
 	@Test
@@ -108,7 +106,7 @@ class NowPlayingServiceRefreshTest {
 
 		service.refreshFromProvider(userId);
 
-		verify(eventPublisher).publishEvent(any(NowPlayingStatusChangedEvent.class));
+		verify(statusPublisher).publish(eq(userId), any(NowPlayingStatusResponse.class));
 	}
 
 	@Test
@@ -122,7 +120,7 @@ class NowPlayingServiceRefreshTest {
 
 		// TTL trzeba odnowić mimo braku zmiany, inaczej status zniknie z /friends
 		verify(valueOperations).set(eq(CACHE_KEY_PREFIX + userId), anyString(), eq(Duration.ofSeconds(45)));
-		verify(eventPublisher, never()).publishEvent(any(NowPlayingStatusChangedEvent.class));
+		verify(statusPublisher, never()).publish(any(), any());
 	}
 
 	@Test
@@ -135,7 +133,7 @@ class NowPlayingServiceRefreshTest {
 		service.refreshFromProvider(userId);
 
 		verify(valueOperations).set(CACHE_KEY_PREFIX + userId, "NOTHING_PLAYING", Duration.ofSeconds(45));
-		verify(eventPublisher, never()).publishEvent(any(NowPlayingStatusChangedEvent.class));
+		verify(statusPublisher, never()).publish(any(), any());
 	}
 
 	@Test
@@ -144,7 +142,7 @@ class NowPlayingServiceRefreshTest {
 
 		service.refreshFromProvider(userId);
 
-		verifyNoInteractions(musicProvider, eventPublisher);
+		verifyNoInteractions(musicProvider, statusPublisher);
 	}
 
 	@Test
