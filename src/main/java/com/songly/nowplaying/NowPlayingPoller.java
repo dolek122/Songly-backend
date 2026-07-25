@@ -50,14 +50,16 @@ class NowPlayingPoller {
 			return;
 		}
 		int refreshed = 0;
-		for (UUID userId : nowPlayingService.pollableUserIds(observed)) {
-			// Przy wielu instancjach ten sam obserwowany user siedzi na liście u każdej
-			// z nich — lock sprawia, że w danym cyklu odpytuje go dokładnie jedna
-			// (ADR 0007, Etap 4). Zmianę i tak roznosi kanał presence do pozostałych.
-			if (!nowPlayingService.tryAcquirePollLock(userId)) {
-				continue;
-			}
+		for (UUID userId : pollableUserIds(observed)) {
 			try {
+				// Przy wielu instancjach ten sam obserwowany user siedzi na liście u każdej
+				// z nich — lock sprawia, że w danym cyklu odpytuje go dokładnie jedna
+				// (ADR 0007, Etap 4). Zmianę i tak roznosi kanał presence do pozostałych.
+				// Wewnątrz try, bo nieodebrany lock i błąd Redisa to dwie różne rzeczy:
+				// pierwsze jest normalne, drugie nie może zabrać reszty przebiegu.
+				if (!nowPlayingService.tryAcquirePollLock(userId)) {
+					continue;
+				}
 				nowPlayingService.refreshFromProvider(userId);
 				refreshed++;
 			} catch (RuntimeException ex) {
@@ -77,6 +79,20 @@ class NowPlayingPoller {
 			}
 		}
 		log.debug("Poll now-playing: odświeżono {} z {} obserwowanych użytkowników", refreshed, observed.size());
+	}
+
+	/**
+	 * Zapytanie o użytkowników z podłączonym providerem nie może przewrócić całego
+	 * przebiegu: sprawdzenie wygasłych statusów niżej nie zależy od providera i ma
+	 * się wykonać nawet wtedy, gdy baza akurat nie odpowiada.
+	 */
+	private Set<UUID> pollableUserIds(Set<UUID> observed) {
+		try {
+			return nowPlayingService.pollableUserIds(observed);
+		} catch (RuntimeException ex) {
+			log.warn("Nie udało się ustalić, kogo odpytać u providera: {}", ex.toString());
+			return Set.of();
+		}
 	}
 
 	/**

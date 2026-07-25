@@ -786,15 +786,6 @@
         "required" : [ "genreIds" ],
         "type" : "object"
       },
-      "SseEmitter" : {
-        "properties" : {
-          "timeout" : {
-            "format" : "int64",
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
       "UnreadCountResponse" : {
         "properties" : {
           "count" : {
@@ -1940,11 +1931,21 @@
             "content" : {
               "text/event-stream" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/SseEmitter"
+                  "$ref" : "#/components/schemas/FriendNowPlayingResponse"
                 }
               }
             },
-            "description" : "OK"
+            "description" : "Strumień zdarzeń `now-playing`. Każde zdarzenie niesie jeden obiekt; `status: null` znaczy, że znajomy przestał słuchać."
+          },
+          "429" : {
+            "content" : {
+              "text/event-stream" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Przekroczony limit równoległych strumieni na użytkownika"
           }
         },
         "security" : [ {
