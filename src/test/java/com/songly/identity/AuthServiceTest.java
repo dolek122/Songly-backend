@@ -149,7 +149,7 @@ class AuthServiceTest {
 	void refresh_throws_whenSessionAlreadyRevoked() {
 		Session revoked = new Session(UUID.randomUUID(), UUID.randomUUID(), "hash", Instant.now(),
 				Instant.now().plusSeconds(3600));
-		revoked.revoke();
+		revoked.revoke(Instant.now());
 		when(sessionRepository.findByRefreshTokenHash(anyString())).thenReturn(Optional.of(revoked));
 
 		assertThatThrownBy(() -> authService.refresh(new RefreshRequest("revoked-token")))

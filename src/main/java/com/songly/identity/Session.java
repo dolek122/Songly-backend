@@ -33,6 +33,15 @@ class Session {
 	@Column(nullable = false)
 	private boolean revoked;
 
+	/**
+	 * {@code null}, dopóki sesja nie została odwołana. Potrzebne sprzątaniu:
+	 * odwołany wiersz zachowuje pierwotne {@code expiresAt} (nawet +30 dni), więc
+	 * bez tej daty czekałby na skasowanie znacznie dłużej, niż jest do czegokolwiek
+	 * potrzebny.
+	 */
+	@Column(name = "revoked_at")
+	private Instant revokedAt;
+
 	protected Session() {
 	}
 
@@ -69,7 +78,12 @@ class Session {
 		return !revoked && now.isBefore(expiresAt);
 	}
 
-	public void revoke() {
+	public Instant getRevokedAt() {
+		return revokedAt;
+	}
+
+	public void revoke(Instant now) {
 		this.revoked = true;
+		this.revokedAt = now;
 	}
 }
