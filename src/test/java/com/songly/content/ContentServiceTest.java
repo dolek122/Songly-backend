@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.songly.content.dto.CommentResponse;
 import com.songly.content.dto.PostResponse;
+import com.songly.community.CommunityMembership;
 import com.songly.profile.ProfileDirectory;
 import com.songly.social.SocialGraph;
 import java.time.Instant;
@@ -47,6 +48,9 @@ class ContentServiceTest {
 	private SocialGraph socialGraph;
 
 	@Mock
+	private CommunityMembership communityMembership;
+
+	@Mock
 	private ApplicationEventPublisher eventPublisher;
 
 	private ContentService contentService;
@@ -54,7 +58,7 @@ class ContentServiceTest {
 	@BeforeEach
 	void setUp() {
 		contentService = new ContentService(postRepository, likeRepository, commentRepository, shareRepository,
-				profileDirectory, socialGraph, eventPublisher);
+				profileDirectory, socialGraph, communityMembership, eventPublisher);
 	}
 
 	@Test

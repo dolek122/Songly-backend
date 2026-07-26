@@ -10,16 +10,35 @@ import org.springframework.data.repository.query.Param;
 
 interface PostRepository extends JpaRepository<Post, UUID> {
 
-	Page<Post> findAllByOrderByCreatedAtDesc(Pageable pageable);
+	/**
+	 * Wszystkie odczyty „osi czasu" pomijają posty społecznościowe: te należą do
+	 * swojej społeczności, nie do publicznej listy ani profilu autora. Stąd
+	 * {@code CommunityIdIsNull} w nazwach — bez tego post z niszowej społeczności
+	 * wypływałby na wierzch u ludzi, którzy do niej nie należą.
+	 */
+	Page<Post> findByCommunityIdIsNullOrderByCreatedAtDesc(Pageable pageable);
 
-	Page<Post> findByAuthorIdOrderByCreatedAtDesc(UUID authorId, Pageable pageable);
+	Page<Post> findByAuthorIdAndCommunityIdIsNullOrderByCreatedAtDesc(UUID authorId, Pageable pageable);
+
+	Page<Post> findByCommunityIdOrderByCreatedAtDesc(UUID communityId, Pageable pageable);
 
 	void deleteByAuthorId(UUID authorId);
 
-	/** Feed: posty napisane albo udostępnione przez podanych użytkowników. */
-	@Query(value = "select p from Post p where p.authorId in :userIds "
-			+ "or exists (select 1 from Share s where s.postId = p.id and s.userId in :userIds) "
-			+ "order by p.createdAt desc", countQuery = "select count(p) from Post p where p.authorId in :userIds "
-					+ "or exists (select 1 from Share s where s.postId = p.id and s.userId in :userIds)")
+	void deleteByCommunityId(UUID communityId);
+
+	/**
+	 * Feed: posty napisane albo udostępnione przez podanych użytkowników, bez
+	 * postów społecznościowych.
+	 *
+	 * <p>
+	 * Warunek na {@code communityId} dotyczy posta, nie udostępnienia — inaczej
+	 * udostępnienie posta ze społeczności przemycałoby go do feedu osób, które jej
+	 * nie widzą.
+	 */
+	@Query(value = "select p from Post p where p.communityId is null and (p.authorId in :userIds "
+			+ "or exists (select 1 from Share s where s.postId = p.id and s.userId in :userIds)) "
+			+ "order by p.createdAt desc", countQuery = "select count(p) from Post p where p.communityId is null "
+					+ "and (p.authorId in :userIds "
+					+ "or exists (select 1 from Share s where s.postId = p.id and s.userId in :userIds))")
 	Page<Post> findFeedPosts(@Param("userIds") Collection<UUID> userIds, Pageable pageable);
 }

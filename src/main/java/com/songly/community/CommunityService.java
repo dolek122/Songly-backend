@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-class CommunityService {
+class CommunityService implements CommunityMembership {
 
 	private final CommunityRepository communityRepository;
 	private final CommunityMemberRepository memberRepository;
@@ -60,6 +60,36 @@ class CommunityService {
 	void delete(UUID communityId, UUID requesterId) {
 		Community community = requireCommunity(communityId);
 		requireOwner(community, requesterId);
+		deleteWithDependents(community);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public boolean exists(UUID communityId) {
+		return communityRepository.existsById(communityId);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public boolean isMember(UUID communityId, UUID userId) {
+		return memberRepository.existsById(new CommunityMemberId(communityId, userId));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public boolean isOwner(UUID communityId, UUID userId) {
+		return communityRepository.findById(communityId).map(community -> community.getOwnerId().equals(userId))
+				.orElse(false);
+	}
+
+	/**
+	 * Zdarzenie leci <b>przed</b> usunięciem wiersza: {@code posts} ma klucz obcy
+	 * do {@code communities}, więc moduł content musi zdążyć posprzątać swoje
+	 * wiersze w tej samej transakcji (Claude.md §9, ten sam mechanizm co przy
+	 * kasowaniu konta).
+	 */
+	private void deleteWithDependents(Community community) {
+		eventPublisher.publishEvent(new CommunityDeletedEvent(community.getId()));
 		communityRepository.delete(community);
 	}
 
@@ -121,11 +151,16 @@ class CommunityService {
 	 * za chwilę i tak znikną), potem społeczności które posiada — usunięcie
 	 * community kaskadowo (ON DELETE CASCADE community_id) zabiera członkostwa
 	 * pozostałych userów w tej społeczności.
+	 *
+	 * <p>
+	 * Celowo <b>nie</b> masowym {@code deleteByOwnerId}: kasowanie wsadowe omija
+	 * cykl życia encji, więc nie poszłoby ani jedno {@link CommunityDeletedEvent} i
+	 * posty w tych społecznościach zostałyby z wiszącym kluczem obcym.
 	 */
 	@Transactional
 	void deleteAccountData(UUID userId) {
 		memberRepository.deleteByUserId(userId);
-		communityRepository.deleteByOwnerId(userId);
+		communityRepository.findByOwnerId(userId).forEach(this::deleteWithDependents);
 	}
 
 	@Transactional(readOnly = true)
