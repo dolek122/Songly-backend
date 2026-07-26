@@ -1,5 +1,6 @@
 package com.songly.content;
 
+import com.songly.community.CommunityMembership;
 import com.songly.content.dto.CommentResponse;
 import com.songly.content.dto.PostResponse;
 import com.songly.profile.ProfileDirectory;
@@ -27,28 +28,48 @@ class ContentService {
 	private final ShareRepository shareRepository;
 	private final ProfileDirectory profileDirectory;
 	private final SocialGraph socialGraph;
+	private final CommunityMembership communityMembership;
 	private final ApplicationEventPublisher eventPublisher;
 
 	ContentService(PostRepository postRepository, LikeRepository likeRepository, CommentRepository commentRepository,
 			ShareRepository shareRepository, ProfileDirectory profileDirectory, SocialGraph socialGraph,
-			ApplicationEventPublisher eventPublisher) {
+			CommunityMembership communityMembership, ApplicationEventPublisher eventPublisher) {
 		this.postRepository = postRepository;
 		this.likeRepository = likeRepository;
 		this.commentRepository = commentRepository;
 		this.shareRepository = shareRepository;
 		this.profileDirectory = profileDirectory;
 		this.socialGraph = socialGraph;
+		this.communityMembership = communityMembership;
 		this.eventPublisher = eventPublisher;
 	}
 
 	@Transactional
 	PostResponse createPost(UUID authorId, String content) {
-		Post post = new Post(UUID.randomUUID(), authorId, content, Instant.now());
+		return createPost(authorId, content, null);
+	}
+
+	/**
+	 * {@code communityId == null} to zwykły post. Publikacja w społeczności wymaga
+	 * członkostwa — dołączenie jest otwarte i natychmiastowe, więc to nie bariera,
+	 * a wymóg, żeby pisanie w społeczności było świadomą decyzją.
+	 */
+	@Transactional
+	PostResponse createPost(UUID authorId, String content, UUID communityId) {
+		if (communityId != null) {
+			if (!communityMembership.exists(communityId)) {
+				throw new UnknownCommunityException();
+			}
+			if (!communityMembership.isMember(communityId, authorId)) {
+				throw new NotCommunityMemberException();
+			}
+		}
+		Post post = new Post(UUID.randomUUID(), authorId, content, Instant.now(), communityId);
 		postRepository.save(post);
 		String displayName = profileDirectory.displayNames(Set.of(authorId)).get(authorId);
 		String avatarUrl = profileDirectory.avatarUrls(Set.of(authorId)).get(authorId);
 		return new PostResponse(post.getId(), authorId, displayName, avatarUrl, post.getContent(), post.getCreatedAt(),
-				0, false, 0, 0, false);
+				communityId, 0, false, 0, 0, false);
 	}
 
 	@Transactional(readOnly = true)
@@ -57,14 +78,30 @@ class ContentService {
 		return toResponses(List.of(post), viewerId).get(0);
 	}
 
+	/**
+	 * Bez postów społecznościowych — te należą do swojej społeczności, nie do
+	 * publicznej listy ani osi czasu autora.
+	 */
 	@Transactional(readOnly = true)
 	Page<PostResponse> listPosts(UUID authorId, UUID viewerId, Pageable pageable) {
 		Page<Post> page = authorId == null
-				? postRepository.findAllByOrderByCreatedAtDesc(pageable)
-				: postRepository.findByAuthorIdOrderByCreatedAtDesc(authorId, pageable);
-		Map<UUID, PostResponse> byId = toResponses(page.getContent(), viewerId).stream()
-				.collect(Collectors.toMap(PostResponse::id, Function.identity()));
-		return page.map(post -> byId.get(post.getId()));
+				? postRepository.findByCommunityIdIsNullOrderByCreatedAtDesc(pageable)
+				: postRepository.findByAuthorIdAndCommunityIdIsNullOrderByCreatedAtDesc(authorId, pageable);
+		return mapToResponses(page, viewerId);
+	}
+
+	/**
+	 * Posty jednej społeczności. Odczyt jest otwarty dla każdego zalogowanego, tak
+	 * jak sama społeczność (listowanie, podglądanie i dołączanie nie wymagają dziś
+	 * zgody właściciela) — ukrywanie treści przed nie-członkami byłoby ochroną
+	 * pozorną, skoro dołączenie to jedno żądanie.
+	 */
+	@Transactional(readOnly = true)
+	Page<PostResponse> listCommunityPosts(UUID communityId, UUID viewerId, Pageable pageable) {
+		if (!communityMembership.exists(communityId)) {
+			throw new UnknownCommunityException();
+		}
+		return mapToResponses(postRepository.findByCommunityIdOrderByCreatedAtDesc(communityId, pageable), viewerId);
 	}
 
 	/**
@@ -77,19 +114,41 @@ class ContentService {
 	Page<PostResponse> feed(UUID viewerId, Pageable pageable) {
 		Set<UUID> authorIds = new HashSet<>(socialGraph.friendIds(viewerId));
 		authorIds.add(viewerId);
-		Page<Post> page = postRepository.findFeedPosts(authorIds, pageable);
-		Map<UUID, PostResponse> byId = toResponses(page.getContent(), viewerId).stream()
-				.collect(Collectors.toMap(PostResponse::id, Function.identity()));
-		return page.map(post -> byId.get(post.getId()));
+		return mapToResponses(postRepository.findFeedPosts(authorIds, pageable), viewerId);
 	}
 
+	/**
+	 * Autor kasuje swoje posty wszędzie; dodatkowo <b>właściciel społeczności
+	 * kasuje dowolny post w swojej społeczności</b> — to minimum moderacji, bez
+	 * którego społeczność nie ma żadnej obrony przed spamem (Claude.md §8).
+	 */
 	@Transactional
 	void deletePost(UUID postId, UUID requesterId) {
 		Post post = postRepository.findById(postId).orElseThrow(PostNotFoundException::new);
-		if (!post.getAuthorId().equals(requesterId)) {
+		if (!post.getAuthorId().equals(requesterId) && !moderates(post, requesterId)) {
 			throw new NotResourceOwnerException();
 		}
 		postRepository.delete(post);
+	}
+
+	private boolean moderates(Post post, UUID requesterId) {
+		return post.getCommunityId() != null && communityMembership.isOwner(post.getCommunityId(), requesterId);
+	}
+
+	/**
+	 * Sprząta posty usuwanej społeczności. Wołane synchronicznie z transakcji
+	 * modułu community, <b>przed</b> usunięciem wiersza {@code communities} —
+	 * {@code posts.community_id} ma do niego klucz obcy (Claude.md §9).
+	 */
+	@Transactional
+	void deleteCommunityData(UUID communityId) {
+		postRepository.deleteByCommunityId(communityId);
+	}
+
+	private Page<PostResponse> mapToResponses(Page<Post> page, UUID viewerId) {
+		Map<UUID, PostResponse> byId = toResponses(page.getContent(), viewerId).stream()
+				.collect(Collectors.toMap(PostResponse::id, Function.identity()));
+		return page.map(post -> byId.get(post.getId()));
 	}
 
 	@Transactional
@@ -199,7 +258,7 @@ class ContentService {
 		Map<UUID, String> avatars = profileDirectory.avatarUrls(authorIds);
 		return posts.stream()
 				.map(post -> new PostResponse(post.getId(), post.getAuthorId(), names.get(post.getAuthorId()),
-						avatars.get(post.getAuthorId()), post.getContent(), post.getCreatedAt(),
+						avatars.get(post.getAuthorId()), post.getContent(), post.getCreatedAt(), post.getCommunityId(),
 						likeCounts.getOrDefault(post.getId(), 0L), likedByViewer.contains(post.getId()),
 						commentCounts.getOrDefault(post.getId(), 0L), shareCounts.getOrDefault(post.getId(), 0L),
 						sharedByViewer.contains(post.getId())))

@@ -23,14 +23,28 @@ class Post {
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
 
+	/**
+	 * {@code null} dla zwykłego posta; ustawione dla posta opublikowanego w
+	 * społeczności. Te drugie nie trafiają do feedu znajomych ani na profil autora
+	 * — należą do społeczności, nie do jego osi czasu.
+	 */
+	@Column(name = "community_id")
+	private UUID communityId;
+
 	protected Post() {
 	}
 
+	/** Zwykły post, poza jakąkolwiek społecznością. */
 	Post(UUID id, UUID authorId, String content, Instant createdAt) {
+		this(id, authorId, content, createdAt, null);
+	}
+
+	Post(UUID id, UUID authorId, String content, Instant createdAt, UUID communityId) {
 		this.id = id;
 		this.authorId = authorId;
 		this.content = content;
 		this.createdAt = createdAt;
+		this.communityId = communityId;
 	}
 
 	UUID getId() {
@@ -47,5 +61,9 @@ class Post {
 
 	Instant getCreatedAt() {
 		return createdAt;
+	}
+
+	UUID getCommunityId() {
+		return communityId;
 	}
 }

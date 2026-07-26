@@ -665,6 +665,10 @@
             "format" : "int64",
             "type" : "integer"
           },
+          "communityId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
           "content" : {
             "type" : "string"
           },
@@ -1360,6 +1364,81 @@
           "bearerAuth" : [ ]
         } ],
         "tags" : [ "community-controller" ]
+      }
+    },
+    "/api/v1/communities/{communityId}/posts" : {
+      "get" : {
+        "operationId" : "listCommunityPosts",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "communityId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "pageable",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/Pageable"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedModelPostResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "community-post-controller" ]
+      },
+      "post" : {
+        "operationId" : "createCommunityPost",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "communityId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreatePostRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PostResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "community-post-controller" ]
       }
     },
     "/api/v1/feed" : {
