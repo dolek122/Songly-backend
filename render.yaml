@@ -44,6 +44,10 @@ services:
           type: keyvalue
           name: songly-redis
           property: connectionString
+      # Render terminuje ruch na swoim proxy, więc bez tego rate limiter widziałby
+      # jeden adres dla wszystkich klientów i odcinał ich wspólnym limitem.
+      - key: FORWARD_HEADERS_STRATEGY
+        value: framework
       - key: JWT_SECRET
         sync: false
       - key: NOW_PLAYING_TOKEN_KEY
