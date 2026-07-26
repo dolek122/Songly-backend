@@ -8,13 +8,14 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.songly.social.SocialGraph;
+import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -30,8 +31,21 @@ class NowPlayingPollerTest {
 	@Mock
 	private NowPlayingService nowPlayingService;
 
-	@InjectMocks
+	private final NowPlayingProperties properties = new NowPlayingProperties();
 	private NowPlayingPoller poller;
+
+	@BeforeEach
+	void setUp() {
+		poller = new NowPlayingPoller(hub, socialGraph, nowPlayingService, properties);
+	}
+
+	private static SpotifyApiException spotifyError(int status) {
+		return new SpotifyApiException(status, null, null);
+	}
+
+	private static SpotifyApiException rateLimited(Duration retryAfter) {
+		return new SpotifyApiException(429, null, retryAfter);
+	}
 
 	@Test
 	void refreshesFriendsOfConnectedViewers_deduplicatingSharedFriends() {
@@ -150,7 +164,7 @@ class NowPlayingPollerTest {
 		when(hub.connectedUserIds()).thenReturn(Set.of(viewer));
 		when(socialGraph.friendIds(viewer)).thenReturn(new LinkedHashSet<>(List.of(failing, healthy)));
 		when(nowPlayingService.pollableUserIds(any())).thenReturn(Set.of());
-		doThrow(new SpotifyApiException(503)).when(nowPlayingService).publishStoppedIfStatusExpired(failing);
+		doThrow(spotifyError(503)).when(nowPlayingService).publishStoppedIfStatusExpired(failing);
 
 		poller.pollObservedUsers();
 
@@ -166,10 +180,65 @@ class NowPlayingPollerTest {
 		when(socialGraph.friendIds(viewer)).thenReturn(Set.of(failing, healthy));
 		when(nowPlayingService.tryAcquirePollLock(any())).thenReturn(true);
 		when(nowPlayingService.pollableUserIds(any())).thenReturn(new LinkedHashSet<>(List.of(failing, healthy)));
-		doThrow(new SpotifyApiException(503)).when(nowPlayingService).refreshFromProvider(failing);
+		doThrow(spotifyError(503)).when(nowPlayingService).refreshFromProvider(failing);
 
 		poller.pollObservedUsers();
 
 		verify(nowPlayingService).refreshFromProvider(healthy);
+	}
+
+	/**
+	 * Rate limit Spotify jest per client ID, więc kolejni użytkownicy w tym samym
+	 * przebiegu dostaliby to samo 429 — dopytywanie tylko pogłębiłoby karę. Stąd
+	 * przerwanie przebiegu, inaczej niż przy zwykłym błędzie providera wyżej.
+	 */
+	@Test
+	void rateLimit_abortsRunAndBacksOffForRetryAfter() {
+		UUID viewer = UUID.randomUUID();
+		UUID rateLimited = UUID.randomUUID();
+		UUID next = UUID.randomUUID();
+		when(hub.connectedUserIds()).thenReturn(Set.of(viewer));
+		when(socialGraph.friendIds(viewer)).thenReturn(new LinkedHashSet<>(List.of(rateLimited, next)));
+		when(nowPlayingService.pollableUserIds(any())).thenReturn(new LinkedHashSet<>(List.of(rateLimited, next)));
+		when(nowPlayingService.tryAcquirePollLock(rateLimited)).thenReturn(true);
+		doThrow(rateLimited(Duration.ofSeconds(90))).when(nowPlayingService).refreshFromProvider(rateLimited);
+
+		poller.pollObservedUsers();
+
+		verify(nowPlayingService).applyProviderBackoff(Duration.ofSeconds(90));
+		verify(nowPlayingService, never()).refreshFromProvider(next);
+		// Zamiatanie wygasłych statusów nie dotyka providera, więc biegnie dalej.
+		verify(nowPlayingService).publishStoppedIfStatusExpired(next);
+	}
+
+	@Test
+	void rateLimitWithoutRetryAfter_usesConfiguredBackoff() {
+		UUID viewer = UUID.randomUUID();
+		UUID friend = UUID.randomUUID();
+		properties.getPoll().setProviderBackoff(Duration.ofMinutes(5));
+		when(hub.connectedUserIds()).thenReturn(Set.of(viewer));
+		when(socialGraph.friendIds(viewer)).thenReturn(Set.of(friend));
+		when(nowPlayingService.pollableUserIds(any())).thenReturn(Set.of(friend));
+		when(nowPlayingService.tryAcquirePollLock(friend)).thenReturn(true);
+		doThrow(rateLimited(null)).when(nowPlayingService).refreshFromProvider(friend);
+
+		poller.pollObservedUsers();
+
+		verify(nowPlayingService).applyProviderBackoff(Duration.ofMinutes(5));
+	}
+
+	@Test
+	void skipsProviderEntirely_whileBackoffIsActive() {
+		UUID viewer = UUID.randomUUID();
+		UUID friend = UUID.randomUUID();
+		when(hub.connectedUserIds()).thenReturn(Set.of(viewer));
+		when(socialGraph.friendIds(viewer)).thenReturn(Set.of(friend));
+		when(nowPlayingService.isProviderBackoffActive()).thenReturn(true);
+
+		poller.pollObservedUsers();
+
+		verify(nowPlayingService, never()).pollableUserIds(any());
+		verify(nowPlayingService, never()).refreshFromProvider(any());
+		verify(nowPlayingService).publishStoppedIfStatusExpired(friend);
 	}
 }

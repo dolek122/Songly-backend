@@ -42,7 +42,7 @@ class SpotifyProvider implements MusicProvider {
 	@Override
 	@Transactional
 	public void connect(UUID userId, String authorizationCode) {
-		SpotifyClient.TokenResponse tokens = spotifyClient.exchangeCode(authorizationCode);
+		SpotifyClient.TokenResponse tokens = exchangeCode(authorizationCode);
 		Instant now = Instant.now();
 		Instant expiresAt = now.plusSeconds(tokens.expiresInSeconds());
 		String accessEncrypted = tokenEncryptor.encrypt(tokens.accessToken());
@@ -53,8 +53,14 @@ class SpotifyProvider implements MusicProvider {
 						refreshEncrypted, expiresAt, now)));
 	}
 
+	/**
+	 * {@code noRollbackFor} nie jest ozdobnikiem: przy odwołanej zgodzie
+	 * {@link #freshAccessToken} kasuje martwy link i dopiero potem rzuca. Bez tego
+	 * wyjątku rollback cofnąłby to kasowanie i poller próbowałby tego samego
+	 * użytkownika co 30 sekund w nieskończoność.
+	 */
 	@Override
-	@Transactional
+	@Transactional(noRollbackFor = ProviderReauthorizationRequiredException.class)
 	public Optional<NowPlayingTrack> getCurrentlyPlaying(UUID userId) {
 		MusicProviderLink link = linkRepository.findByUserIdAndProvider(userId, NAME)
 				.orElseThrow(ProviderNotConnectedException::new);
@@ -66,17 +72,53 @@ class SpotifyProvider implements MusicProvider {
 		return Optional.of(toTrack(response));
 	}
 
+	private SpotifyClient.TokenResponse exchangeCode(String authorizationCode) {
+		try {
+			return spotifyClient.exchangeCode(authorizationCode);
+		} catch (SpotifyApiException ex) {
+			// Tu invalid_grant znaczy "zły kod z redirectu", a nie "cofnięta zgoda" —
+			// nie ma jeszcze żadnego linku, który mógłby umrzeć.
+			if (ex.isInvalidGrant()) {
+				throw new InvalidAuthorizationCodeException();
+			}
+			throw ex;
+		}
+	}
+
 	private String freshAccessToken(MusicProviderLink link) {
 		if (!link.isAccessTokenExpired(Instant.now())) {
 			return tokenEncryptor.decrypt(link.getAccessTokenEncrypted());
 		}
 		String refreshToken = tokenEncryptor.decrypt(link.getRefreshTokenEncrypted());
-		SpotifyClient.TokenResponse tokens = spotifyClient.refresh(refreshToken);
+		SpotifyClient.TokenResponse tokens = refresh(link, refreshToken);
 		// Spotify przy refresh_token grant zwykle nie zwraca nowego refresh tokenu
 		String newRefreshToken = tokens.refreshToken() != null ? tokens.refreshToken() : refreshToken;
 		link.updateTokens(tokenEncryptor.encrypt(tokens.accessToken()), tokenEncryptor.encrypt(newRefreshToken),
 				Instant.now().plusSeconds(tokens.expiresInSeconds()));
 		return tokens.accessToken();
+	}
+
+	/**
+	 * {@code invalid_grant} na refreshu jest nieodwracalny — użytkownik cofnął
+	 * zgodę w panelu Spotify i ten refresh token już nigdy nie zadziała. Trzymanie
+	 * takiego linku nic nie daje, a kosztuje jedno nieudane wywołanie na każdy
+	 * przebieg polla, na zawsze. Dlatego kasujemy go tutaj, przy pierwszym
+	 * dowodzie.
+	 *
+	 * <p>
+	 * Cache statusu zostawiamy — wygasa sam po {@code cache-ttl}, a znajomym
+	 * "przestał słuchać" ogłosi zamiatanie wygasłych statusów w pollerze.
+	 */
+	private SpotifyClient.TokenResponse refresh(MusicProviderLink link, String refreshToken) {
+		try {
+			return spotifyClient.refresh(refreshToken);
+		} catch (SpotifyApiException ex) {
+			if (ex.isInvalidGrant()) {
+				linkRepository.delete(link);
+				throw new ProviderReauthorizationRequiredException();
+			}
+			throw ex;
+		}
 	}
 
 	private NowPlayingTrack toTrack(SpotifyClient.CurrentlyPlayingResponse response) {

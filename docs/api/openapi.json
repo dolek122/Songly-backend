@@ -1804,13 +1804,36 @@
         "responses" : {
           "200" : {
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/NowPlayingStatusResponse"
                 }
               }
             },
-            "description" : "OK"
+            "description" : "Aktualny status"
+          },
+          "204" : {
+            "description" : "Nic aktualnie nie gra"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Utracono dostęp do serwisu muzycznego — połączenie zostało usunięte, trzeba przejść OAuth ponownie (`PROVIDER_REAUTHORIZATION_REQUIRED`)"
+          },
+          "502" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Serwis muzyczny nie odpowiedział poprawnie (`MUSIC_PROVIDER_ERROR`)"
           }
         },
         "security" : [ {
@@ -1895,8 +1918,28 @@
           }
         } ],
         "responses" : {
-          "200" : {
-            "description" : "OK"
+          "204" : {
+            "description" : "Konto połączone z serwisem muzycznym"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Nieprawidłowy lub zużyty `state` (`INVALID_OAUTH_STATE`) albo kod autoryzacyjny (`INVALID_AUTHORIZATION_CODE`)"
+          },
+          "502" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Serwis muzyczny nie odpowiedział poprawnie (`MUSIC_PROVIDER_ERROR`)"
           }
         },
         "tags" : [ "now-playing-controller" ]

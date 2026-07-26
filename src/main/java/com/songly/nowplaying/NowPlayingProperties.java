@@ -103,6 +103,7 @@ class NowPlayingProperties {
 	static class Poll {
 
 		private Duration lockTtl = Duration.ofSeconds(25);
+		private Duration providerBackoff = Duration.ofMinutes(1);
 
 		Duration getLockTtl() {
 			return lockTtl;
@@ -110,6 +111,20 @@ class NowPlayingProperties {
 
 		void setLockTtl(Duration lockTtl) {
 			this.lockTtl = lockTtl;
+		}
+
+		/**
+		 * Jak długo nie odpytujemy providera po jego 429, gdy sam nie podał
+		 * {@code Retry-After}. Minuta to dwa pominięte przebiegi przy domyślnym
+		 * interwale — dość, by nie wpaść w pętlę "limit → kara → limit", i za mało, by
+		 * presence wyglądało na zepsute.
+		 */
+		Duration getProviderBackoff() {
+			return providerBackoff;
+		}
+
+		void setProviderBackoff(Duration providerBackoff) {
+			this.providerBackoff = providerBackoff;
 		}
 	}
 
