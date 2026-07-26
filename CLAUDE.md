@@ -45,6 +45,17 @@ Dla startupu na tym etapie **mikroserwisy to pułapka** — dokładają koszt op
 
 Każdy moduł to osobny pakiet Javy (`com.songly.content`, `com.songly.nowplaying` itd.), docelowo osobny moduł Maven/Gradle jeśli projekt urośnie na tyle, że warto wymusić granice kompilatorem.
 
+**Granic pilnuje `ModuleBoundariesTest` (ArchUnit), nie sama dyscyplina.** Naruszenie granicy nie psuje żadnego innego testu — po prostu z modularnego monolitu robi się stopniowo zwykły monolit, i orientujemy się dopiero wtedy, gdy wydzielenie modułu (§10) okazuje się niewykonalne. Sześć reguł:
+
+1. Moduł sięga do innego **wyłącznie** przez jego publiczne interfejsy (`ProfileDirectory`, `SocialGraph`) i zdarzenia domenowe. Kryterium jest strukturalne, nie listą nazw — nowy moduł dostaje tę samą dyscyplinę bez dopisywania czegokolwiek w teście.
+2. Brak cykli między modułami.
+3. `common` nie zna domeny (to infrastruktura *pod* nią, nie obok).
+4. Encje JPA nie są `public`.
+5. Repozytoria nie są `public`.
+6. Kontrolery w ogóle nie widzą encji — nie mają więc jak zwrócić encji zamiast DTO.
+
+Reguły 4 i 5 wyglądają na kosmetykę, ale to one sprawiają, że **pierwszą linią obrony jest kompilator**: skoro encje i repozytoria są package-private, złamanie granicy zwykle nawet się nie skompiluje. Bez nich wystarczyłoby dopisać `public` przed encją, żeby reguła 1 przestała cokolwiek znaczyć.
+
 ---
 
 ## 4. Stack technologiczny i uzasadnienie
@@ -137,6 +148,7 @@ Nie planuj kroku 3 i 4 szczegółowo teraz — tylko zostaw sobie furtkę (dobre
 
 - **Testy**: piramida — dużo unit testów (JUnit 5 + Mockito) dla logiki biznesowej, testy integracyjne z Testcontainers (prawdziwy Postgres/Redis w kontenerze, nie H2 — H2 kłamie o zachowaniu Postgresa)
 - **CI**: GitHub Actions — na każdy PR: build, testy, linter (Spotless/Checkstyle). Nic nie wchodzi do main bez zielonego CI.
+- **Testy architektury**: `ModuleBoundariesTest` (ArchUnit) wymusza granice modułów z §2. Dopisując regułę architektoniczną, **sprawdź najpierw, że potrafi spaść** — wstaw tymczasowe naruszenie i zobacz czerwone. Reguła, która przechodzi zawsze, jest gorsza niż jej brak: daje fałszywe poczucie, że granice są pilnowane.
 - **Code review**: nawet solo — rób PR-y do siebie i czytaj diff następnego dnia na świeżo. Zaskakująco skuteczne.
 - **ADR (Architecture Decision Records)**: krótki plik markdown na każdą ważną decyzję ("dlaczego Postgres a nie Mongo", "dlaczego JWT a nie sesje") w `/docs/adr/`. Bezcenne gdy dołączy ktoś nowy albo gdy Ty sam zapomnisz za rok, dlaczego coś zrobiłeś tak a nie inaczej.
 
