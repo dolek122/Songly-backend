@@ -49,7 +49,14 @@ class NowPlayingController {
 	 * Przeglądarka wraca tu z redirectu Spotify bez JWT — endpoint jest publiczny,
 	 * a użytkownika identyfikuje jednorazowy state z Redis.
 	 */
+	// springdoc nie dokłada adnotowanych odpowiedzi do wywnioskowanych, tylko je
+	// nimi zastępuje — więc gdy opisujemy błędy, sukces trzeba wypisać razem z
+	// nimi.
 	@GetMapping("/spotify/callback")
+	@ApiResponse(responseCode = "204", description = "Konto połączone z serwisem muzycznym", content = @Content)
+	@ApiResponse(responseCode = "400", description = "Nieprawidłowy lub zużyty `state` (`INVALID_OAUTH_STATE`) "
+			+ "albo kod autoryzacyjny (`INVALID_AUTHORIZATION_CODE`)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiError.class)))
+	@ApiResponse(responseCode = "502", description = "Serwis muzyczny nie odpowiedział poprawnie (`MUSIC_PROVIDER_ERROR`)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiError.class)))
 	ResponseEntity<Void> callback(@RequestParam String code, @RequestParam String state) {
 		nowPlayingService.completeConnect(state, code);
 		return ResponseEntity.noContent().build();
@@ -62,8 +69,17 @@ class NowPlayingController {
 		return ResponseEntity.noContent().build();
 	}
 
+	/**
+	 * Jedyny endpoint, który może odpytać providera na żywo (gdy nie ma nic w
+	 * cache'u), więc jako jedyny wystawia klientowi jego awarie.
+	 */
 	@GetMapping("/me")
 	@SecurityRequirement(name = "bearerAuth")
+	@ApiResponse(responseCode = "200", description = "Aktualny status", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = NowPlayingStatusResponse.class)))
+	@ApiResponse(responseCode = "204", description = "Nic aktualnie nie gra", content = @Content)
+	@ApiResponse(responseCode = "409", description = "Utracono dostęp do serwisu muzycznego — połączenie zostało "
+			+ "usunięte, trzeba przejść OAuth ponownie (`PROVIDER_REAUTHORIZATION_REQUIRED`)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiError.class)))
+	@ApiResponse(responseCode = "502", description = "Serwis muzyczny nie odpowiedział poprawnie (`MUSIC_PROVIDER_ERROR`)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiError.class)))
 	ResponseEntity<NowPlayingStatusResponse> myStatus(Authentication authentication) {
 		return nowPlayingService.getStatus(currentUserId(authentication)).map(ResponseEntity::ok)
 				.orElseGet(() -> ResponseEntity.noContent().build());

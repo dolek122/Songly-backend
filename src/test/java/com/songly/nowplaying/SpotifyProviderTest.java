@@ -131,4 +131,50 @@ class SpotifyProviderTest {
 		assertThat(tokenEncryptor.decrypt(link.getAccessTokenEncrypted())).isEqualTo("new-access");
 		assertThat(tokenEncryptor.decrypt(link.getRefreshTokenEncrypted())).isEqualTo("refresh");
 	}
+
+	/**
+	 * Kasowanie martwego linku to sedno: bez niego poller odpytywałby tego
+	 * użytkownika co 30 sekund do końca świata, za każdym razem dostając to samo
+	 * {@code invalid_grant}.
+	 */
+	@Test
+	void getCurrentlyPlaying_deletesLink_whenConsentWasRevoked() {
+		UUID userId = UUID.randomUUID();
+		MusicProviderLink link = linkWithTokens(userId, "expired-access", "revoked", Instant.now().minusSeconds(60));
+		when(linkRepository.findByUserIdAndProvider(userId, SpotifyProvider.NAME)).thenReturn(Optional.of(link));
+		when(spotifyClient.refresh("revoked")).thenThrow(new SpotifyApiException(400, "invalid_grant", null));
+
+		assertThatThrownBy(() -> spotifyProvider.getCurrentlyPlaying(userId))
+				.isInstanceOf(ProviderReauthorizationRequiredException.class);
+
+		verify(linkRepository).delete(link);
+	}
+
+	@Test
+	void getCurrentlyPlaying_keepsLink_whenRefreshFailsForOtherReasons() {
+		UUID userId = UUID.randomUUID();
+		MusicProviderLink link = linkWithTokens(userId, "expired-access", "refresh", Instant.now().minusSeconds(60));
+		when(linkRepository.findByUserIdAndProvider(userId, SpotifyProvider.NAME)).thenReturn(Optional.of(link));
+		when(spotifyClient.refresh("refresh")).thenThrow(new SpotifyApiException(503, null, null));
+
+		assertThatThrownBy(() -> spotifyProvider.getCurrentlyPlaying(userId)).isInstanceOf(SpotifyApiException.class);
+
+		verify(linkRepository, never()).delete(any(MusicProviderLink.class));
+	}
+
+	/**
+	 * Ten sam kod błędu Spotify, inne znaczenie: przy wymianie kodu autoryzacyjnego
+	 * nie ma jeszcze żadnego linku, a wina leży po stronie żądania — więc 400, nie
+	 * "podłącz ponownie".
+	 */
+	@Test
+	void connect_reportsBadRequest_whenAuthorizationCodeIsInvalid() {
+		UUID userId = UUID.randomUUID();
+		when(spotifyClient.exchangeCode("stale-code")).thenThrow(new SpotifyApiException(400, "invalid_grant", null));
+
+		assertThatThrownBy(() -> spotifyProvider.connect(userId, "stale-code"))
+				.isInstanceOf(InvalidAuthorizationCodeException.class);
+
+		verify(linkRepository, never()).save(any());
+	}
 }

@@ -1,6 +1,7 @@
 package com.songly.nowplaying;
 
 import com.songly.social.SocialGraph;
+import java.time.Duration;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -31,11 +32,14 @@ class NowPlayingPoller {
 	private final NowPlayingStreamHub hub;
 	private final SocialGraph socialGraph;
 	private final NowPlayingService nowPlayingService;
+	private final NowPlayingProperties properties;
 
-	NowPlayingPoller(NowPlayingStreamHub hub, SocialGraph socialGraph, NowPlayingService nowPlayingService) {
+	NowPlayingPoller(NowPlayingStreamHub hub, SocialGraph socialGraph, NowPlayingService nowPlayingService,
+			NowPlayingProperties properties) {
 		this.hub = hub;
 		this.socialGraph = socialGraph;
 		this.nowPlayingService = nowPlayingService;
+		this.properties = properties;
 	}
 
 	/**
@@ -62,9 +66,17 @@ class NowPlayingPoller {
 				}
 				nowPlayingService.refreshFromProvider(userId);
 				refreshed++;
+			} catch (SpotifyApiException ex) {
+				if (ex.isRateLimited()) {
+					// Rate limit jest wspólny dla całego klienta, więc kolejni użytkownicy w
+					// tym przebiegu dostaliby dokładnie to samo 429 — i tylko pogłębili karę.
+					applyBackoff(ex);
+					break;
+				}
+				log.warn("Poll statusu nie powiódł się dla {}: {}", userId, ex.toString());
 			} catch (RuntimeException ex) {
-				// Wygasły refresh token, błąd Spotify, zerwana sieć — jeden użytkownik nie
-				// może położyć całego przebiegu, reszta obserwowanych ma się odświeżyć.
+				// Odwołana zgoda, zerwana sieć, błąd Redisa — jeden użytkownik nie może
+				// położyć całego przebiegu, reszta obserwowanych ma się odświeżyć.
 				log.warn("Poll statusu nie powiódł się dla {}: {}", userId, ex.toString());
 			}
 		}
@@ -85,13 +97,36 @@ class NowPlayingPoller {
 	 * Zapytanie o użytkowników z podłączonym providerem nie może przewrócić całego
 	 * przebiegu: sprawdzenie wygasłych statusów niżej nie zależy od providera i ma
 	 * się wykonać nawet wtedy, gdy baza akurat nie odpowiada.
+	 *
+	 * <p>
+	 * Pusty zbiór w trakcie backoffu wycisza tylko ruch do providera — statusy
+	 * ręczne i tak wygasają same, więc zamiatanie niżej musi biec dalej.
 	 */
 	private Set<UUID> pollableUserIds(Set<UUID> observed) {
 		try {
+			if (nowPlayingService.isProviderBackoffActive()) {
+				log.debug("Pomijam odpytanie providera — trwa backoff po jego rate limicie");
+				return Set.of();
+			}
 			return nowPlayingService.pollableUserIds(observed);
 		} catch (RuntimeException ex) {
 			log.warn("Nie udało się ustalić, kogo odpytać u providera: {}", ex.toString());
 			return Set.of();
+		}
+	}
+
+	/**
+	 * Wolimy {@code Retry-After} od providera niż własną zgadywankę — on jeden wie,
+	 * kiedy okno limitu się odnowi.
+	 */
+	private void applyBackoff(SpotifyApiException ex) {
+		Duration backoff = ex.retryAfter() != null ? ex.retryAfter() : properties.getPoll().getProviderBackoff();
+		log.warn("Provider odrzucił zapytanie limitem — wstrzymuję poll na {}", backoff);
+		try {
+			nowPlayingService.applyProviderBackoff(backoff);
+		} catch (RuntimeException redisFailure) {
+			// Redis nie odpowiada: przebieg i tak przerywamy, tylko kolejny znów spróbuje.
+			log.warn("Nie udało się zapisać backoffu providera: {}", redisFailure.toString());
 		}
 	}
 

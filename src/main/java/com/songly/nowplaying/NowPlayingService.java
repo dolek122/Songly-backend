@@ -8,6 +8,7 @@ import com.songly.nowplaying.dto.UpdateNowPlayingSettingsRequest;
 import com.songly.profile.ProfileDirectory;
 import com.songly.social.SocialGraph;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Comparator;
@@ -40,6 +41,7 @@ class NowPlayingService {
 	private static final String CACHE_KEY_PREFIX = "now-playing:status:";
 	private static final String MANUAL_KEY_PREFIX = "now-playing:manual:";
 	private static final String POLL_LOCK_KEY_PREFIX = "now-playing:poll-lock:";
+	private static final String PROVIDER_BACKOFF_KEY = "now-playing:provider-backoff";
 	private static final String CACHE_NOTHING_PLAYING = "NOTHING_PLAYING";
 	private static final String DEFAULT_MANUAL_SOURCE = "manual";
 
@@ -197,6 +199,22 @@ class NowPlayingService {
 	boolean tryAcquirePollLock(UUID userId) {
 		return Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(POLL_LOCK_KEY_PREFIX + userId, "1",
 				properties.getPoll().getLockTtl()));
+	}
+
+	/**
+	 * Czy Spotify kazało nam ostatnio przestać pytać. Rate limit Spotify jest per
+	 * client ID, czyli wspólny dla wszystkich naszych instancji i wszystkich
+	 * użytkowników — dlatego znacznik siedzi w Redisie pod jednym kluczem, a nie w
+	 * pamięci procesu. Instancja, która dostała 429, wycisza w ten sposób również
+	 * pozostałe.
+	 */
+	boolean isProviderBackoffActive() {
+		return Boolean.TRUE.equals(redisTemplate.hasKey(PROVIDER_BACKOFF_KEY));
+	}
+
+	/** TTL klucza <i>jest</i> backoffem — nie trzeba trzymać nigdzie daty końca. */
+	void applyProviderBackoff(Duration duration) {
+		redisTemplate.opsForValue().set(PROVIDER_BACKOFF_KEY, "1", duration);
 	}
 
 	void setManualStatus(UUID userId, ManualNowPlayingRequest request) {

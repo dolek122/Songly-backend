@@ -2,16 +2,22 @@ package com.songly.nowplaying;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.io.IOException;
 import java.net.http.HttpClient;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpResponse;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Cienka warstwa HTTP do Spotify — bez logiki biznesowej.
@@ -22,15 +28,24 @@ import org.springframework.web.client.RestClient;
  * zawieszone połączenie do Spotify blokowałoby wtedy poll wszystkich
  * obserwowanych użytkowników — awaria u jednego providera zamieniałaby się w
  * awarię całego presence.
+ *
+ * <p>
+ * Każda odpowiedź błędna — również z endpointu tokenowego i również 5xx —
+ * wychodzi stąd jako {@link SpotifyApiException}. Domyślne wyjątki
+ * {@code RestClient} niosą co prawda status, ale nie mówią nic o kodzie błędu
+ * Spotify ani o {@code Retry-After}, a bez tych dwóch rzeczy warstwa wyżej nie
+ * umie odróżnić "user cofnął zgodę" od "chwilowo padło".
  */
 @Component
 class SpotifyClient {
 
 	private final NowPlayingProperties.Spotify spotify;
+	private final ObjectMapper objectMapper;
 	private final RestClient restClient;
 
-	SpotifyClient(NowPlayingProperties properties) {
+	SpotifyClient(NowPlayingProperties properties, ObjectMapper objectMapper) {
 		this.spotify = properties.getSpotify();
+		this.objectMapper = objectMapper;
 		HttpClient httpClient = HttpClient.newBuilder().connectTimeout(spotify.getConnectTimeout()).build();
 		JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
 		requestFactory.setReadTimeout(spotify.getReadTimeout());
@@ -55,21 +70,64 @@ class SpotifyClient {
 	private TokenResponse postToken(MultiValueMap<String, String> form) {
 		return restClient.post().uri(spotify.getTokenUrl())
 				.headers(headers -> headers.setBasicAuth(spotify.getClientId(), spotify.getClientSecret()))
-				.contentType(MediaType.APPLICATION_FORM_URLENCODED).body(form).retrieve().body(TokenResponse.class);
+				.contentType(MediaType.APPLICATION_FORM_URLENCODED).body(form).retrieve()
+				.onStatus(HttpStatusCode::isError, (request, response) -> {
+					throw toException(response, tokenErrorCode(response));
+				}).body(TokenResponse.class);
 	}
 
 	/** Zwraca null gdy nic nie gra (Spotify odpowiada 204 No Content). */
 	CurrentlyPlayingResponse getCurrentlyPlaying(String accessToken) {
 		return restClient.get().uri(spotify.getApiBaseUrl() + "/me/player/currently-playing")
 				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken).retrieve()
-				.onStatus(HttpStatusCode::is4xxClientError, (request, response) -> {
-					throw new SpotifyApiException(response.getStatusCode().value());
+				.onStatus(HttpStatusCode::isError, (request, response) -> {
+					throw toException(response, null);
 				}).body(CurrentlyPlayingResponse.class);
+	}
+
+	private SpotifyApiException toException(ClientHttpResponse response, String error) throws IOException {
+		return new SpotifyApiException(response.getStatusCode().value(), error, retryAfter(response));
+	}
+
+	/**
+	 * Endpoint tokenowy odpowiada płaskim {@code {"error": "..."}} (OAuth 2), a Web
+	 * API zagnieżdżonym obiektem — dlatego czytamy kod błędu tylko tam, gdzie ma on
+	 * ustalone znaczenie. Nieczytelne ciało nie może przesłonić samego błędu HTTP,
+	 * więc traktujemy je jak brak kodu.
+	 */
+	private String tokenErrorCode(ClientHttpResponse response) {
+		try {
+			String body = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
+			return body.isBlank() ? null : objectMapper.readValue(body, TokenErrorResponse.class).error();
+		} catch (IOException | JacksonException ex) {
+			return null;
+		}
+	}
+
+	/**
+	 * Spotify podaje {@code Retry-After} w sekundach. Specyfikacja HTTP dopuszcza
+	 * też datę — nie parsujemy jej, bo brak wartości i tak ma zdefiniowane
+	 * zachowanie (poller sięga po własny domyślny backoff).
+	 */
+	private Duration retryAfter(ClientHttpResponse response) {
+		String header = response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER);
+		if (header == null) {
+			return null;
+		}
+		try {
+			return Duration.ofSeconds(Long.parseLong(header.trim()));
+		} catch (NumberFormatException ex) {
+			return null;
+		}
 	}
 
 	@JsonIgnoreProperties(ignoreUnknown = true)
 	record TokenResponse(@JsonProperty("access_token") String accessToken,
 			@JsonProperty("refresh_token") String refreshToken, @JsonProperty("expires_in") long expiresInSeconds) {
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	record TokenErrorResponse(String error) {
 	}
 
 	@JsonIgnoreProperties(ignoreUnknown = true)
