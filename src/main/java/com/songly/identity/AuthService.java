@@ -60,17 +60,19 @@ class AuthService {
 	AuthTokensResponse refresh(RefreshRequest request) {
 		String hash = hashToken(request.refreshToken());
 		Session session = sessionRepository.findByRefreshTokenHash(hash).orElseThrow(InvalidRefreshTokenException::new);
-		if (!session.isActive(Instant.now())) {
+		Instant now = Instant.now();
+		if (!session.isActive(now)) {
 			throw new InvalidRefreshTokenException();
 		}
-		session.revoke();
+		session.revoke(now);
 		User user = userRepository.findById(session.getUserId()).orElseThrow(InvalidRefreshTokenException::new);
 		return issueTokens(user);
 	}
 
 	@Transactional
 	void logout(RefreshRequest request) {
-		sessionRepository.findByRefreshTokenHash(hashToken(request.refreshToken())).ifPresent(Session::revoke);
+		sessionRepository.findByRefreshTokenHash(hashToken(request.refreshToken()))
+				.ifPresent(session -> session.revoke(Instant.now()));
 	}
 
 	/**
