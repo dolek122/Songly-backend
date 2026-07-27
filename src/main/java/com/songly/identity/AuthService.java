@@ -33,6 +33,19 @@ class AuthService {
 	 */
 	private static final String LOGIN_ATTEMPTS_METRIC = "songly.auth.login.attempts";
 
+	/**
+	 * {@code songly_auth_refresh_attempts_total{outcome="reuse"}} to sygnał
+	 * kradzieży tokenu — w zdrowym ruchu ta seria stoi na zerze, więc każdy jej
+	 * przyrost jest wart uwagi.
+	 *
+	 * <p>
+	 * Powody niepowodzenia rozdzielamy tutaj, w przeciwieństwie do logowania
+	 * ({@code outcome} przy loginie celowo nie mówi, czy konto istnieje).
+	 * Rozróżnienie „reuse" od „invalid" nie zdradza niczego o cudzych kontach —
+	 * mówi o stanie ataku, i o to właśnie chodzi.
+	 */
+	private static final String REFRESH_ATTEMPTS_METRIC = "songly.auth.refresh.attempts";
+
 	private final UserRepository userRepository;
 	private final SessionRepository sessionRepository;
 	private final PasswordEncoder passwordEncoder;
@@ -99,17 +112,60 @@ class AuthService {
 		return meterRegistry.counter(LOGIN_ATTEMPTS_METRIC, "outcome", outcome);
 	}
 
-	@Transactional
+	/**
+	 * Rotacja refresh tokenu z <b>wykrywaniem ponownego użycia</b>. Sama rotacja
+	 * (odwołanie starego tokenu przy wydaniu nowego) daje mniej, niż się wydaje:
+	 * bez tego sprawdzenia skradziony token dawał złodziejowi ważną sesję, a
+	 * prawowitemu użytkownikowi tylko ciche 401 przy następnym odświeżeniu — nikt
+	 * nie miał jak zauważyć, że doszło do kradzieży.
+	 *
+	 * <p>
+	 * Token po rotacji istnieje w jednym egzemplarzu i wolno go użyć raz. Podanie
+	 * <b>odwołanego</b> tokenu znaczy więc, że krąży kopia — nie wiadomo tylko, po
+	 * której stronie. Dlatego odwołujemy <b>wszystkie</b> sesje użytkownika:
+	 * złodziej traci swoją, użytkownik loguje się ponownie hasłem, którego złodziej
+	 * nie ma.
+	 *
+	 * <p>
+	 * Rozróżnienie „odwołany" od „wygasły" jest tu istotne. Wygaśnięcie to zwykły
+	 * upływ czasu i nie mówi niczego o kradzieży — traktowanie go jak nadużycia
+	 * wylogowywałoby ze wszystkich urządzeń każdego, kto wrócił do aplikacji po
+	 * miesiącu.
+	 *
+	 * <p>
+	 * {@code noRollbackFor} nie jest ozdobnikiem — ta sama pułapka co w
+	 * {@code SpotifyProvider} (§7): rewokacja dzieje się tuż przed rzuceniem
+	 * wyjątku, więc bez tego rollback cofnąłby ją w całości i wykrycie kradzieży
+	 * nie zostawiłoby żadnego skutku poza wpisem w logu. Sprawdzone przez usunięcie
+	 * tej flagi: czerwienieją wtedy dokładnie te dwa testy, które asertują, że
+	 * rewokacja przetrwała.
+	 */
+	@Transactional(noRollbackFor = RefreshTokenReuseDetectedException.class)
 	AuthTokensResponse refresh(RefreshRequest request) {
 		String hash = hashToken(request.refreshToken());
-		Session session = sessionRepository.findByRefreshTokenHash(hash).orElseThrow(InvalidRefreshTokenException::new);
+		Session session = sessionRepository.findByRefreshTokenHash(hash).orElseGet(() -> {
+			refreshOutcome("invalid").increment();
+			throw new InvalidRefreshTokenException();
+		});
 		Instant now = Instant.now();
+		if (session.isRevoked()) {
+			refreshOutcome("reuse").increment();
+			int revoked = sessionRepository.revokeAllForUser(session.getUserId(), now);
+			log.warn("Ponowne użycie refresh tokenu, konto: {} — odwołane sesje: {}", session.getUserId(), revoked);
+			throw new RefreshTokenReuseDetectedException();
+		}
 		if (!session.isActive(now)) {
+			refreshOutcome("expired").increment();
 			throw new InvalidRefreshTokenException();
 		}
 		session.revoke(now);
 		User user = userRepository.findById(session.getUserId()).orElseThrow(InvalidRefreshTokenException::new);
+		refreshOutcome("success").increment();
 		return issueTokens(user);
+	}
+
+	private Counter refreshOutcome(String outcome) {
+		return meterRegistry.counter(REFRESH_ATTEMPTS_METRIC, "outcome", outcome);
 	}
 
 	@Transactional

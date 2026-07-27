@@ -2,6 +2,7 @@ package com.songly.identity;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -59,6 +60,10 @@ class AuthServiceTest {
 
 	private double loginAttempts(String outcome) {
 		return meterRegistry.counter("songly.auth.login.attempts", "outcome", outcome).count();
+	}
+
+	private double refreshAttempts(String outcome) {
+		return meterRegistry.counter("songly.auth.refresh.attempts", "outcome", outcome).count();
 	}
 
 	@Test
@@ -157,25 +162,64 @@ class AuthServiceTest {
 				.isInstanceOf(InvalidRefreshTokenException.class);
 	}
 
+	/**
+	 * Wygaśnięcie to zwykły upływ czasu, nie sygnał kradzieży — nie wolno go
+	 * traktować jak nadużycia, bo wylogowywałoby ze wszystkich urządzeń każdego,
+	 * kto wrócił do aplikacji po dłuższej przerwie.
+	 */
 	@Test
-	void refresh_throws_whenSessionExpired() {
+	void refresh_throws_whenSessionExpired_withoutTreatingItAsReuse() {
 		Session expired = new Session(UUID.randomUUID(), UUID.randomUUID(), "hash", Instant.now().minusSeconds(7200),
 				Instant.now().minusSeconds(3600));
 		when(sessionRepository.findByRefreshTokenHash(anyString())).thenReturn(Optional.of(expired));
 
 		assertThatThrownBy(() -> authService.refresh(new RefreshRequest("expired-token")))
-				.isInstanceOf(InvalidRefreshTokenException.class);
+				.isInstanceOf(InvalidRefreshTokenException.class)
+				.isNotInstanceOf(RefreshTokenReuseDetectedException.class);
+
+		verify(sessionRepository, never()).revokeAllForUser(any(), any());
+		assertThat(refreshAttempts("expired")).isEqualTo(1);
+		assertThat(refreshAttempts("reuse")).isZero();
 	}
 
+	/**
+	 * Sedno wykrywania: token po rotacji wolno użyć raz, więc drugie użycie znaczy,
+	 * że krąży kopia. Nie wiadomo po której stronie, dlatego giną wszystkie sesje.
+	 */
 	@Test
-	void refresh_throws_whenSessionAlreadyRevoked() {
-		Session revoked = new Session(UUID.randomUUID(), UUID.randomUUID(), "hash", Instant.now(),
+	void refresh_revokesEverySession_whenRevokedTokenIsReplayed() {
+		UUID userId = UUID.randomUUID();
+		Session revoked = new Session(UUID.randomUUID(), userId, "hash", Instant.now(),
 				Instant.now().plusSeconds(3600));
 		revoked.revoke(Instant.now());
 		when(sessionRepository.findByRefreshTokenHash(anyString())).thenReturn(Optional.of(revoked));
 
 		assertThatThrownBy(() -> authService.refresh(new RefreshRequest("revoked-token")))
-				.isInstanceOf(InvalidRefreshTokenException.class);
+				.isInstanceOf(RefreshTokenReuseDetectedException.class);
+
+		verify(sessionRepository).revokeAllForUser(eq(userId), any(Instant.class));
+		assertThat(refreshAttempts("reuse")).isEqualTo(1);
+	}
+
+	/**
+	 * Odpowiedź musi być nieodróżnialna od zwykłego złego tokenu — inaczej
+	 * atakujący dowiadywałby się, że jego kopia została wykryta.
+	 */
+	@Test
+	void reuseDetection_isIndistinguishableFromAnOrdinaryBadToken() {
+		Session revoked = new Session(UUID.randomUUID(), UUID.randomUUID(), "hash", Instant.now(),
+				Instant.now().plusSeconds(3600));
+		revoked.revoke(Instant.now());
+		when(sessionRepository.findByRefreshTokenHash(anyString())).thenReturn(Optional.of(revoked));
+
+		RefreshTokenReuseDetectedException reuse = catchThrowableOfType(
+				() -> authService.refresh(new RefreshRequest("revoked-token")),
+				RefreshTokenReuseDetectedException.class);
+		InvalidRefreshTokenException ordinary = new InvalidRefreshTokenException();
+
+		assertThat(reuse.getStatus()).isEqualTo(ordinary.getStatus());
+		assertThat(reuse.getCode()).isEqualTo(ordinary.getCode());
+		assertThat(reuse.getMessage()).isEqualTo(ordinary.getMessage());
 	}
 
 	@Test
