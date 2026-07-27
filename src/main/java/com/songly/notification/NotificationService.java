@@ -2,6 +2,7 @@ package com.songly.notification;
 
 import com.songly.notification.dto.NotificationResponse;
 import com.songly.profile.ProfileDirectory;
+import com.songly.social.SocialGraph;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
@@ -18,10 +19,13 @@ class NotificationService {
 
 	private final NotificationRepository notificationRepository;
 	private final ProfileDirectory profileDirectory;
+	private final SocialGraph socialGraph;
 
-	NotificationService(NotificationRepository notificationRepository, ProfileDirectory profileDirectory) {
+	NotificationService(NotificationRepository notificationRepository, ProfileDirectory profileDirectory,
+			SocialGraph socialGraph) {
 		this.notificationRepository = notificationRepository;
 		this.profileDirectory = profileDirectory;
+		this.socialGraph = socialGraph;
 	}
 
 	/**
@@ -39,9 +43,17 @@ class NotificationService {
 				.save(new Notification(UUID.randomUUID(), recipientId, type, actorId, resourceId, occurredAt));
 	}
 
+	/**
+	 * Powiadomienia od zablokowanych <b>ukrywamy przy odczycie, a nie kasujemy przy
+	 * blokadzie</b>. Kasowanie byłoby nieodwracalne: po odblokowaniu skrzynka
+	 * wracałaby z dziurą, a blokada bywa tymczasowa i zdejmowana. Przy filtrze
+	 * odczytu odblokowanie po prostu przywraca to, co było — łącznie ze stanem
+	 * przeczytania.
+	 */
 	@Transactional(readOnly = true)
 	Page<NotificationResponse> list(UUID userId, Pageable pageable) {
-		Page<Notification> page = notificationRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
+		Page<Notification> page = notificationRepository.findByUserIdAndActorIdNotInOrderByCreatedAtDesc(userId,
+				socialGraph.blockedEitherWayIds(userId), pageable);
 		Set<UUID> actorIds = page.getContent().stream().map(Notification::getActorId).collect(Collectors.toSet());
 		Map<UUID, String> names = profileDirectory.displayNames(actorIds);
 		Map<UUID, String> avatars = profileDirectory.avatarUrls(actorIds);
@@ -50,9 +62,15 @@ class NotificationService {
 				notification.getResourceId(), notification.getCreatedAt(), notification.getReadAt()));
 	}
 
+	/**
+	 * Licznik musi filtrować tak samo jak lista, inaczej plakietka pokazywałaby „3
+	 * nowe" nad skrzynką, w której nie widać żadnego nowego powiadomienia — i nie
+	 * dałoby się jej zbić.
+	 */
 	@Transactional(readOnly = true)
 	long unreadCount(UUID userId) {
-		return notificationRepository.countByUserIdAndReadAtIsNull(userId);
+		return notificationRepository.countByUserIdAndReadAtIsNullAndActorIdNotIn(userId,
+				socialGraph.blockedEitherWayIds(userId));
 	}
 
 	/** Cudze powiadomienia zgłaszamy jako nieistniejące. */
@@ -63,10 +81,18 @@ class NotificationService {
 		notification.markRead(Instant.now());
 	}
 
+	/**
+	 * Oznacza jako przeczytane wyłącznie to, co użytkownik faktycznie widzi. Gdyby
+	 * obejmowało też ukryte powiadomienia, po odblokowaniu wróciłyby przeczytane,
+	 * mimo że nikt ich nigdy nie zobaczył — a filtr blokady ma być warstwą widoku,
+	 * nie cichą zmianą stanu.
+	 */
 	@Transactional
 	void markAllRead(UUID userId) {
 		Instant now = Instant.now();
-		notificationRepository.findByUserIdAndReadAtIsNull(userId).forEach(notification -> notification.markRead(now));
+		notificationRepository
+				.findByUserIdAndReadAtIsNullAndActorIdNotIn(userId, socialGraph.blockedEitherWayIds(userId))
+				.forEach(notification -> notification.markRead(now));
 	}
 
 	@Transactional
