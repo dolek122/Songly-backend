@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import jakarta.servlet.ServletException;
 import java.io.IOException;
 import java.time.Duration;
@@ -40,11 +42,14 @@ class RateLimitingFilterTest {
 
 	private final RateLimitProperties properties = new RateLimitProperties();
 
+	/** Prawdziwy rejestr, nie mock — pozwala sprawdzić, ile faktycznie zliczył. */
+	private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
+
 	private RateLimitingFilter filterFor(List<String> protectedPaths) {
 		properties.setProtectedPaths(protectedPaths);
 		// Wzorce parsują się w konstruktorze, więc filtr musi powstać po ustawieniu
 		// propercji — inaczej test sprawdzałby domyślną listę.
-		return new RateLimitingFilter(redisTemplate, properties, new ObjectMapper());
+		return new RateLimitingFilter(redisTemplate, properties, new ObjectMapper(), meterRegistry);
 	}
 
 	private MockHttpServletResponse call(RateLimitingFilter filter, String uri) throws ServletException, IOException {
@@ -121,6 +126,10 @@ class RateLimitingFilterTest {
 		assertThat(response.getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
 		assertThat(response.getHeader(HttpHeaders.RETRY_AFTER)).isEqualTo("37");
 		assertThat(response.getContentAsString()).contains("RATE_LIMIT_EXCEEDED");
+		// Trafienie w limit musi być widoczne w metrykach — inaczej atak na publiczny
+		// endpoint przechodzi bez śladu na dashboardzie.
+		assertThat(meterRegistry.counter("songly.rate.limit.rejected", "path", "/api/v1/auth/login").count())
+				.isEqualTo(1);
 	}
 
 	@Test

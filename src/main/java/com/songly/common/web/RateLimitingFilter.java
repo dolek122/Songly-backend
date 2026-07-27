@@ -1,5 +1,6 @@
 package com.songly.common.web;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -36,15 +37,21 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
 	private static final Logger log = LoggerFactory.getLogger(RateLimitingFilter.class);
 
+	/** W Prometheusie: {@code songly_rate_limit_rejected_total{path="..."}}. */
+	private static final String REJECTED_METRIC = "songly.rate.limit.rejected";
+
 	private final StringRedisTemplate redisTemplate;
 	private final RateLimitProperties properties;
 	private final ObjectMapper objectMapper;
+	private final MeterRegistry meterRegistry;
 	private final List<PathPattern> protectedPatterns;
 
-	RateLimitingFilter(StringRedisTemplate redisTemplate, RateLimitProperties properties, ObjectMapper objectMapper) {
+	RateLimitingFilter(StringRedisTemplate redisTemplate, RateLimitProperties properties, ObjectMapper objectMapper,
+			MeterRegistry meterRegistry) {
 		this.redisTemplate = redisTemplate;
 		this.properties = properties;
 		this.objectMapper = objectMapper;
+		this.meterRegistry = meterRegistry;
 		PathPatternParser parser = new PathPatternParser();
 		this.protectedPatterns = properties.getProtectedPaths().stream().map(parser::parse).toList();
 	}
@@ -67,6 +74,12 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 			return;
 		}
 		if (count > properties.getLimit()) {
+			// Odrzucenie to sygnał, że ktoś dobija się do publicznego endpointu — bez logu
+			// i licznika trafienie w limit było dotąd całkowicie niewidoczne z zewnątrz.
+			// Wzorzec ścieżki, nie URI: inaczej tag metryki miałby nieograniczoną
+			// liczbę wartości (kardynalność), co rozsadza magazyn Prometheusa.
+			meterRegistry.counter(REJECTED_METRIC, "path", pattern).increment();
+			log.warn("Limit żądań przekroczony dla {} (wzorzec {})", request.getRequestURI(), pattern);
 			writeTooManyRequests(response, request, key);
 			return;
 		}

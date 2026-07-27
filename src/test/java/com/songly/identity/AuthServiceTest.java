@@ -13,6 +13,8 @@ import com.songly.identity.dto.LoginRequest;
 import com.songly.identity.dto.RefreshRequest;
 import com.songly.identity.dto.RegisterRequest;
 import com.songly.identity.security.JwtService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
@@ -43,11 +45,19 @@ class AuthServiceTest {
 
 	private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
+	/** Prawdziwy rejestr, nie mock — pozwala sprawdzić, ile faktycznie zliczył. */
+	private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
+
 	private AuthService authService;
 
 	@BeforeEach
 	void setUp() {
-		authService = new AuthService(userRepository, sessionRepository, passwordEncoder, jwtService, eventPublisher);
+		authService = new AuthService(userRepository, sessionRepository, passwordEncoder, jwtService, eventPublisher,
+				meterRegistry);
+	}
+
+	private double loginAttempts(String outcome) {
+		return meterRegistry.counter("songly.auth.login.attempts", "outcome", outcome).count();
 	}
 
 	@Test
@@ -89,14 +99,23 @@ class AuthServiceTest {
 		AuthTokensResponse response = authService.login(new LoginRequest("user@songly.io", "password123"));
 
 		assertThat(response.accessToken()).isEqualTo("access-token");
+		assertThat(loginAttempts("success")).isEqualTo(1);
 	}
 
+	/**
+	 * Oba rodzaje niepowodzenia muszą zliczać się jednakowo. Rozdzielenie ich w
+	 * metryce podpowiadałoby atakującemu, które adresy istnieją — a do wykrycia
+	 * brute-force'u wystarczy sam wzrost liczby porażek.
+	 */
 	@Test
 	void login_throws_whenUserNotFound() {
 		when(userRepository.findByEmail("missing@songly.io")).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> authService.login(new LoginRequest("missing@songly.io", "password123")))
 				.isInstanceOf(InvalidCredentialsException.class);
+
+		assertThat(loginAttempts("failure")).isEqualTo(1);
+		assertThat(loginAttempts("success")).isZero();
 	}
 
 	@Test
@@ -106,6 +125,8 @@ class AuthServiceTest {
 
 		assertThatThrownBy(() -> authService.login(new LoginRequest("user@songly.io", "wrong-password")))
 				.isInstanceOf(InvalidCredentialsException.class);
+
+		assertThat(loginAttempts("failure")).isEqualTo(1);
 	}
 
 	@Test
