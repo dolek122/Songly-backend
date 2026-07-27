@@ -90,8 +90,9 @@ class PostController {
 	}
 
 	@GetMapping("/{postId}/comments")
-	Page<CommentResponse> listComments(@PathVariable UUID postId, @PageableDefault(size = 20) Pageable pageable) {
-		return contentService.listComments(postId, pageable);
+	Page<CommentResponse> listComments(Authentication authentication, @PathVariable UUID postId,
+			@PageableDefault(size = 20) Pageable pageable) {
+		return contentService.listComments(postId, currentUserId(authentication), pageable);
 	}
 
 	@DeleteMapping("/{postId}/comments/{commentId}")

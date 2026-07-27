@@ -72,22 +72,41 @@ class ContentService {
 				communityId, 0, false, 0, 0, false);
 	}
 
+	/**
+	 * Post zablokowanego autora zgłaszamy jako <b>nieistniejący</b>, nie jako 403.
+	 * 403 potwierdzałoby, że post istnieje i że ktoś konkretny nas zablokował — to
+	 * ta sama zasada, którą moduł social stosuje już do cudzych zaproszeń.
+	 */
 	@Transactional(readOnly = true)
 	PostResponse getPost(UUID postId, UUID viewerId) {
-		Post post = postRepository.findById(postId).orElseThrow(PostNotFoundException::new);
-		return toResponses(List.of(post), viewerId).get(0);
+		Set<UUID> hiddenAuthors = hiddenAuthorsFor(viewerId);
+		Post post = postRepository.findById(postId).filter(p -> !hiddenAuthors.contains(p.getAuthorId()))
+				.orElseThrow(PostNotFoundException::new);
+		return toResponses(List.of(post), viewerId, hiddenAuthors).get(0);
 	}
 
 	/**
 	 * Bez postów społecznościowych — te należą do swojej społeczności, nie do
 	 * publicznej listy ani osi czasu autora.
+	 *
+	 * <p>
+	 * Oś czasu konkretnego autora nie potrzebuje filtra w zapytaniu — cała strona
+	 * ma jednego autora, więc wystarczy jedno sprawdzenie i pusta strona zamiast
+	 * niego.
 	 */
 	@Transactional(readOnly = true)
 	Page<PostResponse> listPosts(UUID authorId, UUID viewerId, Pageable pageable) {
-		Page<Post> page = authorId == null
-				? postRepository.findByCommunityIdIsNullOrderByCreatedAtDesc(pageable)
-				: postRepository.findByAuthorIdAndCommunityIdIsNullOrderByCreatedAtDesc(authorId, pageable);
-		return mapToResponses(page, viewerId);
+		Set<UUID> hiddenAuthors = hiddenAuthorsFor(viewerId);
+		if (authorId != null) {
+			return hiddenAuthors.contains(authorId)
+					? Page.empty(pageable)
+					: mapToResponses(
+							postRepository.findByAuthorIdAndCommunityIdIsNullOrderByCreatedAtDesc(authorId, pageable),
+							viewerId, hiddenAuthors);
+		}
+		return mapToResponses(
+				postRepository.findByCommunityIdIsNullAndAuthorIdNotInOrderByCreatedAtDesc(hiddenAuthors, pageable),
+				viewerId, hiddenAuthors);
 	}
 
 	/**
@@ -101,7 +120,9 @@ class ContentService {
 		if (!communityMembership.exists(communityId)) {
 			throw new UnknownCommunityException();
 		}
-		return mapToResponses(postRepository.findByCommunityIdOrderByCreatedAtDesc(communityId, pageable), viewerId);
+		Set<UUID> hiddenAuthors = hiddenAuthorsFor(viewerId);
+		return mapToResponses(postRepository.findByCommunityIdAndAuthorIdNotInOrderByCreatedAtDesc(communityId,
+				hiddenAuthors, pageable), viewerId, hiddenAuthors);
 	}
 
 	/**
@@ -114,7 +135,9 @@ class ContentService {
 	Page<PostResponse> feed(UUID viewerId, Pageable pageable) {
 		Set<UUID> authorIds = new HashSet<>(socialGraph.friendIds(viewerId));
 		authorIds.add(viewerId);
-		return mapToResponses(postRepository.findFeedPosts(authorIds, pageable), viewerId);
+		Set<UUID> hiddenAuthors = hiddenAuthorsFor(viewerId);
+		return mapToResponses(postRepository.findFeedPosts(authorIds, hiddenAuthors, pageable), viewerId,
+				hiddenAuthors);
 	}
 
 	/**
@@ -145,15 +168,15 @@ class ContentService {
 		postRepository.deleteByCommunityId(communityId);
 	}
 
-	private Page<PostResponse> mapToResponses(Page<Post> page, UUID viewerId) {
-		Map<UUID, PostResponse> byId = toResponses(page.getContent(), viewerId).stream()
+	private Page<PostResponse> mapToResponses(Page<Post> page, UUID viewerId, Set<UUID> hiddenAuthors) {
+		Map<UUID, PostResponse> byId = toResponses(page.getContent(), viewerId, hiddenAuthors).stream()
 				.collect(Collectors.toMap(PostResponse::id, Function.identity()));
 		return page.map(post -> byId.get(post.getId()));
 	}
 
 	@Transactional
 	void likePost(UUID postId, UUID userId) {
-		Post post = postRepository.findById(postId).orElseThrow(PostNotFoundException::new);
+		Post post = visiblePost(postId, userId);
 		if (!likeRepository.existsById(new LikeId(postId, userId))) {
 			Instant now = Instant.now();
 			likeRepository.save(new Like(postId, userId, now));
@@ -161,6 +184,12 @@ class ContentService {
 		}
 	}
 
+	/**
+	 * Cofnięcie celowo <b>nie</b> sprawdza blokady, choć założenie sprawdza:
+	 * blokując kogoś po polubieniu jego posta użytkownik musi móc to polubienie
+	 * wycofać. Blokada odcina od cudzych treści, a nie zamraża własnych śladów na
+	 * nich.
+	 */
 	@Transactional
 	void unlikePost(UUID postId, UUID userId) {
 		requirePostExists(postId);
@@ -169,7 +198,7 @@ class ContentService {
 
 	@Transactional
 	void sharePost(UUID postId, UUID userId) {
-		Post post = postRepository.findById(postId).orElseThrow(PostNotFoundException::new);
+		Post post = visiblePost(postId, userId);
 		if (!shareRepository.existsById(new ShareId(postId, userId))) {
 			Instant now = Instant.now();
 			shareRepository.save(new Share(postId, userId, now));
@@ -185,7 +214,7 @@ class ContentService {
 
 	@Transactional
 	CommentResponse addComment(UUID postId, UUID authorId, String content) {
-		Post post = postRepository.findById(postId).orElseThrow(PostNotFoundException::new);
+		Post post = visiblePost(postId, authorId);
 		Comment comment = new Comment(UUID.randomUUID(), postId, authorId, content, Instant.now());
 		commentRepository.save(comment);
 		eventPublisher.publishEvent(
@@ -197,9 +226,11 @@ class ContentService {
 	}
 
 	@Transactional(readOnly = true)
-	Page<CommentResponse> listComments(UUID postId, Pageable pageable) {
-		requirePostExists(postId);
-		Page<Comment> page = commentRepository.findByPostIdOrderByCreatedAtAsc(postId, pageable);
+	Page<CommentResponse> listComments(UUID postId, UUID viewerId, Pageable pageable) {
+		Set<UUID> hiddenAuthors = hiddenAuthorsFor(viewerId);
+		visiblePost(postId, hiddenAuthors);
+		Page<Comment> page = commentRepository.findByPostIdAndAuthorIdNotInOrderByCreatedAtAsc(postId, hiddenAuthors,
+				pageable);
 		Set<UUID> authorIds = page.getContent().stream().map(Comment::getAuthorId).collect(Collectors.toSet());
 		Map<UUID, String> names = profileDirectory.displayNames(authorIds);
 		Map<UUID, String> avatars = profileDirectory.avatarUrls(authorIds);
@@ -238,15 +269,42 @@ class ContentService {
 		}
 	}
 
-	private List<PostResponse> toResponses(List<Post> posts, UUID viewerId) {
+	/**
+	 * Autorzy niewidoczni dla {@code viewerId}: blokada w którymkolwiek kierunku
+	 * chowa obie strony przed sobą nawzajem, więc zablokowany traci widok tak samo
+	 * jak blokujący. Jedno zapytanie na żądanie — wynik wędruje w dół zamiast być
+	 * pobierany osobno przez każdy filtr.
+	 */
+	private Set<UUID> hiddenAuthorsFor(UUID viewerId) {
+		return socialGraph.blockedEitherWayIds(viewerId);
+	}
+
+	/**
+	 * Post widziany oczami {@code viewerId} — dla ścieżek zapisu (lajk,
+	 * udostępnienie, komentarz). To one, a nie odczyty, są prawdziwym powodem
+	 * istnienia blokady: każda z nich kończy się powiadomieniem u autora, więc bez
+	 * tego sprawdzenia zablokowany dalej mógłby zaczepiać blokującego pod jego
+	 * własnym postem.
+	 */
+	private Post visiblePost(UUID postId, UUID viewerId) {
+		return visiblePost(postId, hiddenAuthorsFor(viewerId));
+	}
+
+	private Post visiblePost(UUID postId, Set<UUID> hiddenAuthors) {
+		return postRepository.findById(postId).filter(post -> !hiddenAuthors.contains(post.getAuthorId()))
+				.orElseThrow(PostNotFoundException::new);
+	}
+
+	private List<PostResponse> toResponses(List<Post> posts, UUID viewerId, Set<UUID> hiddenAuthors) {
 		List<UUID> postIds = posts.stream().map(Post::getId).toList();
 		if (postIds.isEmpty()) {
 			return List.of();
 		}
 		Map<UUID, Long> likeCounts = likeRepository.countByPostIdIn(postIds).stream().collect(
 				Collectors.toMap(LikeRepository.PostIdCount::getPostId, LikeRepository.PostIdCount::getLikeCount));
-		Map<UUID, Long> commentCounts = commentRepository.countByPostIdIn(postIds).stream().collect(Collectors
-				.toMap(CommentRepository.PostIdCount::getPostId, CommentRepository.PostIdCount::getCommentCount));
+		Map<UUID, Long> commentCounts = commentRepository.countByPostIdIn(postIds, hiddenAuthors).stream()
+				.collect(Collectors.toMap(CommentRepository.PostIdCount::getPostId,
+						CommentRepository.PostIdCount::getCommentCount));
 		Map<UUID, Long> shareCounts = shareRepository.countByPostIdIn(postIds).stream().collect(
 				Collectors.toMap(ShareRepository.PostIdCount::getPostId, ShareRepository.PostIdCount::getShareCount));
 		Set<UUID> likedByViewer = likeRepository.findByPostIdInAndUserId(postIds, viewerId).stream()

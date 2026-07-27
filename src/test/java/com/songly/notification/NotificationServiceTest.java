@@ -8,9 +8,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.songly.profile.ProfileDirectory;
+import com.songly.social.SocialGraph;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +29,9 @@ class NotificationServiceTest {
 	@Mock
 	private ProfileDirectory profileDirectory;
 
+	@Mock
+	private SocialGraph socialGraph;
+
 	private NotificationService notificationService;
 
 	private final UUID recipientId = UUID.randomUUID();
@@ -34,7 +39,7 @@ class NotificationServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		notificationService = new NotificationService(notificationRepository, profileDirectory);
+		notificationService = new NotificationService(notificationRepository, profileDirectory, socialGraph);
 	}
 
 	@Test
@@ -91,11 +96,39 @@ class NotificationServiceTest {
 				UUID.randomUUID(), Instant.now());
 		Notification second = new Notification(UUID.randomUUID(), recipientId, NotificationType.POST_COMMENTED, actorId,
 				UUID.randomUUID(), Instant.now());
-		when(notificationRepository.findByUserIdAndReadAtIsNull(recipientId)).thenReturn(List.of(first, second));
+		when(socialGraph.blockedEitherWayIds(recipientId)).thenReturn(Set.of());
+		when(notificationRepository.findByUserIdAndReadAtIsNullAndActorIdNotIn(recipientId, Set.of()))
+				.thenReturn(List.of(first, second));
 
 		notificationService.markAllRead(recipientId);
 
 		assertThat(first.getReadAt()).isNotNull();
 		assertThat(second.getReadAt()).isNotNull();
+	}
+
+	/**
+	 * „Oznacz wszystkie" nie może sięgać do ukrytych — inaczej po odblokowaniu
+	 * wracałyby przeczytane, mimo że nikt ich nigdy nie zobaczył.
+	 */
+	@Test
+	void markAllRead_leavesNotificationsFromBlockedUsersUntouched() {
+		UUID blockedId = UUID.randomUUID();
+		when(socialGraph.blockedEitherWayIds(recipientId)).thenReturn(Set.of(blockedId));
+		when(notificationRepository.findByUserIdAndReadAtIsNullAndActorIdNotIn(recipientId, Set.of(blockedId)))
+				.thenReturn(List.of());
+
+		notificationService.markAllRead(recipientId);
+
+		verify(notificationRepository).findByUserIdAndReadAtIsNullAndActorIdNotIn(recipientId, Set.of(blockedId));
+	}
+
+	@Test
+	void unreadCount_excludesBlockedActors() {
+		UUID blockedId = UUID.randomUUID();
+		when(socialGraph.blockedEitherWayIds(recipientId)).thenReturn(Set.of(blockedId));
+		when(notificationRepository.countByUserIdAndReadAtIsNullAndActorIdNotIn(recipientId, Set.of(blockedId)))
+				.thenReturn(2L);
+
+		assertThat(notificationService.unreadCount(recipientId)).isEqualTo(2L);
 	}
 }
