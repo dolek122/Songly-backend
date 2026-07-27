@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -230,5 +231,52 @@ class AuthServiceTest {
 				.isInstanceOf(InvalidCredentialsException.class);
 
 		verify(eventPublisher, never()).publishEvent(any());
+	}
+
+	@Test
+	void changePassword_replacesHashAndRevokesEverySession() {
+		UUID userId = UUID.randomUUID();
+		User user = new User(userId, "user@songly.io", passwordEncoder.encode("password123"), Instant.now());
+		when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+		authService.changePassword(userId, "password123", "brand-new-password");
+
+		assertThat(passwordEncoder.matches("brand-new-password", user.getPasswordHash())).isTrue();
+		assertThat(passwordEncoder.matches("password123", user.getPasswordHash())).isFalse();
+		verify(sessionRepository).revokeAllForUser(eq(userId), any(Instant.class));
+	}
+
+	/**
+	 * Błędne obecne hasło nie może przejść — inaczej przejęty access token
+	 * wystarczałby do przejęcia konta na stałe.
+	 */
+	@Test
+	void changePassword_throwsAndChangesNothing_whenCurrentPasswordWrong() {
+		UUID userId = UUID.randomUUID();
+		String originalHash = passwordEncoder.encode("password123");
+		User user = new User(userId, "user@songly.io", originalHash, Instant.now());
+		when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+		assertThatThrownBy(() -> authService.changePassword(userId, "wrong-password", "brand-new-password"))
+				.isInstanceOf(InvalidCredentialsException.class);
+
+		assertThat(user.getPasswordHash()).isEqualTo(originalHash);
+		verify(sessionRepository, never()).revokeAllForUser(any(), any());
+	}
+
+	/**
+	 * Zmiana na to samo hasło nie może przejść po cichu: nie zmieniłaby niczego
+	 * poza wylogowaniem użytkownika ze wszystkich urządzeń.
+	 */
+	@Test
+	void changePassword_rejectsNewPasswordIdenticalToCurrent() {
+		UUID userId = UUID.randomUUID();
+		User user = new User(userId, "user@songly.io", passwordEncoder.encode("password123"), Instant.now());
+		when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+		assertThatThrownBy(() -> authService.changePassword(userId, "password123", "password123"))
+				.isInstanceOf(NewPasswordSameAsCurrentException.class);
+
+		verify(sessionRepository, never()).revokeAllForUser(any(), any());
 	}
 }

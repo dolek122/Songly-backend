@@ -84,6 +84,21 @@
         },
         "type" : "object"
       },
+      "ChangePasswordRequest" : {
+        "properties" : {
+          "currentPassword" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "newPassword" : {
+            "maxLength" : 72,
+            "minLength" : 8,
+            "type" : "string"
+          }
+        },
+        "required" : [ "currentPassword", "newPassword" ],
+        "type" : "object"
+      },
       "CommentResponse" : {
         "properties" : {
           "authorAvatarUrl" : {
@@ -964,6 +979,30 @@
             "application/json" : {
               "schema" : {
                 "$ref" : "#/components/schemas/DeleteAccountRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/api/v1/auth/password" : {
+      "put" : {
+        "operationId" : "changePassword",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ChangePasswordRequest"
               }
             }
           },

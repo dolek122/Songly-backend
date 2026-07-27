@@ -119,6 +119,41 @@ class AuthService {
 	}
 
 	/**
+	 * Zmiana hasła. Wymaga podania obecnego hasła, tak samo jak usunięcie konta:
+	 * sam ważny access token nie wystarcza, bo mógł zostać przejęty — a to jest
+	 * dokładnie ta operacja, którą przejmujący chciałby wykonać.
+	 *
+	 * <p>
+	 * <b>Odwołujemy wszystkie sesje, łącznie z bieżącą.</b> Zmiana hasła po
+	 * kradzieży, która zostawia złodziejowi ważny refresh token, nie jest zmianą
+	 * hasła — jest złudzeniem bezpieczeństwa. Bieżącej sesji nie da się zresztą
+	 * oszczędzić: access token nie niesie identyfikatora sesji, więc nie wiemy,
+	 * która z nich należy do pytającego. Użytkownik loguje się ponownie wszędzie,
+	 * co jest zachowaniem oczekiwanym po zmianie hasła.
+	 *
+	 * <p>
+	 * Czego to <b>nie</b> robi: wydane access tokeny żyją dalej aż do wygaśnięcia
+	 * (domyślnie 15 minut), bo JWT jest bezstanowy z założenia (§6). Zamknięcie
+	 * tego okna wymagałoby sprawdzania sesji przy każdym żądaniu, czyli oddania
+	 * właśnie tej bezstanowości. Rewokacja odcina odnawianie, a nie trwającą minutę
+	 * resztkę ważności.
+	 */
+	@Transactional
+	void changePassword(UUID userId, String currentPassword, String newPassword) {
+		User user = userRepository.findById(userId).orElseThrow(InvalidCredentialsException::new);
+		if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+			log.warn("Nieudana zmiana hasła (błędne obecne hasło), konto: {}", userId);
+			throw new InvalidCredentialsException();
+		}
+		if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+			throw new NewPasswordSameAsCurrentException();
+		}
+		user.changePassword(passwordEncoder.encode(newPassword));
+		int revoked = sessionRepository.revokeAllForUser(userId, Instant.now());
+		log.info("Zmiana hasła konta {}, odwołane sesje: {}", userId, revoked);
+	}
+
+	/**
 	 * Wymaga ponownego podania hasła — sam ważny access token nie wystarcza na
 	 * akcję nieodwracalną (Claude.md §9, RODO — prawo do usunięcia konta). Event
 	 * leci PRZED usunięciem wiersza {@code users}: pozostałe moduły mają FK do

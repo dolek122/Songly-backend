@@ -16,6 +16,28 @@ interface SessionRepository extends JpaRepository<Session, UUID> {
 	void deleteByUserId(UUID userId);
 
 	/**
+	 * Odwołuje wszystkie żywe sesje użytkownika (zmiana hasła). Aktualizacja
+	 * masowa, nie pętla po encjach: {@code Session} nie ma cyklu życia, na którym
+	 * cokolwiek wisi, a liczba sesji jest nieograniczona z góry.
+	 *
+	 * <p>
+	 * {@code clearAutomatically}, bo zapytanie masowe omija kontekst persystencji —
+	 * bez tego encje sesji wczytane wcześniej w tej samej transakcji zostałyby w
+	 * pamięci jako nieodwołane.
+	 *
+	 * <p>
+	 * <b>{@code flushAutomatically} jest tu warunkiem poprawności, nie
+	 * optymalizacją.</b> Wołający ({@code changePassword}) zmienia hasło na encji
+	 * {@code User} tuż przed tym wywołaniem. Bez wymuszonego flusha czyszczenie
+	 * kontekstu wyrzuciłoby tę zmianę razem z resztą — hasło nigdy nie dotarłoby do
+	 * bazy, a stare dalej by działało. Objaw byłby przy tym cichy: endpoint zwraca
+	 * 204, sesje faktycznie giną, tylko samo hasło zostaje niezmienione.
+	 */
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query("update Session s set s.revoked = true, s.revokedAt = :now where s.userId = :userId and s.revoked = false")
+	int revokeAllForUser(@Param("userId") UUID userId, @Param("now") Instant now);
+
+	/**
 	 * Kasuje porcję sesji, które nie mogą już nikogo uwierzytelnić: odwołanych
 	 * dawniej niż {@code cutoff} albo wygasłych przed nim.
 	 *
