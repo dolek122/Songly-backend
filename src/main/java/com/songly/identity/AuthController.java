@@ -1,6 +1,7 @@
 package com.songly.identity;
 
 import com.songly.identity.dto.AuthTokensResponse;
+import com.songly.identity.dto.ChangePasswordRequest;
 import com.songly.identity.dto.DeleteAccountRequest;
 import com.songly.identity.dto.LoginRequest;
 import com.songly.identity.dto.RefreshRequest;
@@ -13,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -45,6 +47,20 @@ class AuthController {
 	@PostMapping("/logout")
 	ResponseEntity<Void> logout(@Valid @RequestBody RefreshRequest request) {
 		authService.logout(request);
+		return ResponseEntity.noContent().build();
+	}
+
+	/**
+	 * Odpowiedź jest pusta celowo — nie wydajemy nowej pary tokenów. Skoro zmiana
+	 * hasła odwołuje wszystkie sesje, wydanie tu świeżej sesji po cichu cofałoby
+	 * połowę tego skutku dla urządzenia, które akurat wysłało żądanie.
+	 */
+	@PutMapping("/password")
+	@SecurityRequirement(name = "bearerAuth")
+	ResponseEntity<Void> changePassword(Authentication authentication,
+			@Valid @RequestBody ChangePasswordRequest request) {
+		authService.changePassword((UUID) authentication.getPrincipal(), request.currentPassword(),
+				request.newPassword());
 		return ResponseEntity.noContent().build();
 	}
 

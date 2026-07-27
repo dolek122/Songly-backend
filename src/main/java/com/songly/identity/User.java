@@ -56,4 +56,8 @@ class User {
 	public boolean isAdmin() {
 		return admin;
 	}
+
+	void changePassword(String newPasswordHash) {
+		this.passwordHash = newPasswordHash;
+	}
 }
