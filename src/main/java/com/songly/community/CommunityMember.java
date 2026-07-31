@@ -52,6 +52,10 @@ class CommunityMember {
 		return role;
 	}
 
+	void changeRole(CommunityRole role) {
+		this.role = role;
+	}
+
 	Instant getJoinedAt() {
 		return joinedAt;
 	}

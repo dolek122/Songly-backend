@@ -120,6 +120,24 @@ class AccountDeletionFlowIntegrationTest extends AbstractIntegrationTest {
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"shareWithFriends":false}""")).andExpect(status().isNoContent());
 
+		// moderacja: ban NALOZONY przez leaving (przezywa go, traci tylko autora) oraz
+		// zgloszenie ZLOZONE przez leaving (znika razem z nim). Oba maja FK do users
+		// bez CASCADE, wiec bez sprzatania kasowanie konta wywali sie o klucz obcy.
+		mockMvc.perform(put("/api/v1/communities/" + communityId + "/bans/" + stranger.userId())
+				.header("Authorization", "Bearer " + leaving.accessToken()).contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"reason":"test"}""")).andExpect(status().isNoContent());
+		String communityPostId = objectMapper.readTree(mockMvc
+				.perform(post("/api/v1/communities/" + communityId + "/posts")
+						.header("Authorization", "Bearer " + staying.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"content":"post do zgloszenia"}"""))
+				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asText();
+		mockMvc.perform(post("/api/v1/posts/" + communityPostId + "/reports")
+				.header("Authorization", "Bearer " + leaving.accessToken()).contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"reason":"SPAM"}""")).andExpect(status().isAccepted());
+
 		// identity: niewykorzystany token resetu hasla ma FK do users bez CASCADE,
 		// wiec konto z oczekujacym linkiem nie dalo by sie usunac, gdyby deleteAccount
 		// o nim zapomnial
