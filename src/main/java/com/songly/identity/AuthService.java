@@ -3,8 +3,6 @@ package com.songly.identity;
 import com.songly.identity.dto.AuthTokensResponse;
 import com.songly.identity.dto.LoginRequest;
 import com.songly.identity.dto.RefreshRequest;
-import com.songly.identity.dto.RegisterRequest;
-import com.songly.identity.security.JwtService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
@@ -45,32 +43,20 @@ class AuthService {
 	private final SessionRepository sessionRepository;
 	private final PasswordResetTokenRepository passwordResetTokenRepository;
 	private final PasswordEncoder passwordEncoder;
-	private final JwtService jwtService;
+	private final TokenIssuer tokenIssuer;
 	private final ApplicationEventPublisher eventPublisher;
 	private final MeterRegistry meterRegistry;
 
 	AuthService(UserRepository userRepository, SessionRepository sessionRepository,
 			PasswordResetTokenRepository passwordResetTokenRepository, PasswordEncoder passwordEncoder,
-			JwtService jwtService, ApplicationEventPublisher eventPublisher, MeterRegistry meterRegistry) {
+			TokenIssuer tokenIssuer, ApplicationEventPublisher eventPublisher, MeterRegistry meterRegistry) {
 		this.userRepository = userRepository;
 		this.sessionRepository = sessionRepository;
 		this.passwordResetTokenRepository = passwordResetTokenRepository;
 		this.passwordEncoder = passwordEncoder;
-		this.jwtService = jwtService;
+		this.tokenIssuer = tokenIssuer;
 		this.eventPublisher = eventPublisher;
 		this.meterRegistry = meterRegistry;
-	}
-
-	@Transactional
-	AuthTokensResponse register(RegisterRequest request) {
-		if (userRepository.existsByEmail(request.email())) {
-			throw new EmailAlreadyUsedException(request.email());
-		}
-		User user = new User(UUID.randomUUID(), request.email(), passwordEncoder.encode(request.password()),
-				Instant.now());
-		userRepository.save(user);
-		eventPublisher.publishEvent(new UserRegisteredEvent(user.getId(), user.getEmail(), Instant.now()));
-		return issueTokens(user);
 	}
 
 	/**
@@ -98,7 +84,7 @@ class AuthService {
 		}
 		loginOutcome("success").increment();
 		log.info("Zalogowano użytkownika {}", user.getId());
-		return issueTokens(user);
+		return tokenIssuer.issueFor(user);
 	}
 
 	private void auditFailedLogin(String reason, UUID userId) {
@@ -159,7 +145,7 @@ class AuthService {
 		session.revoke(now);
 		User user = userRepository.findById(session.getUserId()).orElseThrow(InvalidRefreshTokenException::new);
 		refreshOutcome("success").increment();
-		return issueTokens(user);
+		return tokenIssuer.issueFor(user);
 	}
 
 	private Counter refreshOutcome(String outcome) {
@@ -239,13 +225,4 @@ class AuthService {
 		userRepository.delete(user);
 	}
 
-	private AuthTokensResponse issueTokens(User user) {
-		String accessToken = jwtService.generateAccessToken(user.getId(), user.getEmail());
-		String refreshToken = SecureTokens.generate();
-		Instant now = Instant.now();
-		Session session = new Session(UUID.randomUUID(), user.getId(), SecureTokens.hash(refreshToken), now,
-				now.plus(jwtService.getRefreshTokenTtl()));
-		sessionRepository.save(session);
-		return new AuthTokensResponse(accessToken, refreshToken, "Bearer", jwtService.getAccessTokenTtl().toSeconds());
-	}
 }

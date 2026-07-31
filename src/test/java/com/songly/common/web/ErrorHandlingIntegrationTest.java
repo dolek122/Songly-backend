@@ -70,10 +70,7 @@ class ErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 	 */
 	@Test
 	void unknownRouteWhenAuthenticated_returnsNotFound() throws Exception {
-		MvcResult registration = mockMvc
-				.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
-						{"email":"unknown-route@songly.io","password":"password123"}"""))
-				.andExpect(status().isCreated()).andReturn();
+		MvcResult registration = registerAndVerify("unknown-route@songly.io", "password123");
 		String accessToken = objectMapper.readTree(registration.getResponse().getContentAsString()).get("accessToken")
 				.asText();
 

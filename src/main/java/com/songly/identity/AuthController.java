@@ -8,6 +8,7 @@ import com.songly.identity.dto.PasswordResetConfirmRequest;
 import com.songly.identity.dto.PasswordResetRequest;
 import com.songly.identity.dto.RefreshRequest;
 import com.songly.identity.dto.RegisterRequest;
+import com.songly.identity.dto.VerifyEmailRequest;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import java.util.UUID;
@@ -27,16 +28,41 @@ import org.springframework.web.bind.annotation.RestController;
 class AuthController {
 
 	private final AuthService authService;
+	private final RegistrationService registrationService;
 	private final PasswordResetService passwordResetService;
 
-	AuthController(AuthService authService, PasswordResetService passwordResetService) {
+	AuthController(AuthService authService, RegistrationService registrationService,
+			PasswordResetService passwordResetService) {
 		this.authService = authService;
+		this.registrationService = registrationService;
 		this.passwordResetService = passwordResetService;
 	}
 
+	/**
+	 * Przyjmuje zgłoszenie rejestracji. <b>202 zawsze</b> — także wtedy, gdy pod
+	 * tym adresem konto już istnieje. Wcześniejsze 409 {@code EMAIL_ALREADY_USED}
+	 * było wyrocznią: wystarczyło wpisywać kolejne adresy, żeby wylistować, kto ma
+	 * tu konto.
+	 *
+	 * <p>
+	 * Odpowiedź celowo <b>nie</b> zawiera tokenów — konto jeszcze nie istnieje.
+	 * Powstaje dopiero przy potwierdzeniu adresu, i to tam wydajemy sesję.
+	 */
 	@PostMapping("/register")
-	ResponseEntity<AuthTokensResponse> register(@Valid @RequestBody RegisterRequest request) {
-		return ResponseEntity.status(HttpStatus.CREATED).body(authService.register(request));
+	@ResponseStatus(HttpStatus.ACCEPTED)
+	void register(@Valid @RequestBody RegisterRequest request) {
+		registrationService.register(request);
+	}
+
+	/**
+	 * Potwierdza adres i zakłada konto, od razu wydając parę tokenów. Kliknięcie w
+	 * link dowodzi kontroli nad skrzynką, a hasło podał ten sam człowiek chwilę
+	 * wcześniej — osobne logowanie zaraz po potwierdzeniu nie sprawdzałoby niczego
+	 * więcej.
+	 */
+	@PostMapping("/register/verify")
+	AuthTokensResponse verifyEmail(@Valid @RequestBody VerifyEmailRequest request) {
+		return registrationService.verify(request.token());
 	}
 
 	@PostMapping("/login")

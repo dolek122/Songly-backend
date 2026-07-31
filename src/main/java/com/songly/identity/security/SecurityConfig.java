@@ -36,8 +36,8 @@ class SecurityConfig {
 				.exceptionHandling(eh -> eh.authenticationEntryPoint(authenticationEntryPoint)
 						.accessDeniedHandler(accessDeniedHandler))
 				.authorizeHttpRequests(auth -> auth
-						.requestMatchers("/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/refresh",
-								"/api/v1/auth/logout")
+						.requestMatchers("/api/v1/auth/register", "/api/v1/auth/register/verify", "/api/v1/auth/login",
+								"/api/v1/auth/refresh", "/api/v1/auth/logout")
 						.permitAll()
 						// Reset hasła jest z definicji dla kogoś, kto nie może się zalogować.
 						// To osobne ścieżki od PUT /api/v1/auth/password (zmiana hasła przy

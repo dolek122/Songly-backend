@@ -25,7 +25,7 @@ class RateLimitingIntegrationTest extends AbstractIntegrationTest {
 		for (int i = 0; i < 2; i++) {
 			mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
 					{"email":"rate-limit-%d@songly.io","password":"password123"}""".formatted(i)))
-					.andExpect(status().isCreated());
+					.andExpect(status().isAccepted());
 		}
 
 		mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""

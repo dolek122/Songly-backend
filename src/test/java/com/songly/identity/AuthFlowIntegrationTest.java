@@ -26,11 +26,7 @@ class AuthFlowIntegrationTest extends AbstractIntegrationTest {
 	void register_thenLogin_thenRefresh_thenLogout_happyPath() throws Exception {
 		String email = "flow-user@songly.io";
 
-		MvcResult registerResult = mockMvc
-				.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
-						{"email":"%s","password":"password123"}""".formatted(email))).andExpect(status().isCreated())
-				.andExpect(jsonPath("$.accessToken").isNotEmpty()).andExpect(jsonPath("$.refreshToken").isNotEmpty())
-				.andReturn();
+		MvcResult registerResult = registerAndVerify(email, "password123");
 
 		String firstRefreshToken = objectMapper.readTree(registerResult.getResponse().getContentAsString())
 				.get("refreshToken").asText();
@@ -58,24 +54,31 @@ class AuthFlowIntegrationTest extends AbstractIntegrationTest {
 				{"refreshToken":"%s"}""".formatted(rotatedRefreshToken))).andExpect(status().isUnauthorized());
 	}
 
+	/**
+	 * Rejestracja na zajęty adres wygląda <b>dokładnie tak samo</b> jak na wolny.
+	 * Wcześniejsze 409 {@code EMAIL_ALREADY_USED} było wyrocznią: wystarczyło
+	 * wpisywać kolejne adresy, żeby wylistować, kto ma tu konto (ADR 0009).
+	 */
 	@Test
-	void register_returnsConflict_whenEmailAlreadyUsed() throws Exception {
+	void register_looksIdentical_whenEmailAlreadyUsed() throws Exception {
 		String email = "duplicate@songly.io";
-		String body = """
-				{"email":"%s","password":"password123"}""".formatted(email);
+		registerAndVerify(email, "password123");
 
-		mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))
-				.andExpect(status().isCreated());
+		mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
+				{"email":"%s","password":"inne-haslo-123"}""".formatted(email))).andExpect(status().isAccepted());
 
-		mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))
-				.andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("EMAIL_ALREADY_USED"));
+		// Konto zostaje przy swoim haśle — zgłoszenie na zajęty adres niczego nie
+		// tworzy i niczego nie nadpisuje.
+		mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content("""
+				{"email":"%s","password":"inne-haslo-123"}""".formatted(email))).andExpect(status().isUnauthorized());
+		mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content("""
+				{"email":"%s","password":"password123"}""".formatted(email))).andExpect(status().isOk());
 	}
 
 	@Test
 	void login_returnsUnauthorized_whenPasswordWrong() throws Exception {
 		String email = "wrong-password@songly.io";
-		mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
-				{"email":"%s","password":"password123"}""".formatted(email))).andExpect(status().isCreated());
+		registerAndVerify(email, "password123");
 
 		mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content("""
 				{"email":"%s","password":"wrong-password"}""".formatted(email))).andExpect(status().isUnauthorized())

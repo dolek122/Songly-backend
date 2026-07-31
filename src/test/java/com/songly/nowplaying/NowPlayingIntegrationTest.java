@@ -42,10 +42,7 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 	private NowPlayingStreamHub streamHub;
 
 	private String registerAndGetAccessToken(String email) throws Exception {
-		MvcResult result = mockMvc
-				.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
-						{"email":"%s","password":"password123"}""".formatted(email))).andExpect(status().isCreated())
-				.andReturn();
+		MvcResult result = registerAndVerify(email, "password123");
 		return objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
 	}
 

@@ -5,10 +5,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.songly.AbstractIntegrationTest;
-import com.songly.identity.RecordingMailSenderConfig.RecordingMailSender;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -23,16 +21,12 @@ import org.springframework.test.web.servlet.MockMvc;
  * <b>celowo trzyma rate limiting wyłączony</b> — inaczej nie byłoby wiadomo,
  * który z dwóch mechanizmów zatrzymał drugą wysyłkę.
  */
-@Import(RecordingMailSenderConfig.class)
 @TestPropertySource(properties = {"songly.security.rate-limit.enabled=false",
 		"songly.security.password-reset.resend-interval=PT10M"})
 class PasswordResetThrottleIntegrationTest extends AbstractIntegrationTest {
 
 	@Autowired
 	private MockMvc mockMvc;
-
-	@Autowired
-	private RecordingMailSender mails;
 
 	private void requestReset(String email) throws Exception {
 		mockMvc.perform(post("/api/v1/auth/password/reset-request").contentType(MediaType.APPLICATION_JSON).content("""
@@ -46,8 +40,7 @@ class PasswordResetThrottleIntegrationTest extends AbstractIntegrationTest {
 	 */
 	@Test
 	void secondRequestWithinTheWindow_isSilentlyIgnored() throws Exception {
-		mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
-				{"email":"reset-throttle@songly.io","password":"password123"}""")).andExpect(status().isCreated());
+		registerAndVerify("reset-throttle@songly.io", "password123");
 		mails.clear();
 
 		requestReset("reset-throttle@songly.io");

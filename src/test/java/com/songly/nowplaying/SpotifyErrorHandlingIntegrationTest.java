@@ -20,7 +20,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
@@ -127,10 +126,7 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 
 	/** Rejestracja + pełne przejście OAuth przez publiczny callback. */
 	private ConnectedUser connectSpotify(String email) throws Exception {
-		MvcResult registration = mockMvc
-				.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
-						{"email":"%s","password":"password123"}""".formatted(email))).andExpect(status().isCreated())
-				.andReturn();
+		MvcResult registration = registerAndVerify(email, "password123");
 		String accessToken = objectMapper.readTree(registration.getResponse().getContentAsString()).get("accessToken")
 				.asText();
 
@@ -182,10 +178,7 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 
 	@Test
 	void staleAuthorizationCode_returnsBadRequest() throws Exception {
-		MvcResult registration = mockMvc
-				.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
-						{"email":"spotify-stale-code@songly.io","password":"password123"}"""))
-				.andExpect(status().isCreated()).andReturn();
+		MvcResult registration = registerAndVerify("spotify-stale-code@songly.io", "password123");
 		String accessToken = objectMapper.readTree(registration.getResponse().getContentAsString()).get("accessToken")
 				.asText();
 		MvcResult connect = mockMvc

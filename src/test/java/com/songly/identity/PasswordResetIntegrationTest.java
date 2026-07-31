@@ -8,7 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.songly.AbstractIntegrationTest;
-import com.songly.identity.RecordingMailSenderConfig.RecordingMailSender;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -17,7 +16,6 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -40,7 +38,6 @@ import tools.jackson.databind.ObjectMapper;
  * ({@code PasswordResetThrottleIntegrationTest}) — inaczej wyciszałby wysyłki w
  * testach, które badają coś zupełnie innego.
  */
-@Import(RecordingMailSenderConfig.class)
 @TestPropertySource(properties = {"songly.security.rate-limit.enabled=false",
 		"songly.security.password-reset.resend-interval=PT0S"})
 class PasswordResetIntegrationTest extends AbstractIntegrationTest {
@@ -54,9 +51,6 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
 	private ObjectMapper objectMapper;
 
 	@Autowired
-	private RecordingMailSender mails;
-
-	@Autowired
 	private PasswordResetTokenRepository tokenRepository;
 
 	@BeforeEach
@@ -68,10 +62,7 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	private Tokens register(String email, String password) throws Exception {
-		MvcResult result = mockMvc
-				.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
-						{"email":"%s","password":"%s"}""".formatted(email, password))).andExpect(status().isCreated())
-				.andReturn();
+		MvcResult result = registerAndVerify(email, password);
 		return toTokens(result);
 	}
 
