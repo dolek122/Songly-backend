@@ -123,6 +123,12 @@ class AccountDeletionFlowIntegrationTest extends AbstractIntegrationTest {
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"shareWithFriends":false}""")).andExpect(status().isNoContent());
 
+		// identity: niewykorzystany token resetu hasla ma FK do users bez CASCADE,
+		// wiec konto z oczekujacym linkiem nie dalo by sie usunac, gdyby deleteAccount
+		// o nim zapomnial
+		mockMvc.perform(post("/api/v1/auth/password/reset-request").contentType(MediaType.APPLICATION_JSON).content("""
+				{"email":"leaving-user@songly.io"}""")).andExpect(status().isAccepted());
+
 		// usuniecie konta wymaga poprawnego hasla
 		mockMvc.perform(delete("/api/v1/auth/me").header("Authorization", "Bearer " + leaving.accessToken())
 				.contentType(MediaType.APPLICATION_JSON).content("""

@@ -38,6 +38,12 @@ class SecurityConfig {
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers("/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/refresh",
 								"/api/v1/auth/logout")
+						.permitAll()
+						// Reset hasła jest z definicji dla kogoś, kto nie może się zalogować.
+						// To osobne ścieżki od PUT /api/v1/auth/password (zmiana hasła przy
+						// znanym obecnym haśle), która zostaje za uwierzytelnieniem.
+						.requestMatchers(HttpMethod.POST, "/api/v1/auth/password/reset-request",
+								"/api/v1/auth/password/reset")
 						.permitAll().requestMatchers("/api/v1/now-playing/spotify/callback").permitAll()
 						.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 						.requestMatchers("/actuator/health/**", "/actuator/info").permitAll()

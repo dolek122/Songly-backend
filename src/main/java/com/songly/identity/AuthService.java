@@ -7,12 +7,7 @@ import com.songly.identity.dto.RegisterRequest;
 import com.songly.identity.security.JwtService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,15 +43,18 @@ class AuthService {
 
 	private final UserRepository userRepository;
 	private final SessionRepository sessionRepository;
+	private final PasswordResetTokenRepository passwordResetTokenRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final JwtService jwtService;
 	private final ApplicationEventPublisher eventPublisher;
 	private final MeterRegistry meterRegistry;
 
-	AuthService(UserRepository userRepository, SessionRepository sessionRepository, PasswordEncoder passwordEncoder,
+	AuthService(UserRepository userRepository, SessionRepository sessionRepository,
+			PasswordResetTokenRepository passwordResetTokenRepository, PasswordEncoder passwordEncoder,
 			JwtService jwtService, ApplicationEventPublisher eventPublisher, MeterRegistry meterRegistry) {
 		this.userRepository = userRepository;
 		this.sessionRepository = sessionRepository;
+		this.passwordResetTokenRepository = passwordResetTokenRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.jwtService = jwtService;
 		this.eventPublisher = eventPublisher;
@@ -142,7 +140,7 @@ class AuthService {
 	 */
 	@Transactional(noRollbackFor = RefreshTokenReuseDetectedException.class)
 	AuthTokensResponse refresh(RefreshRequest request) {
-		String hash = hashToken(request.refreshToken());
+		String hash = SecureTokens.hash(request.refreshToken());
 		Session session = sessionRepository.findByRefreshTokenHash(hash).orElseGet(() -> {
 			refreshOutcome("invalid").increment();
 			throw new InvalidRefreshTokenException();
@@ -170,7 +168,7 @@ class AuthService {
 
 	@Transactional
 	void logout(RefreshRequest request) {
-		sessionRepository.findByRefreshTokenHash(hashToken(request.refreshToken()))
+		sessionRepository.findByRefreshTokenHash(SecureTokens.hash(request.refreshToken()))
 				.ifPresent(session -> session.revoke(Instant.now()));
 	}
 
@@ -206,6 +204,11 @@ class AuthService {
 		}
 		user.changePassword(passwordEncoder.encode(newPassword));
 		int revoked = sessionRepository.revokeAllForUser(userId, Instant.now());
+		// Oczekujący link resetujący traci ważność razem ze starym hasłem. Zwykle
+		// jest tam dlatego, że ktoś obcy zamówił reset — zostawienie go żywego przez
+		// pół godziny po tym, jak właściciel zareagował zmianą hasła, znaczyłoby, że
+		// reakcja niczego nie zamknęła.
+		passwordResetTokenRepository.deleteByUserId(userId);
 		log.info("Zmiana hasła konta {}, odwołane sesje: {}", userId, revoked);
 	}
 
@@ -228,31 +231,21 @@ class AuthService {
 		log.warn("Usuwanie konta {} na żądanie użytkownika (RODO)", userId);
 		eventPublisher.publishEvent(new UserAccountDeletionRequestedEvent(userId));
 		sessionRepository.deleteByUserId(userId);
+		// Tokeny resetu mają FK do users bez CASCADE, dokładnie jak sesje — konto z
+		// niewykorzystanym linkiem resetującym nie dałoby się usunąć. To nie leci
+		// przez zdarzenie, bo ta tabela należy do tego samego modułu; zdarzenie
+		// istnieje po to, żeby nie sięgać do cudzych (Claude.md §9).
+		passwordResetTokenRepository.deleteByUserId(userId);
 		userRepository.delete(user);
 	}
 
 	private AuthTokensResponse issueTokens(User user) {
 		String accessToken = jwtService.generateAccessToken(user.getId(), user.getEmail());
-		String refreshToken = generateRefreshToken();
+		String refreshToken = SecureTokens.generate();
 		Instant now = Instant.now();
-		Session session = new Session(UUID.randomUUID(), user.getId(), hashToken(refreshToken), now,
+		Session session = new Session(UUID.randomUUID(), user.getId(), SecureTokens.hash(refreshToken), now,
 				now.plus(jwtService.getRefreshTokenTtl()));
 		sessionRepository.save(session);
 		return new AuthTokensResponse(accessToken, refreshToken, "Bearer", jwtService.getAccessTokenTtl().toSeconds());
-	}
-
-	private String generateRefreshToken() {
-		byte[] bytes = new byte[32];
-		new SecureRandom().nextBytes(bytes);
-		return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-	}
-
-	private String hashToken(String token) {
-		try {
-			MessageDigest digest = MessageDigest.getInstance("SHA-256");
-			return Base64.getEncoder().encodeToString(digest.digest(token.getBytes(StandardCharsets.UTF_8)));
-		} catch (NoSuchAlgorithmException e) {
-			throw new IllegalStateException(e);
-		}
 	}
 }

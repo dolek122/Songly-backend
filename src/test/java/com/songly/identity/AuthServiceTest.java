@@ -40,6 +40,9 @@ class AuthServiceTest {
 	private SessionRepository sessionRepository;
 
 	@Mock
+	private PasswordResetTokenRepository passwordResetTokenRepository;
+
+	@Mock
 	private JwtService jwtService;
 
 	@Mock
@@ -54,8 +57,8 @@ class AuthServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		authService = new AuthService(userRepository, sessionRepository, passwordEncoder, jwtService, eventPublisher,
-				meterRegistry);
+		authService = new AuthService(userRepository, sessionRepository, passwordResetTokenRepository, passwordEncoder,
+				jwtService, eventPublisher, meterRegistry);
 	}
 
 	private double loginAttempts(String outcome) {
