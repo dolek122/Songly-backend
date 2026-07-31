@@ -19,12 +19,22 @@ class RateLimitProperties {
 	 * <p>
 	 * Domyślnie wszystkie ścieżki wystawione publicznie w {@code SecurityConfig}:
 	 * dwie ścieżki wejściowe (rejestracja, logowanie), dwie operujące na refresh
-	 * tokenie i publiczny callback OAuth. Endpointy za JWT zostają poza listą — te
-	 * chroni już konieczność posiadania ważnego tokenu, a ich sensowne limitowanie
-	 * wymagałoby licznika per użytkownik, nie per IP.
+	 * tokenie, dwie ścieżki resetu hasła i publiczny callback OAuth. Endpointy za
+	 * JWT zostają poza listą — te chroni już konieczność posiadania ważnego tokenu,
+	 * a ich sensowne limitowanie wymagałoby licznika per użytkownik, nie per IP.
+	 *
+	 * <p>
+	 * Przy resecie hasła limit per IP to tylko połowa ochrony: sam nie powstrzymuje
+	 * zasypywania cudzej skrzynki z wielu adresów, bo licznik jest per adres, a
+	 * ofiara jedna. Drugą połową jest odstęp między wysyłkami dla tego samego konta
+	 * ({@code songly.security.password-reset.resend-interval}). Na ścieżce
+	 * {@code /reset} liczy się z kolei to, że bez limitu token można by zgadywać na
+	 * siłę — 256 losowych bitów czyni to i tak beznadziejnym, ale limit zdejmuje z
+	 * nas potrzebę polegania wyłącznie na tym.
 	 */
 	private List<String> protectedPaths = List.of("/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/refresh",
-			"/api/v1/auth/logout", "/api/v1/now-playing/spotify/callback");
+			"/api/v1/auth/logout", "/api/v1/auth/password/reset-request", "/api/v1/auth/password/reset",
+			"/api/v1/now-playing/spotify/callback");
 
 	boolean isEnabled() {
 		return enabled;

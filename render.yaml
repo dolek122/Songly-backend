@@ -58,3 +58,25 @@ services:
         sync: false
       - key: SPOTIFY_REDIRECT_URI
         sync: false
+      # Kanał e-mail (ADR 0008). Bez MAIL_PROVIDER=smtp instancja startuje z
+      # domyślnym "log", czyli wypisuje token resetu hasła do logów zamiast go
+      # wysłać — na produkcji to nie jest brak funkcji, tylko dziura: każdy z
+      # dostępem do logów mógłby przejmować konta.
+      - key: MAIL_PROVIDER
+        value: smtp
+      # SPRING_MAIL_HOST celowo nie ma tu wartości domyślnej — "smtp" bez hosta
+      # wywala start aplikacji, i o to chodzi. Instancja, która tylko wygląda,
+      # jakby wysyłała maile, byłaby awarią niezauważalną aż do pierwszego
+      # zgłoszenia "nie dostałem linku".
+      - key: SPRING_MAIL_HOST
+        sync: false
+      - key: SPRING_MAIL_USERNAME
+        sync: false
+      - key: SPRING_MAIL_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      # Link prowadzi do aplikacji klienckiej (formularz nowego hasła), nie do
+      # backendu, który nie ma żadnego UI.
+      - key: PASSWORD_RESET_URL
+        sync: false

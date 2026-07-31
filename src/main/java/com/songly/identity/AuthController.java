@@ -4,6 +4,8 @@ import com.songly.identity.dto.AuthTokensResponse;
 import com.songly.identity.dto.ChangePasswordRequest;
 import com.songly.identity.dto.DeleteAccountRequest;
 import com.songly.identity.dto.LoginRequest;
+import com.songly.identity.dto.PasswordResetConfirmRequest;
+import com.songly.identity.dto.PasswordResetRequest;
 import com.songly.identity.dto.RefreshRequest;
 import com.songly.identity.dto.RegisterRequest;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -24,9 +27,11 @@ import org.springframework.web.bind.annotation.RestController;
 class AuthController {
 
 	private final AuthService authService;
+	private final PasswordResetService passwordResetService;
 
-	AuthController(AuthService authService) {
+	AuthController(AuthService authService, PasswordResetService passwordResetService) {
 		this.authService = authService;
+		this.passwordResetService = passwordResetService;
 	}
 
 	@PostMapping("/register")
@@ -62,6 +67,31 @@ class AuthController {
 		authService.changePassword((UUID) authentication.getPrincipal(), request.currentPassword(),
 				request.newPassword());
 		return ResponseEntity.noContent().build();
+	}
+
+	/**
+	 * Zamawia link resetujący hasło. <b>202 zawsze</b> — także dla adresu, pod
+	 * którym nie ma konta, i dla żądania wyciszonego przez odstęp między wysyłkami.
+	 * Endpoint jest publiczny, więc każde rozróżnienie w odpowiedzi byłoby gotową
+	 * listą kont (Claude.md §13). „Accepted", a nie „No content", mówi zresztą
+	 * prawdę o tym, co się stało: przyjęliśmy żądanie, a wysyłka dzieje się poza
+	 * cyklem tej odpowiedzi.
+	 */
+	@PostMapping("/password/reset-request")
+	@ResponseStatus(HttpStatus.ACCEPTED)
+	void requestPasswordReset(@Valid @RequestBody PasswordResetRequest request) {
+		passwordResetService.requestReset(request.email());
+	}
+
+	/**
+	 * Podmienia hasło na podstawie tokenu z linku. Podobnie jak zmiana hasła nie
+	 * wydaje tokenów: reset unieważnia wszystkie sesje, więc oddanie tu świeżej
+	 * pary cofałoby połowę tego skutku. Użytkownik loguje się nowym hasłem.
+	 */
+	@PostMapping("/password/reset")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	void resetPassword(@Valid @RequestBody PasswordResetConfirmRequest request) {
+		passwordResetService.resetPassword(request.token(), request.newPassword());
 	}
 
 	@DeleteMapping("/me")
