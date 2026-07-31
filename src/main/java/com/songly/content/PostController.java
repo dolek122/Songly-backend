@@ -6,6 +6,7 @@ import com.songly.common.media.EmptyUploadException;
 import com.songly.content.dto.CreatePostRequest;
 import com.songly.content.dto.PostImageResponse;
 import com.songly.content.dto.PostResponse;
+import com.songly.content.dto.ReportPostRequest;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import java.util.UUID;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -108,6 +110,18 @@ class PostController {
 			@Valid @RequestBody CreateCommentRequest request) {
 		CommentResponse response = contentService.addComment(postId, currentUserId(authentication), request.content());
 		return ResponseEntity.status(HttpStatus.CREATED).body(response);
+	}
+
+	/**
+	 * Zgłasza post do moderacji społeczności. Dostępne dla każdego zalogowanego —
+	 * także dla nie-członka, bo społeczności są otwarte do czytania (Claude.md §8)
+	 * i treść widzi szerzej niż jej członkowie.
+	 */
+	@PostMapping("/{postId}/reports")
+	@ResponseStatus(HttpStatus.ACCEPTED)
+	void reportPost(Authentication authentication, @PathVariable UUID postId,
+			@Valid @RequestBody ReportPostRequest request) {
+		contentService.reportPost(postId, currentUserId(authentication), request.reason(), request.details());
 	}
 
 	@GetMapping("/{postId}/comments")

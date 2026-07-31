@@ -52,6 +52,9 @@ class ContentServiceTest {
 	private CommunityMembership communityMembership;
 
 	@Mock
+	private PostReportRepository reportRepository;
+
+	@Mock
 	private ObjectStorage objectStorage;
 
 	@Mock
@@ -62,7 +65,7 @@ class ContentServiceTest {
 	@BeforeEach
 	void setUp() {
 		contentService = new ContentService(postRepository, likeRepository, commentRepository, shareRepository,
-				profileDirectory, socialGraph, communityMembership, objectStorage, eventPublisher);
+				reportRepository, profileDirectory, socialGraph, communityMembership, objectStorage, eventPublisher);
 	}
 
 	@Test

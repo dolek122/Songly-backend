@@ -1,5 +1,6 @@
 package com.songly.community;
 
+import com.songly.community.dto.CommunityBanResponse;
 import com.songly.community.dto.CommunityMemberResponse;
 import com.songly.community.dto.CommunityResponse;
 import com.songly.profile.ProfileDirectory;
@@ -21,13 +22,16 @@ class CommunityService implements CommunityMembership {
 
 	private final CommunityRepository communityRepository;
 	private final CommunityMemberRepository memberRepository;
+	private final CommunityBanRepository banRepository;
 	private final ProfileDirectory profileDirectory;
 	private final ApplicationEventPublisher eventPublisher;
 
 	CommunityService(CommunityRepository communityRepository, CommunityMemberRepository memberRepository,
-			ProfileDirectory profileDirectory, ApplicationEventPublisher eventPublisher) {
+			CommunityBanRepository banRepository, ProfileDirectory profileDirectory,
+			ApplicationEventPublisher eventPublisher) {
 		this.communityRepository = communityRepository;
 		this.memberRepository = memberRepository;
+		this.banRepository = banRepository;
 		this.profileDirectory = profileDirectory;
 		this.eventPublisher = eventPublisher;
 	}
@@ -82,6 +86,102 @@ class CommunityService implements CommunityMembership {
 				.orElse(false);
 	}
 
+	@Override
+	@Transactional(readOnly = true)
+	public boolean canModerate(UUID communityId, UUID userId) {
+		return memberRepository.findById(new CommunityMemberId(communityId, userId))
+				.map(membership -> membership.getRole().canModerate()).orElse(false);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public boolean isBanned(UUID communityId, UUID userId) {
+		return banRepository.existsByCommunityIdAndUserId(communityId, userId);
+	}
+
+	/**
+	 * Nadaje rolę w społeczności. <b>Wyłącznie właściciel</b> — moderator mogący
+	 * rozdawać role mógłby zdegradować właściciela i przejąć społeczność.
+	 *
+	 * <p>
+	 * {@code OWNER} nie jest tu osiągalny: właścicielstwo to nie stopień w tej
+	 * samej skali, tylko osobne pole na {@code communities}, i jego przekazanie
+	 * jest inną operacją (dziś nieistniejącą). Dopuszczenie go tutaj dałoby dwa
+	 * źródła prawdy o tym, kto jest właścicielem.
+	 */
+	@Transactional
+	void setMemberRole(UUID communityId, UUID requesterId, UUID targetUserId, CommunityRole role) {
+		Community community = requireCommunity(communityId);
+		requireOwner(community, requesterId);
+		if (role == CommunityRole.OWNER) {
+			throw new CannotAssignOwnerRoleException();
+		}
+		CommunityMember membership = memberRepository.findById(new CommunityMemberId(communityId, targetUserId))
+				.orElseThrow(NotCommunityMemberToModerateException::new);
+		if (membership.getRole() == CommunityRole.OWNER) {
+			throw new CannotModerateOwnerException();
+		}
+		membership.changeRole(role);
+	}
+
+	/**
+	 * Banuje użytkownika: usuwa członkostwo i blokuje ponowne dołączenie.
+	 *
+	 * <p>
+	 * Samo usunięcie z listy członków nic by nie dało — dołączenie jest otwarte i
+	 * natychmiastowe (§8), więc zbanowany wróciłby jednym żądaniem. Dopiero wiersz
+	 * w {@code community_bans} czyni tę decyzję trwałą.
+	 *
+	 * <p>
+	 * Idempotentne: ponowny ban tej samej osoby nie jest błędem, tylko brakiem
+	 * zmiany. Moderator nie powinien dostawać błędu za to, że ktoś inny zdążył
+	 * przed nim.
+	 */
+	@Transactional
+	void ban(UUID communityId, UUID requesterId, UUID targetUserId, String reason) {
+		Community community = requireCommunity(communityId);
+		requireModerator(communityId, requesterId);
+		if (community.getOwnerId().equals(targetUserId)) {
+			throw new CannotModerateOwnerException();
+		}
+		// Moderator nie zbanuje moderatora — inaczej dwoje moderatorów mogłoby
+		// wzajemnie wyrzucić się ze społeczności, a rozstrzygnięcie zależałoby od
+		// tego, kto pierwszy kliknął.
+		if (!requesterId.equals(community.getOwnerId()) && canModerate(communityId, targetUserId)) {
+			throw new CannotModerateModeratorException();
+		}
+		memberRepository.findById(new CommunityMemberId(communityId, targetUserId)).ifPresent(memberRepository::delete);
+		if (!banRepository.existsByCommunityIdAndUserId(communityId, targetUserId)) {
+			banRepository.save(new CommunityBan(communityId, targetUserId, requesterId, reason, Instant.now()));
+		}
+	}
+
+	/** Idempotentne — zdjęcie nieistniejącego banu nie jest błędem. */
+	@Transactional
+	void unban(UUID communityId, UUID requesterId, UUID targetUserId) {
+		requireCommunity(communityId);
+		requireModerator(communityId, requesterId);
+		banRepository.findById(new CommunityBanId(communityId, targetUserId)).ifPresent(banRepository::delete);
+	}
+
+	@Transactional(readOnly = true)
+	Page<CommunityBanResponse> listBans(UUID communityId, UUID requesterId, Pageable pageable) {
+		requireCommunity(communityId);
+		requireModerator(communityId, requesterId);
+		Page<CommunityBan> page = banRepository.findByCommunityIdOrderByCreatedAtDesc(communityId, pageable);
+		Set<UUID> userIds = page.getContent().stream().map(CommunityBan::getUserId).collect(Collectors.toSet());
+		Map<UUID, String> names = profileDirectory.displayNames(userIds);
+		Map<UUID, String> avatars = profileDirectory.avatarUrls(userIds);
+		return page.map(ban -> new CommunityBanResponse(ban.getUserId(), names.get(ban.getUserId()),
+				avatars.get(ban.getUserId()), ban.getReason(), ban.getBannedBy(), ban.getCreatedAt()));
+	}
+
+	private void requireModerator(UUID communityId, UUID requesterId) {
+		if (!canModerate(communityId, requesterId)) {
+			throw new NotCommunityModeratorException();
+		}
+	}
+
 	/**
 	 * Zdarzenie leci <b>przed</b> usunięciem wiersza: {@code posts} ma klucz obcy
 	 * do {@code communities}, więc moduł content musi zdążyć posprzątać swoje
@@ -126,6 +226,12 @@ class CommunityService implements CommunityMembership {
 	@Transactional
 	void join(UUID communityId, UUID userId) {
 		Community community = requireCommunity(communityId);
+		// Bez tego sprawdzenia ban byłby wyłącznie usunięciem z listy: dołączenie
+		// jest otwarte i natychmiastowe (§8), więc zbanowany wracałby jednym
+		// żądaniem, a moderacja sprowadzałaby się do wyścigu na kliknięcia.
+		if (banRepository.existsByCommunityIdAndUserId(communityId, userId)) {
+			throw new BannedFromCommunityException();
+		}
 		CommunityMemberId id = new CommunityMemberId(communityId, userId);
 		if (!memberRepository.existsById(id)) {
 			Instant now = Instant.now();
@@ -160,6 +266,14 @@ class CommunityService implements CommunityMembership {
 	@Transactional
 	void deleteAccountData(UUID userId) {
 		memberRepository.deleteByUserId(userId);
+		// Bany NAŁOŻONE przez tego usera zostają — należą do społeczności, nie do
+		// niego. Gdyby znikały razem z jego kontem, odejście moderatora po cichu
+		// wpuszczałoby z powrotem wszystkich, których zbanował. Gubimy tylko autora,
+		// bo klucz obcy do users nie ma jak przetrwać.
+		banRepository.clearBannedBy(userId);
+		// Bany NA tego usera znikają razem z kontem — nie ma już kogo trzymać za
+		// drzwiami, a wiersz i tak ma klucz obcy do users.
+		banRepository.deleteByUserId(userId);
 		communityRepository.findByOwnerId(userId).forEach(this::deleteWithDependents);
 	}
 

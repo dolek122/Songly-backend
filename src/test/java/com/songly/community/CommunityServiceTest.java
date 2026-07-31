@@ -32,6 +32,9 @@ class CommunityServiceTest {
 	private CommunityMemberRepository memberRepository;
 
 	@Mock
+	private CommunityBanRepository banRepository;
+
+	@Mock
 	private ProfileDirectory profileDirectory;
 
 	@Mock
@@ -44,7 +47,7 @@ class CommunityServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		communityService = new CommunityService(communityRepository, memberRepository, profileDirectory,
+		communityService = new CommunityService(communityRepository, memberRepository, banRepository, profileDirectory,
 				eventPublisher);
 	}
 

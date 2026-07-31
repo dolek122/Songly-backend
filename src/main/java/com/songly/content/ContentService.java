@@ -6,6 +6,7 @@ import com.songly.common.storage.ObjectStorage;
 import com.songly.community.CommunityMembership;
 import com.songly.content.dto.CommentResponse;
 import com.songly.content.dto.PostImageResponse;
+import com.songly.content.dto.PostReportResponse;
 import com.songly.content.dto.PostResponse;
 import com.songly.profile.ProfileDirectory;
 import com.songly.social.SocialGraph;
@@ -31,6 +32,7 @@ class ContentService {
 	private final LikeRepository likeRepository;
 	private final CommentRepository commentRepository;
 	private final ShareRepository shareRepository;
+	private final PostReportRepository reportRepository;
 	private final ProfileDirectory profileDirectory;
 	private final SocialGraph socialGraph;
 	private final CommunityMembership communityMembership;
@@ -45,13 +47,14 @@ class ContentService {
 	private static final String POST_IMAGE_PREFIX = "posts/";
 
 	ContentService(PostRepository postRepository, LikeRepository likeRepository, CommentRepository commentRepository,
-			ShareRepository shareRepository, ProfileDirectory profileDirectory, SocialGraph socialGraph,
-			CommunityMembership communityMembership, ObjectStorage objectStorage,
+			ShareRepository shareRepository, PostReportRepository reportRepository, ProfileDirectory profileDirectory,
+			SocialGraph socialGraph, CommunityMembership communityMembership, ObjectStorage objectStorage,
 			ApplicationEventPublisher eventPublisher) {
 		this.postRepository = postRepository;
 		this.likeRepository = likeRepository;
 		this.commentRepository = commentRepository;
 		this.shareRepository = shareRepository;
+		this.reportRepository = reportRepository;
 		this.profileDirectory = profileDirectory;
 		this.socialGraph = socialGraph;
 		this.communityMembership = communityMembership;
@@ -220,8 +223,99 @@ class ContentService {
 		postRepository.delete(post);
 	}
 
+	/**
+	 * Od ADR 0011 moderuje właściciel <b>i</b> moderatorzy — stąd
+	 * {@code canModerate} zamiast {@code isOwner}. To nadal dotyczy wyłącznie
+	 * postów w społecznościach: przy zwykłych postach chroni samo autorstwo (§8).
+	 */
 	private boolean moderates(Post post, UUID requesterId) {
-		return post.getCommunityId() != null && communityMembership.isOwner(post.getCommunityId(), requesterId);
+		return post.getCommunityId() != null && communityMembership.canModerate(post.getCommunityId(), requesterId);
+	}
+
+	/**
+	 * Zgłasza post do moderacji społeczności.
+	 *
+	 * <p>
+	 * Wyłącznie posty w społecznościach — zgłoszenie musi mieć adresata, a przy
+	 * zwykłym poście nie ma dziś nikogo, kto miałby prawo je rozpatrzyć (świadomy
+	 * zakres ADR 0011: moderacja jest społecznościowa, nie globalna).
+	 *
+	 * <p>
+	 * Post niewidoczny dla zgłaszającego (blokada, §9) jest dla niego
+	 * nieistniejący, więc {@code visiblePost} daje 404 — zgłaszanie nie może być
+	 * obejściem tej zasłony.
+	 */
+	@Transactional
+	void reportPost(UUID postId, UUID reporterId, ReportReason reason, String details) {
+		Post post = visiblePost(postId, reporterId);
+		if (post.getCommunityId() == null) {
+			throw new PostNotInCommunityException();
+		}
+		if (post.getAuthorId().equals(reporterId)) {
+			throw new CannotReportOwnPostException();
+		}
+		// Jeden zgłaszający = jedno zgłoszenie. Inaczej jedna osoba podbijałaby
+		// licznik w nieskończoność, a kolejka pokazywałaby upór zamiast liczby
+		// niezależnych osób, którym coś przeszkadza.
+		if (reportRepository.existsByPostIdAndReporterId(postId, reporterId)) {
+			throw new PostAlreadyReportedException();
+		}
+		reportRepository.save(new PostReport(UUID.randomUUID(), postId, reporterId, reason, details, Instant.now()));
+	}
+
+	@Transactional(readOnly = true)
+	Page<PostReportResponse> listPendingReports(UUID communityId, UUID requesterId, Pageable pageable) {
+		requireModerator(communityId, requesterId);
+		Page<PostReport> page = reportRepository.findByCommunityIdAndStatus(communityId, ReportStatus.PENDING,
+				pageable);
+		List<UUID> postIds = page.getContent().stream().map(PostReport::getPostId).distinct().toList();
+		if (postIds.isEmpty()) {
+			// Pusta kolejka to najczęstszy przypadek w zdrowej społeczności. Wyjście tu
+			// oszczędza nie tyle zapytania, co zapytania z pustym IN — a te potrafią
+			// zachowywać się różnie i nie ma powodu na tym polegać.
+			return Page.empty(pageable);
+		}
+		Map<UUID, PostResponse> posts = toResponses(postRepository.findAllById(postIds), requesterId, Set.of()).stream()
+				.collect(Collectors.toMap(PostResponse::id, Function.identity()));
+		Map<UUID, Long> counts = reportRepository.countByPostIdIn(postIds, ReportStatus.PENDING).stream()
+				.collect(Collectors.toMap(PostReportRepository.PostIdCount::getPostId,
+						PostReportRepository.PostIdCount::getReportCount));
+		Map<UUID, String> reporterNames = profileDirectory
+				.displayNames(page.getContent().stream().map(PostReport::getReporterId).collect(Collectors.toSet()));
+		return page.map(report -> new PostReportResponse(report.getId(), report.getReason(), report.getDetails(),
+				report.getReporterId(), reporterNames.get(report.getReporterId()), report.getCreatedAt(),
+				counts.getOrDefault(report.getPostId(), 0L), posts.get(report.getPostId())));
+	}
+
+	/**
+	 * Odrzuca zgłoszenie — moderator uznał, że post zostaje.
+	 *
+	 * <p>
+	 * Odpowiednika „uwzględnij" nie ma i to nie jest brak: uwzględnienie zgłoszenia
+	 * <i>jest</i> skasowaniem posta, a to już istnieje ({@code DELETE /posts/id}) i
+	 * zabiera zgłoszenia kaskadą. Osobny przycisk robiłby drugą, równoległą ścieżkę
+	 * do tego samego skutku.
+	 */
+	@Transactional
+	void dismissReport(UUID communityId, UUID reportId, UUID requesterId) {
+		requireModerator(communityId, requesterId);
+		PostReport report = reportRepository.findById(reportId).orElseThrow(ReportNotFoundException::new);
+		Post post = postRepository.findById(report.getPostId()).orElseThrow(ReportNotFoundException::new);
+		// Zgłoszenie z innej społeczności zgłaszamy jako nieistniejące, a nie jako
+		// brak uprawnień: 403 potwierdzałoby, że taki identyfikator istnieje.
+		if (!communityId.equals(post.getCommunityId())) {
+			throw new ReportNotFoundException();
+		}
+		report.dismiss(requesterId, Instant.now());
+	}
+
+	private void requireModerator(UUID communityId, UUID requesterId) {
+		if (!communityMembership.exists(communityId)) {
+			throw new UnknownCommunityException();
+		}
+		if (!communityMembership.canModerate(communityId, requesterId)) {
+			throw new NotCommunityModeratorException();
+		}
 	}
 
 	/**
@@ -285,6 +379,14 @@ class ContentService {
 	@Transactional
 	CommentResponse addComment(UUID postId, UUID authorId, String content) {
 		Post post = visiblePost(postId, authorId);
+		// Ban odcina od pisania w społeczności, a komentarz jest pisaniem. Samo
+		// usunięcie z listy członków tego nie łapało: komentowanie wymaga tylko
+		// zalogowania, więc zbanowany zaczepiałby dalej — i to jest właśnie ta
+		// ścieżka, dla której bany istnieją. Lajki i udostępnienia zostają: to czyste
+		// liczby bez tożsamości i bez treści (ta sama zasada co przy blokadach, §9).
+		if (post.getCommunityId() != null && communityMembership.isBanned(post.getCommunityId(), authorId)) {
+			throw new BannedFromCommunityException();
+		}
 		Comment comment = new Comment(UUID.randomUUID(), postId, authorId, content, Instant.now());
 		commentRepository.save(comment);
 		eventPublisher.publishEvent(
@@ -330,6 +432,11 @@ class ContentService {
 		commentRepository.deleteByAuthorId(userId);
 		likeRepository.deleteByUserId(userId);
 		shareRepository.deleteByUserId(userId);
+		// Zgłoszenia ZŁOŻONE przez tego usera znikają — bez zgłaszającego nie ma
+		// zgłoszenia. Zgłoszenia przez niego ROZPATRZONE zostają, tracą tylko autora
+		// decyzji: odejście moderatora nie może cofać rozstrzygnięć, które podjął.
+		reportRepository.deleteByReporterId(userId);
+		reportRepository.clearReviewer(userId);
 		reportOrphanedImages(postRepository.findImageKeysByAuthorId(userId));
 		postRepository.deleteByAuthorId(userId);
 	}

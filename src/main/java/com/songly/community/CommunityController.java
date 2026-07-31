@@ -1,8 +1,11 @@
 package com.songly.community;
 
+import com.songly.community.dto.BanMemberRequest;
+import com.songly.community.dto.CommunityBanResponse;
 import com.songly.community.dto.CommunityMemberResponse;
 import com.songly.community.dto.CommunityResponse;
 import com.songly.community.dto.CreateCommunityRequest;
+import com.songly.community.dto.SetMemberRoleRequest;
 import com.songly.community.dto.UpdateCommunityRequest;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
@@ -85,6 +88,47 @@ class CommunityController {
 	Page<CommunityMemberResponse> listMembers(@PathVariable UUID communityId,
 			@PageableDefault(size = 20) Pageable pageable) {
 		return communityService.listMembers(communityId, pageable);
+	}
+
+	/**
+	 * Nadanie/odebranie roli moderatora. Wyłącznie właściciel — moderator mogący
+	 * rozdawać role mógłby zdegradować właściciela i przejąć społeczność.
+	 */
+	@PutMapping("/{communityId}/members/{userId}/role")
+	ResponseEntity<Void> setMemberRole(Authentication authentication, @PathVariable UUID communityId,
+			@PathVariable UUID userId, @Valid @RequestBody SetMemberRoleRequest request) {
+		communityService.setMemberRole(communityId, currentUserId(authentication), userId, request.role());
+		return ResponseEntity.noContent().build();
+	}
+
+	/**
+	 * Ban usuwa członkostwo i blokuje ponowne dołączenie. Samo usunięcie z listy
+	 * nic by nie dało — dołączenie jest otwarte i natychmiastowe (Claude.md §8).
+	 */
+	@PutMapping("/{communityId}/bans/{userId}")
+	ResponseEntity<Void> ban(Authentication authentication, @PathVariable UUID communityId, @PathVariable UUID userId,
+			@Valid @RequestBody(required = false) BanMemberRequest request) {
+		communityService.ban(communityId, currentUserId(authentication), userId,
+				request == null ? null : request.reason());
+		return ResponseEntity.noContent().build();
+	}
+
+	@DeleteMapping("/{communityId}/bans/{userId}")
+	ResponseEntity<Void> unban(Authentication authentication, @PathVariable UUID communityId,
+			@PathVariable UUID userId) {
+		communityService.unban(communityId, currentUserId(authentication), userId);
+		return ResponseEntity.noContent().build();
+	}
+
+	/**
+	 * Lista banów widoczna tylko dla moderatorów. To jedyne miejsce w module, gdzie
+	 * lista członków jest niepubliczna — kto jest zbanowany i za co, to informacja
+	 * o konkretnej osobie, a nie o społeczności.
+	 */
+	@GetMapping("/{communityId}/bans")
+	Page<CommunityBanResponse> listBans(Authentication authentication, @PathVariable UUID communityId,
+			@PageableDefault(size = 20) Pageable pageable) {
+		return communityService.listBans(communityId, currentUserId(authentication), pageable);
 	}
 
 	private UUID currentUserId(Authentication authentication) {
