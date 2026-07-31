@@ -1,11 +1,16 @@
 package com.songly.content;
 
+import com.songly.common.media.ImageType;
+import com.songly.common.media.UnsupportedImageException;
+import com.songly.common.storage.ObjectStorage;
 import com.songly.community.CommunityMembership;
 import com.songly.content.dto.CommentResponse;
+import com.songly.content.dto.PostImageResponse;
 import com.songly.content.dto.PostResponse;
 import com.songly.profile.ProfileDirectory;
 import com.songly.social.SocialGraph;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -29,11 +34,20 @@ class ContentService {
 	private final ProfileDirectory profileDirectory;
 	private final SocialGraph socialGraph;
 	private final CommunityMembership communityMembership;
+	private final ObjectStorage objectStorage;
 	private final ApplicationEventPublisher eventPublisher;
+
+	/**
+	 * Prefiks kluczy zdjęć postów. Stała, bo ten sam ciąg musi być użyty przy
+	 * budowaniu klucza i przy sprawdzaniu własności — rozjazd między nimi
+	 * otworzyłby dokładnie tę dziurę, którą sprawdzenie ma zamykać.
+	 */
+	private static final String POST_IMAGE_PREFIX = "posts/";
 
 	ContentService(PostRepository postRepository, LikeRepository likeRepository, CommentRepository commentRepository,
 			ShareRepository shareRepository, ProfileDirectory profileDirectory, SocialGraph socialGraph,
-			CommunityMembership communityMembership, ApplicationEventPublisher eventPublisher) {
+			CommunityMembership communityMembership, ObjectStorage objectStorage,
+			ApplicationEventPublisher eventPublisher) {
 		this.postRepository = postRepository;
 		this.likeRepository = likeRepository;
 		this.commentRepository = commentRepository;
@@ -41,12 +55,46 @@ class ContentService {
 		this.profileDirectory = profileDirectory;
 		this.socialGraph = socialGraph;
 		this.communityMembership = communityMembership;
+		this.objectStorage = objectStorage;
 		this.eventPublisher = eventPublisher;
 	}
 
 	@Transactional
-	PostResponse createPost(UUID authorId, String content) {
-		return createPost(authorId, content, null);
+	PostResponse createPost(UUID authorId, String content, String imageKey) {
+		return createPost(authorId, content, imageKey, null);
+	}
+
+	/**
+	 * Wgrywa zdjęcie i zwraca jego klucz, jeszcze przed opublikowaniem posta.
+	 *
+	 * <p>
+	 * Klucz zawiera identyfikator wgrywającego, bo to jedyne, co pozwala później
+	 * sprawdzić, że dołączane zdjęcie należy do autora posta. Bez tego wystarczyłby
+	 * cudzy klucz w {@code imageKey}, żeby przypiąć do swojego posta czyjeś zdjęcie
+	 * — a przy usunięciu tego posta skasować właścicielowi plik.
+	 */
+	@Transactional(readOnly = true)
+	PostImageResponse uploadPostImage(UUID authorId, byte[] content) {
+		ImageType type = ImageType.detect(content).orElseThrow(UnsupportedImageException::new);
+		String key = "%s%s/%s.%s".formatted(POST_IMAGE_PREFIX, authorId, UUID.randomUUID(), type.extension());
+		objectStorage.put(key, content, type.contentType());
+		return new PostImageResponse(key, objectStorage.publicUrl(key));
+	}
+
+	/**
+	 * Zdjęcie musi pochodzić z wgrania zrobionego przez tego samego użytkownika.
+	 * Sprawdzenie jest prefiksem klucza, a nie osobną tabelą wgrań: klucz i tak
+	 * musi być unikalny i i tak zawiera właściciela, więc dodatkowy wiersz
+	 * przechowywałby informację, którą już mamy.
+	 */
+	private String validatedImageKey(UUID authorId, String imageKey) {
+		if (imageKey == null || imageKey.isBlank()) {
+			return null;
+		}
+		if (!imageKey.startsWith(POST_IMAGE_PREFIX + authorId + "/")) {
+			throw new UnknownPostImageException();
+		}
+		return imageKey;
 	}
 
 	/**
@@ -55,7 +103,7 @@ class ContentService {
 	 * a wymóg, żeby pisanie w społeczności było świadomą decyzją.
 	 */
 	@Transactional
-	PostResponse createPost(UUID authorId, String content, UUID communityId) {
+	PostResponse createPost(UUID authorId, String content, String imageKey, UUID communityId) {
 		if (communityId != null) {
 			if (!communityMembership.exists(communityId)) {
 				throw new UnknownCommunityException();
@@ -64,12 +112,27 @@ class ContentService {
 				throw new NotCommunityMemberException();
 			}
 		}
-		Post post = new Post(UUID.randomUUID(), authorId, content, Instant.now(), communityId);
+		Post post = new Post(UUID.randomUUID(), authorId, content, Instant.now(), communityId,
+				validatedImageKey(authorId, imageKey));
 		postRepository.save(post);
 		String displayName = profileDirectory.displayNames(Set.of(authorId)).get(authorId);
 		String avatarUrl = profileDirectory.avatarUrls(Set.of(authorId)).get(authorId);
-		return new PostResponse(post.getId(), authorId, displayName, avatarUrl, post.getContent(), post.getCreatedAt(),
-				communityId, 0, false, 0, 0, false);
+		return new PostResponse(post.getId(), authorId, displayName, avatarUrl, post.getContent(), imageUrl(post),
+				post.getCreatedAt(), communityId, 0, false, 0, 0, false);
+	}
+
+	private String imageUrl(Post post) {
+		return post.getImageKey() == null ? null : objectStorage.publicUrl(post.getImageKey());
+	}
+
+	/**
+	 * Zgłasza pliki do skasowania po commicie. Osobna metoda, bo wołają ją cztery
+	 * różne ścieżki kasowania i każda z nich, gdyby o tym zapomniała, zostawiałaby
+	 * pliki w magazynie już na zawsze — bez żadnego wiersza, po którym dałoby się
+	 * je odnaleźć.
+	 */
+	private void reportOrphanedImages(Collection<String> keys) {
+		keys.forEach(key -> eventPublisher.publishEvent(new OrphanedPostImageEvent(key)));
 	}
 
 	/**
@@ -151,6 +214,9 @@ class ContentService {
 		if (!post.getAuthorId().equals(requesterId) && !moderates(post, requesterId)) {
 			throw new NotResourceOwnerException();
 		}
+		if (post.getImageKey() != null) {
+			reportOrphanedImages(List.of(post.getImageKey()));
+		}
 		postRepository.delete(post);
 	}
 
@@ -165,6 +231,10 @@ class ContentService {
 	 */
 	@Transactional
 	void deleteCommunityData(UUID communityId) {
+		// Klucze trzeba odczytać PRZED kasowaniem — po nim nie ma już skąd. Kasowanie
+		// zostaje wsadowe: nie wisi na nim żaden cykl życia encji, a liczba postów w
+		// społeczności nie ma górnego ograniczenia.
+		reportOrphanedImages(postRepository.findImageKeysByCommunityId(communityId));
 		postRepository.deleteByCommunityId(communityId);
 	}
 
@@ -260,6 +330,7 @@ class ContentService {
 		commentRepository.deleteByAuthorId(userId);
 		likeRepository.deleteByUserId(userId);
 		shareRepository.deleteByUserId(userId);
+		reportOrphanedImages(postRepository.findImageKeysByAuthorId(userId));
 		postRepository.deleteByAuthorId(userId);
 	}
 
@@ -316,10 +387,10 @@ class ContentService {
 		Map<UUID, String> avatars = profileDirectory.avatarUrls(authorIds);
 		return posts.stream()
 				.map(post -> new PostResponse(post.getId(), post.getAuthorId(), names.get(post.getAuthorId()),
-						avatars.get(post.getAuthorId()), post.getContent(), post.getCreatedAt(), post.getCommunityId(),
-						likeCounts.getOrDefault(post.getId(), 0L), likedByViewer.contains(post.getId()),
-						commentCounts.getOrDefault(post.getId(), 0L), shareCounts.getOrDefault(post.getId(), 0L),
-						sharedByViewer.contains(post.getId())))
+						avatars.get(post.getAuthorId()), post.getContent(), imageUrl(post), post.getCreatedAt(),
+						post.getCommunityId(), likeCounts.getOrDefault(post.getId(), 0L),
+						likedByViewer.contains(post.getId()), commentCounts.getOrDefault(post.getId(), 0L),
+						shareCounts.getOrDefault(post.getId(), 0L), sharedByViewer.contains(post.getId())))
 				.collect(Collectors.toList());
 	}
 }

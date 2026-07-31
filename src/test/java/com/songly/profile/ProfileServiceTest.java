@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.songly.common.storage.ObjectStorage;
 import com.songly.profile.dto.GenreResponse;
 import com.songly.profile.dto.ProfileResponse;
 import com.songly.profile.dto.UpdateProfileRequest;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class ProfileServiceTest {
@@ -35,11 +37,18 @@ class ProfileServiceTest {
 	@Mock
 	private UserGenreRepository userGenreRepository;
 
+	@Mock
+	private ObjectStorage objectStorage;
+
+	@Mock
+	private ApplicationEventPublisher eventPublisher;
+
 	private ProfileService profileService;
 
 	@BeforeEach
 	void setUp() {
-		profileService = new ProfileService(profileRepository, genreRepository, userGenreRepository);
+		profileService = new ProfileService(profileRepository, genreRepository, userGenreRepository, objectStorage,
+				eventPublisher);
 	}
 
 	@Test
@@ -91,12 +100,13 @@ class ProfileServiceTest {
 		Profile profile = new Profile(UUID.randomUUID(), userId, "Old", "old bio", null, Instant.now(), Instant.now());
 		when(profileRepository.findByUserId(userId)).thenReturn(Optional.of(profile));
 
-		ProfileResponse response = profileService.updateProfile(userId,
-				new UpdateProfileRequest("New", "new bio", "https://example.com/a.png"));
+		ProfileResponse response = profileService.updateProfile(userId, new UpdateProfileRequest("New", "new bio"));
 
 		assertThat(response.displayName()).isEqualTo("New");
 		assertThat(response.bio()).isEqualTo("new bio");
-		assertThat(response.avatarUrl()).isEqualTo("https://example.com/a.png");
+		// Avatara nie da się już podmienić edycją profilu — ustawia go wyłącznie
+		// upload pliku (ADR 0010).
+		assertThat(response.avatarUrl()).isNull();
 	}
 
 	@Test
@@ -104,7 +114,7 @@ class ProfileServiceTest {
 		UUID userId = UUID.randomUUID();
 		when(profileRepository.findByUserId(userId)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> profileService.updateProfile(userId, new UpdateProfileRequest("New", null, null)))
+		assertThatThrownBy(() -> profileService.updateProfile(userId, new UpdateProfileRequest("New", null)))
 				.isInstanceOf(ProfileNotFoundException.class);
 	}
 

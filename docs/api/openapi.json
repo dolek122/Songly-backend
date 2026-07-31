@@ -230,6 +230,11 @@
             "maxLength" : 1000,
             "minLength" : 0,
             "type" : "string"
+          },
+          "imageKey" : {
+            "maxLength" : 512,
+            "minLength" : 0,
+            "type" : "string"
           }
         },
         "required" : [ "content" ],
@@ -690,6 +695,17 @@
         "required" : [ "email" ],
         "type" : "object"
       },
+      "PostImageResponse" : {
+        "properties" : {
+          "key" : {
+            "type" : "string"
+          },
+          "url" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "PostResponse" : {
         "properties" : {
           "authorAvatarUrl" : {
@@ -719,6 +735,9 @@
           },
           "id" : {
             "format" : "uuid",
+            "type" : "string"
+          },
+          "imageUrl" : {
             "type" : "string"
           },
           "likeCount" : {
@@ -867,11 +886,6 @@
       },
       "UpdateProfileRequest" : {
         "properties" : {
-          "avatarUrl" : {
-            "maxLength" : 2048,
-            "minLength" : 0,
-            "type" : "string"
-          },
           "bio" : {
             "maxLength" : 500,
             "minLength" : 0,
@@ -2280,6 +2294,43 @@
         "tags" : [ "post-controller" ]
       }
     },
+    "/api/v1/posts/image" : {
+      "post" : {
+        "operationId" : "uploadPostImage",
+        "requestBody" : {
+          "content" : {
+            "multipart/form-data" : {
+              "schema" : {
+                "properties" : {
+                  "file" : {
+                    "format" : "binary",
+                    "type" : "string"
+                  }
+                },
+                "required" : [ "file" ],
+                "type" : "object"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PostImageResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "post-controller" ]
+      }
+    },
     "/api/v1/posts/{postId}" : {
       "delete" : {
         "operationId" : "deletePost",
@@ -2556,6 +2607,55 @@
             }
           },
           "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProfileResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "profile-controller" ]
+      }
+    },
+    "/api/v1/profiles/me/avatar" : {
+      "delete" : {
+        "operationId" : "deleteAvatar",
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "profile-controller" ]
+      },
+      "post" : {
+        "operationId" : "uploadAvatar",
+        "requestBody" : {
+          "content" : {
+            "multipart/form-data" : {
+              "schema" : {
+                "properties" : {
+                  "file" : {
+                    "format" : "binary",
+                    "type" : "string"
+                  }
+                },
+                "required" : [ "file" ],
+                "type" : "object"
+              }
+            }
+          }
         },
         "responses" : {
           "200" : {

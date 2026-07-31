@@ -29,6 +29,43 @@ services:
       timeout: 5s
       retries: 10
 
+  # S3-kompatybilny magazyn plików (ADR 0010). Ten sam protokół co produkcyjne
+  # R2/S3, więc lokalnie i na produkcji działa dokładnie ten sam kod.
+  minio:
+    image: minio/minio:latest
+    container_name: songly-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: songly
+      MINIO_ROOT_PASSWORD: songly-dev-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - songly-minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Zakłada bucket i otwiera go do odczytu. Avatary i zdjęcia w postach są
+  # publiczne z założenia — leci do nich klient wprost, bez naszego pośrednictwa.
+  # Kontener kończy pracę po wykonaniu zadania.
+  minio-init:
+    image: minio/mc:latest
+    container_name: songly-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 songly songly-dev-secret &&
+      mc mb --ignore-existing local/songly-media &&
+      mc anonymous set download local/songly-media
+      "
+
 volumes:
   songly-postgres-data:
   songly-redis-data:
+  songly-minio-data:

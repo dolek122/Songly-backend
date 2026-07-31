@@ -23,8 +23,8 @@ class Profile {
 	@Column(length = 500)
 	private String bio;
 
-	@Column(name = "avatar_url", length = 2048)
-	private String avatarUrl;
+	@Column(name = "avatar_key", length = 512)
+	private String avatarKey;
 
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
@@ -35,21 +35,30 @@ class Profile {
 	protected Profile() {
 	}
 
-	Profile(UUID id, UUID userId, String displayName, String bio, String avatarUrl, Instant createdAt,
+	Profile(UUID id, UUID userId, String displayName, String bio, String avatarKey, Instant createdAt,
 			Instant updatedAt) {
 		this.id = id;
 		this.userId = userId;
 		this.displayName = displayName;
 		this.bio = bio;
-		this.avatarUrl = avatarUrl;
+		this.avatarKey = avatarKey;
 		this.createdAt = createdAt;
 		this.updatedAt = updatedAt;
 	}
 
-	void update(String displayName, String bio, String avatarUrl) {
+	void update(String displayName, String bio) {
 		this.displayName = displayName;
 		this.bio = bio;
-		this.avatarUrl = avatarUrl;
+		this.updatedAt = Instant.now();
+	}
+
+	/**
+	 * Podmiana avatara jest osobną operacją od edycji profilu, bo wiąże się z
+	 * plikiem w magazynie obiektow: wolajacy musi wiedziec, ktory klucz przestal
+	 * byc uzywany, zeby go posprzatac.
+	 */
+	void changeAvatarKey(String avatarKey) {
+		this.avatarKey = avatarKey;
 		this.updatedAt = Instant.now();
 	}
 
@@ -65,7 +74,7 @@ class Profile {
 		return bio;
 	}
 
-	String getAvatarUrl() {
-		return avatarUrl;
+	String getAvatarKey() {
+		return avatarKey;
 	}
 }

@@ -14,6 +14,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
@@ -50,6 +51,23 @@ class GlobalExceptionHandler {
 			HttpServletRequest request) {
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
 				.body(toApiError("MISSING_PARAMETER", "Brak wymaganego parametru: " + ex.getParameterName(), request));
+	}
+
+	/**
+	 * Plik większy niż {@code spring.servlet.multipart.max-file-size}. Bez tego
+	 * handlera wpada do łapacza {@code Exception} niżej i wraca jako 500 ze stack
+	 * tracem — czyli za duży avatar wygląda w monitoringu jak awaria serwera, a
+	 * klient nie ma jak odróżnić „zmniejsz plik" od „spróbuj później".
+	 *
+	 * <p>
+	 * Limit egzekwuje kontener servletów, zanim bajty w ogóle dotrą do kontrolera —
+	 * i o to chodzi: sprawdzanie rozmiaru dopiero w kodzie wymagałoby najpierw
+	 * przyjęcia całego pliku.
+	 */
+	@ExceptionHandler(MaxUploadSizeExceededException.class)
+	ResponseEntity<ApiError> handleUploadTooLarge(MaxUploadSizeExceededException ex, HttpServletRequest request) {
+		return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+				.body(toApiError("FILE_TOO_LARGE", "Przesłany plik jest za duży", request));
 	}
 
 	/** Np. nie-UUID w ścieżce {@code /posts/{postId}}. */

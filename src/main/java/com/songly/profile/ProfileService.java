@@ -1,5 +1,8 @@
 package com.songly.profile;
 
+import com.songly.common.media.ImageType;
+import com.songly.common.media.UnsupportedImageException;
+import com.songly.common.storage.ObjectStorage;
 import com.songly.profile.dto.GenreResponse;
 import com.songly.profile.dto.ProfileResponse;
 import com.songly.profile.dto.PublicProfileResponse;
@@ -12,6 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -24,12 +28,17 @@ class ProfileService implements ProfileDirectory {
 	private final ProfileRepository profileRepository;
 	private final GenreRepository genreRepository;
 	private final UserGenreRepository userGenreRepository;
+	private final ObjectStorage objectStorage;
+	private final ApplicationEventPublisher eventPublisher;
 
 	ProfileService(ProfileRepository profileRepository, GenreRepository genreRepository,
-			UserGenreRepository userGenreRepository) {
+			UserGenreRepository userGenreRepository, ObjectStorage objectStorage,
+			ApplicationEventPublisher eventPublisher) {
 		this.profileRepository = profileRepository;
 		this.genreRepository = genreRepository;
 		this.userGenreRepository = userGenreRepository;
+		this.objectStorage = objectStorage;
+		this.eventPublisher = eventPublisher;
 	}
 
 	/**
@@ -61,7 +70,7 @@ class ProfileService implements ProfileDirectory {
 	PublicProfileResponse getPublicProfile(UUID userId) {
 		Profile profile = profileRepository.findByUserId(userId).orElseThrow(ProfileNotFoundException::new);
 		return new PublicProfileResponse(profile.getUserId(), profile.getDisplayName(), profile.getBio(),
-				profile.getAvatarUrl(), getFavoriteGenres(userId));
+				avatarUrl(profile), getFavoriteGenres(userId));
 	}
 
 	/**
@@ -78,15 +87,14 @@ class ProfileService implements ProfileDirectory {
 		if (trimmed.isEmpty()) {
 			return Page.empty(pageable);
 		}
-		return profileRepository.findByDisplayNameContainingIgnoreCaseAndUserIdNot(trimmed, requesterId, pageable)
-				.map(profile -> new UserSearchResponse(profile.getUserId(), profile.getDisplayName(),
-						profile.getAvatarUrl()));
+		return profileRepository.findByDisplayNameContainingIgnoreCaseAndUserIdNot(trimmed, requesterId, pageable).map(
+				profile -> new UserSearchResponse(profile.getUserId(), profile.getDisplayName(), avatarUrl(profile)));
 	}
 
 	@Transactional
 	ProfileResponse updateProfile(UUID userId, UpdateProfileRequest request) {
 		Profile profile = profileRepository.findByUserId(userId).orElseThrow(ProfileNotFoundException::new);
-		profile.update(request.displayName(), request.bio(), request.avatarUrl());
+		profile.update(request.displayName(), request.bio());
 		return toResponse(profile);
 	}
 
@@ -124,8 +132,8 @@ class ProfileService implements ProfileDirectory {
 	public Map<UUID, String> avatarUrls(Collection<UUID> userIds) {
 		// Filtrujemy null-e: Collectors.toMap nie przyjmuje null wartości, a i tak
 		// „brak avatara" reprezentujemy nieobecnością klucza (konsument dostaje null).
-		return profileRepository.findByUserIdIn(userIds).stream().filter(profile -> profile.getAvatarUrl() != null)
-				.collect(Collectors.toMap(Profile::getUserId, Profile::getAvatarUrl));
+		return profileRepository.findByUserIdIn(userIds).stream().filter(profile -> profile.getAvatarKey() != null)
+				.collect(Collectors.toMap(Profile::getUserId, this::avatarUrl));
 	}
 
 	@Override
@@ -138,10 +146,70 @@ class ProfileService implements ProfileDirectory {
 				.collect(Collectors.toSet());
 	}
 
+	/**
+	 * Wgrywa nowy avatar i zwraca zaktualizowany profil.
+	 *
+	 * <p>
+	 * Format rozpoznajemy <b>po zawartości pliku</b>, nie po nagłówku
+	 * {@code Content-Type} ani rozszerzeniu — jedno i drugie podaje klient (patrz
+	 * {@link ImageType}). Rozszerzenie w kluczu bierze się z rozpoznanego typu, a
+	 * nie z nazwy, którą przysłał przeglądarka: inaczej dałoby się zapisać plik
+	 * jako {@code .html} i zdobyć adres, spod którego serwujemy cudzy HTML na
+	 * własnej domenie.
+	 *
+	 * <p>
+	 * Losowy człon w kluczu, zamiast stałego {@code avatars/{userId}}, bo pod
+	 * starym adresem stoi cache CDN-u — nadpisanie w miejscu pokazywałoby przez
+	 * wiele godzin poprzednie zdjęcie i wyglądało jak zignorowana zmiana.
+	 *
+	 * <p>
+	 * Plik ląduje w magazynie <b>przed</b> commitem, więc wycofanie transakcji
+	 * zostawia go osieroconym. To świadomie ta strona pomyłki: odwrotna kolejność
+	 * dawałaby wiersz wskazujący na plik, którego nie ma.
+	 */
+	@Transactional
+	ProfileResponse uploadAvatar(UUID userId, byte[] content) {
+		ImageType type = ImageType.detect(content).orElseThrow(UnsupportedImageException::new);
+		Profile profile = profileRepository.findByUserId(userId).orElseThrow(ProfileNotFoundException::new);
+
+		String key = "avatars/%s/%s.%s".formatted(userId, UUID.randomUUID(), type.extension());
+		objectStorage.put(key, content, type.contentType());
+		replaceAvatarKey(profile, key);
+		return toResponse(profile);
+	}
+
+	@Transactional
+	void deleteAvatar(UUID userId) {
+		replaceAvatarKey(profileRepository.findByUserId(userId).orElseThrow(ProfileNotFoundException::new), null);
+	}
+
+	/**
+	 * Ustawia nowy klucz i zgłasza poprzedni do skasowania. Zgłoszenie, a nie
+	 * skasowanie od razu — plik ginie dopiero po commicie
+	 * ({@link OrphanedAvatarEvent}).
+	 */
+	private void replaceAvatarKey(Profile profile, String newKey) {
+		String previousKey = profile.getAvatarKey();
+		profile.changeAvatarKey(newKey);
+		if (previousKey != null && !previousKey.equals(newKey)) {
+			eventPublisher.publishEvent(new OrphanedAvatarEvent(previousKey));
+		}
+	}
+
 	@Transactional
 	void deleteAccountData(UUID userId) {
 		userGenreRepository.deleteByUserId(userId);
-		profileRepository.findByUserId(userId).ifPresent(profileRepository::delete);
+		profileRepository.findByUserId(userId).ifPresent(profile -> {
+			// Zgłoszenie pliku do skasowania musi wyjść PRZED usunięciem wiersza, bo
+			// potem nie ma już skąd odczytać klucza. Sam plik ginie i tak dopiero po
+			// commicie — inaczej wycofane kasowanie konta zostawiłoby profil bez zdjęcia.
+			replaceAvatarKey(profile, null);
+			profileRepository.delete(profile);
+		});
+	}
+
+	private String avatarUrl(Profile profile) {
+		return profile.getAvatarKey() == null ? null : objectStorage.publicUrl(profile.getAvatarKey());
 	}
 
 	@Override
@@ -160,7 +228,6 @@ class ProfileService implements ProfileDirectory {
 	}
 
 	private ProfileResponse toResponse(Profile profile) {
-		return new ProfileResponse(profile.getUserId(), profile.getDisplayName(), profile.getBio(),
-				profile.getAvatarUrl());
+		return new ProfileResponse(profile.getUserId(), profile.getDisplayName(), profile.getBio(), avatarUrl(profile));
 	}
 }

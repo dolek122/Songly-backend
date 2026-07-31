@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.songly.RecordingMailSenderConfig.RecordingMailSender;
+import java.net.URI;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,7 +17,15 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.MinIOContainer;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
@@ -53,15 +62,63 @@ public abstract class AbstractIntegrationTest {
 
 	private static final Pattern TOKEN_IN_LINK = Pattern.compile("token=([A-Za-z0-9_-]+)");
 
+	private static final String STORAGE_BUCKET = "songly-media";
+
+	private static final String STORAGE_USER = "songly";
+
+	private static final String STORAGE_PASSWORD = "songly-dev-secret";
+
 	@ServiceConnection
 	static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16-alpine");
 
 	@ServiceConnection
 	static final GenericContainer redis = new GenericContainer("redis:7-alpine").withExposedPorts(6379);
 
+	/**
+	 * Prawdziwy magazyn zgodny z S3, z tego samego powodu, dla którego baza to
+	 * Postgres w kontenerze, a nie H2 (Claude.md §11): atrapa w pamięci
+	 * potwierdzałaby wyłącznie, że kod woła własną atrapę. Tutaj naprawdę zależy
+	 * nam na zachowaniu po tamtej stronie — na tym, że plik da się potem pobrać
+	 * publicznym adresem.
+	 */
+	static final MinIOContainer minio = new MinIOContainer("minio/minio:RELEASE.2024-11-07T00-52-20Z")
+			.withUserName(STORAGE_USER).withPassword(STORAGE_PASSWORD);
+
 	static {
 		postgres.start();
 		redis.start();
+		minio.start();
+		createPublicBucket();
+	}
+
+	/**
+	 * Bucket z anonimowym odczytem — avatary i zdjęcia w postach są publiczne z
+	 * założenia, bo klient pobiera je wprost, bez naszego pośrednictwa. Test, który
+	 * czyta pliki uwierzytelnionym klientem SDK, nie sprawdziłby tego, co robi
+	 * przeglądarka.
+	 */
+	private static void createPublicBucket() {
+		try (S3Client client = S3Client.builder().endpointOverride(URI.create(minio.getS3URL()))
+				.region(Region.of("us-east-1"))
+				.serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
+				.credentialsProvider(
+						StaticCredentialsProvider.create(AwsBasicCredentials.create(STORAGE_USER, STORAGE_PASSWORD)))
+				.build()) {
+			client.createBucket(builder -> builder.bucket(STORAGE_BUCKET));
+			client.putBucketPolicy(builder -> builder.bucket(STORAGE_BUCKET).policy("""
+					{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*",\
+					"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::%s/*"]}]}""".formatted(STORAGE_BUCKET)));
+		}
+	}
+
+	@DynamicPropertySource
+	static void storageProperties(DynamicPropertyRegistry registry) {
+		registry.add("songly.storage.endpoint", minio::getS3URL);
+		registry.add("songly.storage.public-base-url", () -> minio.getS3URL() + "/" + STORAGE_BUCKET);
+		registry.add("songly.storage.bucket", () -> STORAGE_BUCKET);
+		registry.add("songly.storage.access-key", () -> STORAGE_USER);
+		registry.add("songly.storage.secret-key", () -> STORAGE_PASSWORD);
+		registry.add("songly.storage.region", () -> "us-east-1");
 	}
 
 	@Autowired
