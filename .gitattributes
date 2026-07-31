@@ -4,3 +4,16 @@
 # OpenApiSpecExportTest. Bez tego core.autocrlf=true wypakowuje go na Windows
 # z CRLF i test pada mimo pustego diffa w gicie.
 *.json text eol=lf
+
+# Spotless w CI (Linux) oczekuje LF. Bez tej deklaracji normalizacja przy
+# commicie zależy od tego, czy git UZNA plik za tekstowy — a wystarczy jeden bajt
+# NUL (np. przypadkiem w literale stringa), żeby uznał go za binarny, przepuścił
+# CRLF do repozytorium i wywalił CI na formatowaniu. Objaw jest przy tym mylący:
+# lokalnie `mvnw verify` przechodzi, bo tam CRLF jest normalne, a diff w gicie
+# wygląda na pusty. Deklaracja zdejmuje tę decyzję z heurystyki.
+*.java text eol=lf
+*.sql text eol=lf
+*.yml text eol=lf
+*.xml text eol=lf
+*.md text eol=lf
+*.properties text eol=lf

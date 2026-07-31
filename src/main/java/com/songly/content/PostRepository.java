@@ -1,6 +1,7 @@
 package com.songly.content;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -33,6 +34,17 @@ interface PostRepository extends JpaRepository<Post, UUID> {
 	void deleteByAuthorId(UUID authorId);
 
 	void deleteByCommunityId(UUID communityId);
+
+	/**
+	 * Klucze zdjęć do posprzątania po wsadowym kasowaniu postów. Odczyt musi się
+	 * wydarzyć PRZED kasowaniem — potem nie ma już skąd wziąć tych wartości, a plik
+	 * bez wiersza jest nie do odnalezienia.
+	 */
+	@Query("select p.imageKey from Post p where p.authorId = :authorId and p.imageKey is not null")
+	List<String> findImageKeysByAuthorId(@Param("authorId") UUID authorId);
+
+	@Query("select p.imageKey from Post p where p.communityId = :communityId and p.imageKey is not null")
+	List<String> findImageKeysByCommunityId(@Param("communityId") UUID communityId);
 
 	/**
 	 * Feed: posty napisane albo udostępnione przez podanych użytkowników, bez

@@ -46,7 +46,7 @@ class CommunityPostController {
 	ResponseEntity<PostResponse> createCommunityPost(Authentication authentication, @PathVariable UUID communityId,
 			@Valid @RequestBody CreatePostRequest request) {
 		PostResponse response = contentService.createPost(currentUserId(authentication), request.content(),
-				communityId);
+				request.imageKey(), communityId);
 		return ResponseEntity.status(HttpStatus.CREATED).body(response);
 	}
 

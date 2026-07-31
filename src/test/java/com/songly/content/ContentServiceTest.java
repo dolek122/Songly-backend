@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.songly.content.dto.CommentResponse;
 import com.songly.content.dto.PostResponse;
+import com.songly.common.storage.ObjectStorage;
 import com.songly.community.CommunityMembership;
 import com.songly.profile.ProfileDirectory;
 import com.songly.social.SocialGraph;
@@ -51,6 +52,9 @@ class ContentServiceTest {
 	private CommunityMembership communityMembership;
 
 	@Mock
+	private ObjectStorage objectStorage;
+
+	@Mock
 	private ApplicationEventPublisher eventPublisher;
 
 	private ContentService contentService;
@@ -58,7 +62,7 @@ class ContentServiceTest {
 	@BeforeEach
 	void setUp() {
 		contentService = new ContentService(postRepository, likeRepository, commentRepository, shareRepository,
-				profileDirectory, socialGraph, communityMembership, eventPublisher);
+				profileDirectory, socialGraph, communityMembership, objectStorage, eventPublisher);
 	}
 
 	@Test
@@ -66,7 +70,7 @@ class ContentServiceTest {
 		UUID authorId = UUID.randomUUID();
 		when(profileDirectory.displayNames(anyCollection())).thenReturn(Map.of(authorId, "Ada"));
 
-		PostResponse response = contentService.createPost(authorId, "Nowy album!");
+		PostResponse response = contentService.createPost(authorId, "Nowy album!", null);
 
 		verify(postRepository).save(any(Post.class));
 		assertThat(response.authorDisplayName()).isEqualTo("Ada");

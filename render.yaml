@@ -82,3 +82,17 @@ services:
         sync: false
       - key: EMAIL_VERIFICATION_URL
         sync: false
+      # Magazyn plików (ADR 0010) — Cloudflare R2 albo S3. Bez tego aplikacja
+      # wystartuje, ale każdy upload skończy się 502 STORAGE_ERROR.
+      - key: STORAGE_ENDPOINT
+        sync: false
+      - key: STORAGE_BUCKET
+        sync: false
+      - key: STORAGE_ACCESS_KEY
+        sync: false
+      - key: STORAGE_SECRET_KEY
+        sync: false
+      # Domena, spod której pliki czytają klienci — przy R2/CDN inna niż
+      # STORAGE_ENDPOINT, pod który wgrywamy.
+      - key: STORAGE_PUBLIC_BASE_URL
+        sync: false
