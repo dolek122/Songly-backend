@@ -41,10 +41,7 @@ class AnalyticsFlowIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	private TestUser registerUser(String email) throws Exception {
-		MvcResult registerResult = mockMvc
-				.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
-						{"email":"%s","password":"password123"}""".formatted(email))).andExpect(status().isCreated())
-				.andReturn();
+		MvcResult registerResult = registerAndVerify(email, "password123");
 		String accessToken = objectMapper.readTree(registerResult.getResponse().getContentAsString()).get("accessToken")
 				.asText();
 		MvcResult profileResult = mockMvc

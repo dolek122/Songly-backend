@@ -13,11 +13,8 @@ import static org.mockito.Mockito.when;
 import com.songly.identity.dto.AuthTokensResponse;
 import com.songly.identity.dto.LoginRequest;
 import com.songly.identity.dto.RefreshRequest;
-import com.songly.identity.dto.RegisterRequest;
-import com.songly.identity.security.JwtService;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -43,7 +40,7 @@ class AuthServiceTest {
 	private PasswordResetTokenRepository passwordResetTokenRepository;
 
 	@Mock
-	private JwtService jwtService;
+	private TokenIssuer tokenIssuer;
 
 	@Mock
 	private ApplicationEventPublisher eventPublisher;
@@ -58,7 +55,7 @@ class AuthServiceTest {
 	@BeforeEach
 	void setUp() {
 		authService = new AuthService(userRepository, sessionRepository, passwordResetTokenRepository, passwordEncoder,
-				jwtService, eventPublisher, meterRegistry);
+				tokenIssuer, eventPublisher, meterRegistry);
 	}
 
 	private double loginAttempts(String outcome) {
@@ -69,41 +66,20 @@ class AuthServiceTest {
 		return meterRegistry.counter("songly.auth.refresh.attempts", "outcome", outcome).count();
 	}
 
-	@Test
-	void register_savesUserAndPublishesEvent_whenEmailNotUsed() {
-		when(userRepository.existsByEmail("new@songly.io")).thenReturn(false);
-		when(jwtService.generateAccessToken(any(), any())).thenReturn("access-token");
-		when(jwtService.getAccessTokenTtl()).thenReturn(Duration.ofMinutes(15));
-		when(jwtService.getRefreshTokenTtl()).thenReturn(Duration.ofDays(30));
-
-		AuthTokensResponse response = authService.register(new RegisterRequest("new@songly.io", "password123"));
-
-		assertThat(response.accessToken()).isEqualTo("access-token");
-		assertThat(response.refreshToken()).isNotBlank();
-		assertThat(response.tokenType()).isEqualTo("Bearer");
-		verify(userRepository).save(any(User.class));
-		verify(eventPublisher).publishEvent(any(UserRegisteredEvent.class));
-		verify(sessionRepository).save(any(Session.class));
-	}
-
-	@Test
-	void register_throws_whenEmailAlreadyUsed() {
-		when(userRepository.existsByEmail("taken@songly.io")).thenReturn(true);
-
-		assertThatThrownBy(() -> authService.register(new RegisterRequest("taken@songly.io", "password123")))
-				.isInstanceOf(EmailAlreadyUsedException.class);
-
-		verify(userRepository, never()).save(any());
-		verify(eventPublisher, never()).publishEvent(any());
+	/**
+	 * Wydawanie sesji przeniosło się do {@link TokenIssuer}, gdy drugim miejscem
+	 * wydającym tokeny stała się weryfikacja adresu (ADR 0009). Tu interesuje nas
+	 * już tylko to, <b>czy</b> serwis o nią poprosił, a nie jak wygląda w środku.
+	 */
+	private AuthTokensResponse tokensWithAccess(String accessToken) {
+		return new AuthTokensResponse(accessToken, "refresh-token", "Bearer", 900);
 	}
 
 	@Test
 	void login_returnsTokens_whenCredentialsValid() {
 		User user = new User(UUID.randomUUID(), "user@songly.io", passwordEncoder.encode("password123"), Instant.now());
 		when(userRepository.findByEmail("user@songly.io")).thenReturn(Optional.of(user));
-		when(jwtService.generateAccessToken(any(), any())).thenReturn("access-token");
-		when(jwtService.getAccessTokenTtl()).thenReturn(Duration.ofMinutes(15));
-		when(jwtService.getRefreshTokenTtl()).thenReturn(Duration.ofDays(30));
+		when(tokenIssuer.issueFor(any())).thenReturn(tokensWithAccess("access-token"));
 
 		AuthTokensResponse response = authService.login(new LoginRequest("user@songly.io", "password123"));
 
@@ -146,15 +122,13 @@ class AuthServiceTest {
 		User user = new User(userId, "user@songly.io", "hash", Instant.now());
 		when(sessionRepository.findByRefreshTokenHash(anyString())).thenReturn(Optional.of(session));
 		when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-		when(jwtService.generateAccessToken(any(), any())).thenReturn("new-access-token");
-		when(jwtService.getAccessTokenTtl()).thenReturn(Duration.ofMinutes(15));
-		when(jwtService.getRefreshTokenTtl()).thenReturn(Duration.ofDays(30));
+		when(tokenIssuer.issueFor(any())).thenReturn(tokensWithAccess("new-access-token"));
 
 		AuthTokensResponse response = authService.refresh(new RefreshRequest("old-refresh-token"));
 
 		assertThat(response.accessToken()).isEqualTo("new-access-token");
 		assertThat(session.isRevoked()).isTrue();
-		verify(sessionRepository).save(any(Session.class));
+		verify(tokenIssuer).issueFor(user);
 	}
 
 	@Test

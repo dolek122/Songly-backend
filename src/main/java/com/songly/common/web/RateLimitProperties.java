@@ -32,9 +32,9 @@ class RateLimitProperties {
 	 * siłę — 256 losowych bitów czyni to i tak beznadziejnym, ale limit zdejmuje z
 	 * nas potrzebę polegania wyłącznie na tym.
 	 */
-	private List<String> protectedPaths = List.of("/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/refresh",
-			"/api/v1/auth/logout", "/api/v1/auth/password/reset-request", "/api/v1/auth/password/reset",
-			"/api/v1/now-playing/spotify/callback");
+	private List<String> protectedPaths = List.of("/api/v1/auth/register", "/api/v1/auth/register/verify",
+			"/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout", "/api/v1/auth/password/reset-request",
+			"/api/v1/auth/password/reset", "/api/v1/now-playing/spotify/callback");
 
 	boolean isEnabled() {
 		return enabled;

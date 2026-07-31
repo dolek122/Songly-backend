@@ -1,7 +1,6 @@
 package com.songly.profile;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -11,7 +10,6 @@ import java.util.Base64;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -33,10 +31,7 @@ class PublicProfileIntegrationTest extends AbstractIntegrationTest {
 	private ObjectMapper objectMapper;
 
 	private String registerAndGetAccessToken(String email) throws Exception {
-		MvcResult result = mockMvc
-				.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
-						{"email":"%s","password":"password123"}""".formatted(email))).andExpect(status().isCreated())
-				.andReturn();
+		MvcResult result = registerAndVerify(email, "password123");
 		return objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
 	}
 

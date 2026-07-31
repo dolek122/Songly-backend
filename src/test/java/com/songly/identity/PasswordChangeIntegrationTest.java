@@ -38,10 +38,7 @@ class PasswordChangeIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	private Tokens register(String email, String password) throws Exception {
-		MvcResult result = mockMvc
-				.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
-						{"email":"%s","password":"%s"}""".formatted(email, password))).andExpect(status().isCreated())
-				.andReturn();
+		MvcResult result = registerAndVerify(email, password);
 		return toTokens(result);
 	}
 

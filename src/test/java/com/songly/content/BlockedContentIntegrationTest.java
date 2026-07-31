@@ -41,10 +41,7 @@ class BlockedContentIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	private TestUser register(String email) throws Exception {
-		MvcResult result = mockMvc
-				.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
-						{"email":"%s","password":"password123"}""".formatted(email))).andExpect(status().isCreated())
-				.andReturn();
+		MvcResult result = registerAndVerify(email, "password123");
 		String token = objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
 		MvcResult profile = mockMvc.perform(get("/api/v1/profiles/me").header("Authorization", "Bearer " + token))
 				.andExpect(status().isOk()).andReturn();
