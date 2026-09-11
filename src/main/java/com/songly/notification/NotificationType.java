@@ -28,7 +28,17 @@ public enum NotificationType {
 	COMMUNITY_POST_REPORTED,
 
 	/** Do zgłaszającego, gdy moderator uznał, że post zostaje. */
-	POST_REPORT_DISMISSED;
+	POST_REPORT_DISMISSED,
+
+	/** Do nowego moderatora; zasobem jest społeczność. */
+	COMMUNITY_MODERATOR_GRANTED,
+
+	/**
+	 * Do byłego moderatora; zasobem jest społeczność. Bez tego odebranie roli
+	 * objawiałoby się wyłącznie 403-kami na kolejce zgłoszeń — czyli decyzja
+	 * wyglądałaby jak awaria, dokładnie problem, od którego zaczął się ADR 0012.
+	 */
+	COMMUNITY_MODERATOR_REVOKED;
 
 	/**
 	 * Powiadomienia o <b>decyzjach moderacyjnych</b>, w odróżnieniu od powiadomień
@@ -42,6 +52,13 @@ public enum NotificationType {
 	 * moderatora, żeby nigdy nie zobaczyć informacji o własnym banie albo o
 	 * usunięciu własnego posta. Blokada działałaby wtedy na szkodę blokującego,
 	 * ukrywając przed nim dokładnie to, co powinien wiedzieć.
+	 *
+	 * <p>
+	 * Kryterium przynależności: decyzja <b>ograniczająca</b> adresata, której nie
+	 * może odrzucić — nie „powiadomienie uznane za ważne". Dlatego zmiany roli
+	 * moderatora (ADR 0016) są tu <b>celowo nieobecne</b>: nadanie i odebranie
+	 * uprawnień nie ogranicza zwykłego uczestnictwa, więc kto zablokował
+	 * właściciela, temu wolno nie widzieć od niego także tego — koszt ponosi sam.
 	 */
 	static final Set<NotificationType> MODERATION = Set.of(COMMUNITY_BANNED, COMMUNITY_POST_REMOVED,
 			COMMUNITY_POST_REPORTED, POST_REPORT_DISMISSED);
