@@ -44,15 +44,41 @@ class CommunityBan {
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
 
+	/** {@code null} = ban bezterminowy (ADR 0014). */
+	@Column(name = "expires_at")
+	private Instant expiresAt;
+
 	protected CommunityBan() {
 	}
 
-	CommunityBan(UUID communityId, UUID userId, UUID bannedBy, String reason, Instant createdAt) {
+	CommunityBan(UUID communityId, UUID userId, UUID bannedBy, String reason, Instant createdAt, Instant expiresAt) {
 		this.communityId = communityId;
 		this.userId = userId;
 		this.bannedBy = bannedBy;
 		this.reason = reason;
 		this.createdAt = createdAt;
+		this.expiresAt = expiresAt;
+	}
+
+	/**
+	 * Wygasanie jest leniwe — nic nie dzieje się w chwili wygaśnięcia, po prostu
+	 * każdy, kto pyta o ban, pyta o ban <i>aktywny</i>.
+	 */
+	boolean isActiveAt(Instant now) {
+		return expiresAt == null || expiresAt.isAfter(now);
+	}
+
+	/**
+	 * Ponowny ban po wygaśnięciu poprzedniego. Nadpisuje wiersz w całości, bo klucz
+	 * główny (społeczność, użytkownik) dopuszcza tylko jeden — a wygasły ban to
+	 * historia, nie stan. To <b>nowa decyzja moderacyjna</b>: wołający publikuje
+	 * dla niej nowe zdarzenie, jak przy pierwszym banie.
+	 */
+	void reimpose(UUID bannedBy, String reason, Instant createdAt, Instant expiresAt) {
+		this.bannedBy = bannedBy;
+		this.reason = reason;
+		this.createdAt = createdAt;
+		this.expiresAt = expiresAt;
 	}
 
 	UUID getCommunityId() {
@@ -73,6 +99,10 @@ class CommunityBan {
 
 	Instant getCreatedAt() {
 		return createdAt;
+	}
+
+	Instant getExpiresAt() {
+		return expiresAt;
 	}
 
 }

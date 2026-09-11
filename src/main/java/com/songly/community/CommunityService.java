@@ -4,6 +4,7 @@ import com.songly.community.dto.CommunityBanResponse;
 import com.songly.community.dto.CommunityMemberResponse;
 import com.songly.community.dto.CommunityResponse;
 import com.songly.profile.ProfileDirectory;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -97,7 +98,7 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 	@Override
 	@Transactional(readOnly = true)
 	public boolean isBanned(UUID communityId, UUID userId) {
-		return banRepository.existsByCommunityIdAndUserId(communityId, userId);
+		return banRepository.existsActive(communityId, userId, Instant.now());
 	}
 
 	@Override
@@ -147,12 +148,23 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 	 * w {@code community_bans} czyni tę decyzję trwałą.
 	 *
 	 * <p>
-	 * Idempotentne: ponowny ban tej samej osoby nie jest błędem, tylko brakiem
-	 * zmiany. Moderator nie powinien dostawać błędu za to, że ktoś inny zdążył
-	 * przed nim.
+	 * Idempotentne wobec banu <b>aktywnego</b>: ponowny ban tej samej osoby nie
+	 * jest błędem, tylko brakiem zmiany — moderator nie powinien dostawać błędu za
+	 * to, że ktoś inny zdążył przed nim. Nie zmienia też czasu trwania:
+	 * przedłużenie albo skrócenie aktywnego banu to unban + ban, dwie świadome
+	 * decyzje zamiast cichej podmiany terminu przy zduplikowanym kliknięciu.
+	 *
+	 * <p>
+	 * Ban <b>wygasły</b> to co innego (ADR 0014): wiersz zostaje w tabeli tylko
+	 * dlatego, że klucz główny nie dopuszcza drugiego — ponowny ban nadpisuje go w
+	 * całości i publikuje nowe zdarzenie, bo z perspektywy zbanowanego to nowa
+	 * decyzja, o której trzeba zawiadomić.
+	 *
+	 * @param durationDays
+	 *            {@code null} = ban bezterminowy
 	 */
 	@Transactional
-	void ban(UUID communityId, UUID requesterId, UUID targetUserId, String reason) {
+	void ban(UUID communityId, UUID requesterId, UUID targetUserId, String reason, Integer durationDays) {
 		Community community = requireCommunity(communityId);
 		requireModerator(communityId, requesterId);
 		if (community.getOwnerId().equals(targetUserId)) {
@@ -165,13 +177,20 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 			throw new CannotModerateModeratorException();
 		}
 		memberRepository.findById(new CommunityMemberId(communityId, targetUserId)).ifPresent(memberRepository::delete);
-		if (!banRepository.existsByCommunityIdAndUserId(communityId, targetUserId)) {
-			Instant now = Instant.now();
-			banRepository.save(new CommunityBan(communityId, targetUserId, requesterId, reason, now));
-			// Tylko przy NOWYM banie. Operacja jest idempotentna, więc bez tego warunku
-			// powtórzone kliknięcie moderatora dokładałoby kolejne powiadomienie o tym
-			// samym.
-			eventPublisher.publishEvent(new CommunityMemberBannedEvent(communityId, targetUserId, requesterId, now));
+		Instant now = Instant.now();
+		Instant expiresAt = durationDays == null ? null : now.plus(Duration.ofDays(durationDays));
+		CommunityBan existing = banRepository.findById(new CommunityBanId(communityId, targetUserId)).orElse(null);
+		// Zdarzenie leci tylko przy banie, który zmienia stan z „niezbanowany" na
+		// „zbanowany" — czyli przy pierwszym i przy nadpisaniu wygasłego. Powtórzone
+		// kliknięcie na aktywnym banie nie dokłada powiadomienia o tym samym.
+		if (existing == null) {
+			banRepository.save(new CommunityBan(communityId, targetUserId, requesterId, reason, now, expiresAt));
+			eventPublisher.publishEvent(
+					new CommunityMemberBannedEvent(communityId, targetUserId, requesterId, expiresAt, now));
+		} else if (!existing.isActiveAt(now)) {
+			existing.reimpose(requesterId, reason, now, expiresAt);
+			eventPublisher.publishEvent(
+					new CommunityMemberBannedEvent(communityId, targetUserId, requesterId, expiresAt, now));
 		}
 	}
 
@@ -187,12 +206,13 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 	Page<CommunityBanResponse> listBans(UUID communityId, UUID requesterId, Pageable pageable) {
 		requireCommunity(communityId);
 		requireModerator(communityId, requesterId);
-		Page<CommunityBan> page = banRepository.findByCommunityIdOrderByCreatedAtDesc(communityId, pageable);
+		Page<CommunityBan> page = banRepository.findActiveByCommunityId(communityId, Instant.now(), pageable);
 		Set<UUID> userIds = page.getContent().stream().map(CommunityBan::getUserId).collect(Collectors.toSet());
 		Map<UUID, String> names = profileDirectory.displayNames(userIds);
 		Map<UUID, String> avatars = profileDirectory.avatarUrls(userIds);
 		return page.map(ban -> new CommunityBanResponse(ban.getUserId(), names.get(ban.getUserId()),
-				avatars.get(ban.getUserId()), ban.getReason(), ban.getBannedBy(), ban.getCreatedAt()));
+				avatars.get(ban.getUserId()), ban.getReason(), ban.getBannedBy(), ban.getCreatedAt(),
+				ban.getExpiresAt()));
 	}
 
 	private void requireModerator(UUID communityId, UUID requesterId) {
@@ -248,7 +268,7 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		// Bez tego sprawdzenia ban byłby wyłącznie usunięciem z listy: dołączenie
 		// jest otwarte i natychmiastowe (§8), więc zbanowany wracałby jednym
 		// żądaniem, a moderacja sprowadzałaby się do wyścigu na kliknięcia.
-		if (banRepository.existsByCommunityIdAndUserId(communityId, userId)) {
+		if (banRepository.existsActive(communityId, userId, Instant.now())) {
 			throw new BannedFromCommunityException();
 		}
 		CommunityMemberId id = new CommunityMemberId(communityId, userId);

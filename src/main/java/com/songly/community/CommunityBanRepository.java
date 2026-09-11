@@ -1,5 +1,6 @@
 package com.songly.community;
 
+import java.time.Instant;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -10,9 +11,31 @@ import org.springframework.data.repository.query.Param;
 
 interface CommunityBanRepository extends JpaRepository<CommunityBan, CommunityBanId> {
 
-	boolean existsByCommunityIdAndUserId(UUID communityId, UUID userId);
+	/**
+	 * Czy ban <b>aktywny</b> — wygasły nie liczy się nigdzie (ADR 0014). Wygasanie
+	 * jest leniwe: filtr w zapytaniu jest jedynym mechanizmem, żaden proces nie
+	 * sprząta w chwili wygaśnięcia. Warunek jest alternatywą ({@code null} =
+	 * bezterminowy), więc nazwa metody Spring Data go nie wyrazi — stąd
+	 * {@code @Query}, jak przy filtrze blokad w notification.
+	 */
+	@Query("""
+			select count(b) > 0 from CommunityBan b
+			where b.communityId = :communityId and b.userId = :userId
+			and (b.expiresAt is null or b.expiresAt > :now)
+			""")
+	boolean existsActive(@Param("communityId") UUID communityId, @Param("userId") UUID userId,
+			@Param("now") Instant now);
 
-	Page<CommunityBan> findByCommunityIdOrderByCreatedAtDesc(UUID communityId, Pageable pageable);
+	/**
+	 * Lista dla moderatorów pokazuje wyłącznie bany aktywne — wygasły to historia.
+	 */
+	@Query("""
+			select b from CommunityBan b
+			where b.communityId = :communityId and (b.expiresAt is null or b.expiresAt > :now)
+			order by b.createdAt desc
+			""")
+	Page<CommunityBan> findActiveByCommunityId(@Param("communityId") UUID communityId, @Param("now") Instant now,
+			Pageable pageable);
 
 	/**
 	 * Wsadowo, i to jest warunek poprawności, nie optymalizacja. Przy usuwaniu
