@@ -68,6 +68,22 @@
         },
         "type" : "object"
       },
+      "BanDetailsResponse" : {
+        "properties" : {
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "reason" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "BanMemberRequest" : {
         "properties" : {
           "durationDays" : {
@@ -443,6 +459,26 @@
           },
           "userId" : {
             "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "MembershipStatusResponse" : {
+        "properties" : {
+          "ban" : {
+            "$ref" : "#/components/schemas/BanDetailsResponse"
+          },
+          "joinedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "role" : {
+            "enum" : [ "OWNER", "MODERATOR", "MEMBER" ],
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "MEMBER", "BANNED", "NONE" ],
             "type" : "string"
           }
         },
@@ -1767,6 +1803,34 @@
         } ],
         "responses" : {
           "200" : {
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "community-controller" ]
+      },
+      "get" : {
+        "operationId" : "membershipStatus",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "communityId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MembershipStatusResponse"
+                }
+              }
+            },
             "description" : "OK"
           }
         },
