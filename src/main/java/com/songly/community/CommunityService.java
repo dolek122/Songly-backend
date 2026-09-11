@@ -7,6 +7,7 @@ import com.songly.profile.ProfileDirectory;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -18,7 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-class CommunityService implements CommunityMembership {
+class CommunityService implements CommunityMembership, CommunityDirectory {
 
 	private final CommunityRepository communityRepository;
 	private final CommunityMemberRepository memberRepository;
@@ -104,6 +105,12 @@ class CommunityService implements CommunityMembership {
 	public Set<UUID> moderatorIds(UUID communityId) {
 		return memberRepository.findByCommunityIdAndRoleIn(communityId, CommunityRole.MODERATING).stream()
 				.map(CommunityMember::getUserId).collect(Collectors.toSet());
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Optional<String> nameOf(UUID communityId) {
+		return communityRepository.findById(communityId).map(Community::getName);
 	}
 
 	/**
