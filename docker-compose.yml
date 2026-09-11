@@ -31,8 +31,13 @@ services:
 
   # S3-kompatybilny magazyn plików (ADR 0010). Ten sam protokół co produkcyjne
   # R2/S3, więc lokalnie i na produkcji działa dokładnie ten sam kod.
+  #
+  # Obrazy z quay.io, nie z Docker Huba: MinIO wycofało stamtąd minio/minio
+  # i minio/mc, a Docker Hub odpowiada na anonimowe pobranie "pull access
+  # denied ... repository does not exist" (również dla :latest). Quay to
+  # oficjalny rejestr MinIO.
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: songly-minio
     command: server /data --console-address ":9001"
     environment:
@@ -53,7 +58,7 @@ services:
   # publiczne z założenia — leci do nich klient wprost, bez naszego pośrednictwa.
   # Kontener kończy pracę po wykonaniu zadania.
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     container_name: songly-minio-init
     depends_on:
       minio:
