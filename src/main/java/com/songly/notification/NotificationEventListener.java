@@ -2,6 +2,7 @@ package com.songly.notification;
 
 import com.songly.community.CommunityMemberBannedEvent;
 import com.songly.community.CommunityMemberJoinedEvent;
+import com.songly.community.CommunityMemberRoleChangedEvent;
 import com.songly.community.CommunityMembership;
 import com.songly.content.CommunityPostRemovedEvent;
 import com.songly.content.PostCommentedEvent;
@@ -81,6 +82,19 @@ class NotificationEventListener {
 	void onCommunityPostRemoved(CommunityPostRemovedEvent event) {
 		notificationService.record(event.postAuthorId(), event.moderatorId(), NotificationType.COMMUNITY_POST_REMOVED,
 				event.communityId(), event.occurredAt());
+	}
+
+	/**
+	 * Zwykłe powiadomienie, nie {@code MODERATION} (ADR 0016): zmiana roli nadaje
+	 * albo odbiera uprawnienia, ale niczego nie ogranicza w zwykłym uczestnictwie —
+	 * podlega więc filtrowi blokad jak każda aktywność i nie wychodzi mailem.
+	 */
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onCommunityMemberRoleChanged(CommunityMemberRoleChangedEvent event) {
+		NotificationType type = event.moderationGranted()
+				? NotificationType.COMMUNITY_MODERATOR_GRANTED
+				: NotificationType.COMMUNITY_MODERATOR_REVOKED;
+		notificationService.record(event.userId(), event.changedBy(), type, event.communityId(), event.occurredAt());
 	}
 
 	/**

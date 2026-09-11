@@ -169,7 +169,14 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		if (membership.getRole() == CommunityRole.OWNER) {
 			throw new CannotModerateOwnerException();
 		}
+		// Zdarzenie tylko przy faktycznej zmianie — ta sama zasada co „tylko nowy
+		// ban": powtórzone kliknięcie nie dokłada powiadomienia o tym samym.
+		if (membership.getRole() == role) {
+			return;
+		}
 		membership.changeRole(role);
+		eventPublisher.publishEvent(new CommunityMemberRoleChangedEvent(communityId, targetUserId, requesterId,
+				role.canModerate(), Instant.now()));
 	}
 
 	/**
