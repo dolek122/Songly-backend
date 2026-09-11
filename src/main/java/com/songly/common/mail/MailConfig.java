@@ -10,16 +10,6 @@ import org.springframework.mail.javamail.JavaMailSender;
 @EnableConfigurationProperties(MailProperties.class)
 class MailConfig {
 
-	/**
-	 * Wybór implementacji na podstawie {@code songly.mail.provider}.
-	 *
-	 * <p>
-	 * {@code smtp} bez skonfigurowanego {@code spring.mail.host} kończy się
-	 * <b>błędem startu</b>, a nie cichym zejściem do logowania. Instancja
-	 * produkcyjna, która wystartowała i tylko wygląda, jakby wysyłała maile, jest
-	 * dokładnie tą awarią, której nikt nie zauważa aż do pierwszego zgłoszenia „nie
-	 * dostałem linku".
-	 */
 	@Bean
 	MailSender mailSender(MailProperties properties, ObjectProvider<JavaMailSender> javaMailSender) {
 		if (!"smtp".equalsIgnoreCase(properties.getProvider())) {

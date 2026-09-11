@@ -109,7 +109,7 @@ class CommunityController {
 	ResponseEntity<Void> ban(Authentication authentication, @PathVariable UUID communityId, @PathVariable UUID userId,
 			@Valid @RequestBody(required = false) BanMemberRequest request) {
 		communityService.ban(communityId, currentUserId(authentication), userId,
-				request == null ? null : request.reason());
+				request == null ? null : request.reason(), request == null ? null : request.durationDays());
 		return ResponseEntity.noContent().build();
 	}
 

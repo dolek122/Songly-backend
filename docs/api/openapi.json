@@ -70,6 +70,11 @@
       },
       "BanMemberRequest" : {
         "properties" : {
+          "durationDays" : {
+            "format" : "int32",
+            "minimum" : 1,
+            "type" : "integer"
+          },
           "reason" : {
             "maxLength" : 500,
             "minLength" : 0,
@@ -153,6 +158,10 @@
             "type" : "string"
           },
           "displayName" : {
+            "type" : "string"
+          },
+          "expiresAt" : {
+            "format" : "date-time",
             "type" : "string"
           },
           "reason" : {

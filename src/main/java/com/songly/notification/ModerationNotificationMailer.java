@@ -8,6 +8,7 @@ import com.songly.content.CommunityPostRemovedEvent;
 import com.songly.content.PostReportDismissedEvent;
 import com.songly.content.PostReportedEvent;
 import com.songly.identity.UserEmailDirectory;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -66,6 +67,12 @@ class ModerationNotificationMailer {
 		this.communityMembership = communityMembership;
 	}
 
+	/**
+	 * Termin banu musi dotrzeć do zbanowanego: ban czasowy, który wygląda na
+	 * dożywotni, mija się z celem — „tydzień przerwy" działa tylko na kimś, kto
+	 * wie, że to tydzień. Skrzynka w aplikacji tego nie przenosi (płaski model, ADR
+	 * 0012), więc mail jest dziś jedynym kanałem z tą informacją.
+	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onCommunityMemberBanned(CommunityMemberBannedEvent event) {
 		String community = communityName(event.communityId());
@@ -75,9 +82,19 @@ class ModerationNotificationMailer {
 				Moderacja społeczności „%s” w Songly zablokowała Ci możliwość
 				publikowania i komentowania w niej. Nadal możesz czytać jej treści.
 
+				%s
+
 				Szczegóły znajdziesz w aplikacji, w skrzynce powiadomień.
 
-				Zespół Songly""".formatted(community));
+				Zespół Songly""".formatted(community, banTerm(event)));
+	}
+
+	private static String banTerm(CommunityMemberBannedEvent event) {
+		if (event.expiresAt() == null) {
+			return "Ban jest bezterminowy.";
+		}
+		long days = Duration.between(event.occurredAt(), event.expiresAt()).toDays();
+		return "Ban jest czasowy — wygasa za %d %s i wtedy możesz wrócić.".formatted(days, days == 1 ? "dzień" : "dni");
 	}
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
