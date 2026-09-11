@@ -65,7 +65,8 @@ class ContentServiceTest {
 	@BeforeEach
 	void setUp() {
 		contentService = new ContentService(postRepository, likeRepository, commentRepository, shareRepository,
-				reportRepository, profileDirectory, socialGraph, communityMembership, objectStorage, eventPublisher);
+				reportRepository, profileDirectory, socialGraph, communityMembership, objectStorage, eventPublisher,
+				new ReportProperties());
 	}
 
 	@Test

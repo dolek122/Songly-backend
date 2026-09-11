@@ -18,6 +18,8 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -47,6 +49,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * publikującego.
  */
 @Component
+@EnableConfigurationProperties(ModerationMailProperties.class)
 class ModerationNotificationMailer {
 
 	private static final Logger log = LoggerFactory.getLogger(ModerationNotificationMailer.class);
@@ -61,13 +64,18 @@ class ModerationNotificationMailer {
 	private final UserEmailDirectory userEmailDirectory;
 	private final CommunityDirectory communityDirectory;
 	private final CommunityMembership communityMembership;
+	private final StringRedisTemplate redisTemplate;
+	private final ModerationMailProperties properties;
 
 	ModerationNotificationMailer(MailSender mailSender, UserEmailDirectory userEmailDirectory,
-			CommunityDirectory communityDirectory, CommunityMembership communityMembership) {
+			CommunityDirectory communityDirectory, CommunityMembership communityMembership,
+			StringRedisTemplate redisTemplate, ModerationMailProperties properties) {
 		this.mailSender = mailSender;
 		this.userEmailDirectory = userEmailDirectory;
 		this.communityDirectory = communityDirectory;
 		this.communityMembership = communityMembership;
+		this.redisTemplate = redisTemplate;
+		this.properties = properties;
 	}
 
 	/**
@@ -122,7 +130,7 @@ class ModerationNotificationMailer {
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onPostReported(PostReportedEvent event) {
 		String community = communityName(event.communityId());
-		sendTo(communityMembership.moderatorIds(event.communityId()), event.reporterId(),
+		sendToModerators(event.communityId(), "report", event.reporterId(),
 				"Songly — nowe zgłoszenie w społeczności „%s”".formatted(community), """
 						Cześć!
 
@@ -143,7 +151,7 @@ class ModerationNotificationMailer {
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onBanAppealSubmitted(CommunityBanAppealSubmittedEvent event) {
 		String community = communityName(event.communityId());
-		sendTo(communityMembership.moderatorIds(event.communityId()), event.userId(),
+		sendToModerators(event.communityId(), "appeal", event.userId(),
 				"Songly — odwołanie od bana w społeczności „%s”".formatted(community), """
 						Cześć!
 
@@ -196,6 +204,48 @@ class ModerationNotificationMailer {
 				przyjrzeć, także wtedy, gdy decyzja jest inna, niż się spodziewasz.
 
 				Zespół Songly""".formatted(community));
+	}
+
+	/**
+	 * Rozsyłka do <b>wszystkich moderatorów</b> społeczności, wyciszana odstępem
+	 * per społeczność i rodzaj sprawy (ADR 0018).
+	 *
+	 * <p>
+	 * To są jedyne dwa maile, które wyzwala ktoś spoza moderacji — a więc jedyne,
+	 * którymi da się zasypać cudzą skrzynkę. Limit zgłoszeń per osoba tego nie
+	 * domyka, bo chroni przed jedną osobą, a nie przed dziesięcioma umówionymi:
+	 * ofiarą jest jedna skrzynka niezależnie od tego, ilu nadawców ją zapełnia (ta
+	 * sama logika co {@code resendInterval} przy resecie hasła, Claude.md §9).
+	 *
+	 * <p>
+	 * Wyciszony mail <b>przepada</b>, nie jest kolejkowany — i to jest w porządku
+	 * dokładnie dlatego, że ten mail nigdy nie niósł treści: mówi „jest po co
+	 * zajrzeć", a kolejka i tak pokazuje wszystko, co przyszło w międzyczasie.
+	 * Powiadomienia w aplikacji zostają nietknięte.
+	 *
+	 * <p>
+	 * <b>Fail-open</b> jak rate limiter (§9): gdy Redis nie odpowiada, mail
+	 * wychodzi. Wyciszanie jest zabezpieczeniem, nie warunkiem poprawności — awaria
+	 * cache'a nie może uciszyć kolejki moderacji.
+	 */
+	private void sendToModerators(UUID communityId, String kind, UUID actorId, String subject, String body) {
+		if (!claimModeratorMailSlot(communityId, kind)) {
+			log.debug("Mail do moderatorów społeczności {} ({}) wyciszony odstępem", communityId, kind);
+			return;
+		}
+		sendTo(communityMembership.moderatorIds(communityId), actorId, subject, body);
+	}
+
+	private boolean claimModeratorMailSlot(UUID communityId, String kind) {
+		try {
+			Boolean claimed = redisTemplate.opsForValue().setIfAbsent("moderation-mail:" + kind + ":" + communityId,
+					"1", properties.getModeratorInterval());
+			return claimed == null || claimed;
+		} catch (RuntimeException ex) {
+			log.warn("Wyciszanie maili moderacyjnych wyłączone dla tej wiadomości — Redis nie odpowiada: {}",
+					ex.toString());
+			return true;
+		}
 	}
 
 	/**

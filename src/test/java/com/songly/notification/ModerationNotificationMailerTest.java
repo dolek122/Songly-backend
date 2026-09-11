@@ -15,6 +15,7 @@ import com.songly.community.CommunityDirectory;
 import com.songly.community.CommunityMembership;
 import com.songly.content.PostReportedEvent;
 import com.songly.identity.UserEmailDirectory;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
@@ -25,6 +26,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 
 /**
  * Właściwości kanału e-mail, których test integracyjny nie wymusi wprost:
@@ -45,6 +48,12 @@ class ModerationNotificationMailerTest {
 	@Mock
 	private CommunityMembership communityMembership;
 
+	@Mock
+	private StringRedisTemplate redisTemplate;
+
+	@Mock
+	private ValueOperations<String, String> valueOperations;
+
 	private ModerationNotificationMailer mailer;
 
 	private final UUID communityId = UUID.randomUUID();
@@ -53,7 +62,13 @@ class ModerationNotificationMailerTest {
 	@BeforeEach
 	void setUp() {
 		mailer = new ModerationNotificationMailer(mailSender, userEmailDirectory, communityDirectory,
-				communityMembership);
+				communityMembership, redisTemplate, new ModerationMailProperties());
+	}
+
+	/** Domyślnie okno wolne — wyciszanie sprawdzają osobne testy. */
+	private void mailSlotFree() {
+		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+		when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true);
 	}
 
 	private PostReportedEvent reportedEvent() {
@@ -66,6 +81,7 @@ class ModerationNotificationMailerTest {
 	 */
 	@Test
 	void deliveryFailureForOneModeratorDoesNotStopTheOthers() {
+		mailSlotFree();
 		UUID first = UUID.randomUUID();
 		UUID second = UUID.randomUUID();
 		when(communityDirectory.nameOf(communityId)).thenReturn(Optional.of("Metalowcy"));
@@ -86,6 +102,7 @@ class ModerationNotificationMailerTest {
 	 */
 	@Test
 	void reportingModeratorIsFilteredOutBeforeEmailLookup() {
+		mailSlotFree();
 		UUID otherModerator = UUID.randomUUID();
 		when(communityDirectory.nameOf(communityId)).thenReturn(Optional.of("Metalowcy"));
 		when(communityMembership.moderatorIds(communityId)).thenReturn(Set.of(reporterId, otherModerator));
@@ -102,6 +119,7 @@ class ModerationNotificationMailerTest {
 	 */
 	@Test
 	void recipientWithoutAccountIsSkippedSilently() {
+		mailSlotFree();
 		UUID moderator = UUID.randomUUID();
 		when(communityDirectory.nameOf(communityId)).thenReturn(Optional.of("Metalowcy"));
 		when(communityMembership.moderatorIds(communityId)).thenReturn(Set.of(moderator));
@@ -112,9 +130,44 @@ class ModerationNotificationMailerTest {
 		verify(mailSender, never()).send(anyString(), anyString(), anyString());
 	}
 
+	/**
+	 * Odstęp wyciszający (ADR 0018): drugi mail do moderatorów tej samej
+	 * społeczności w oknie przepada, i to <b>przed</b> pytaniem o adresatów —
+	 * wyciszamy wysyłkę, a nie doręczenie.
+	 */
+	@Test
+	void secondModeratorMailWithinTheIntervalIsSuppressed() {
+		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+		when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(false);
+		when(communityDirectory.nameOf(communityId)).thenReturn(Optional.of("Metalowcy"));
+
+		mailer.onPostReported(reportedEvent());
+
+		verify(communityMembership, never()).moderatorIds(any());
+		verify(mailSender, never()).send(anyString(), anyString(), anyString());
+	}
+
+	/**
+	 * Fail-open jak rate limiter (Claude.md §9): awaria Redisa nie może uciszyć
+	 * kolejki moderacji, więc mail wychodzi.
+	 */
+	@Test
+	void redisFailureLetsTheMailThrough() {
+		UUID moderator = UUID.randomUUID();
+		when(redisTemplate.opsForValue()).thenThrow(new RuntimeException("Redis down"));
+		when(communityDirectory.nameOf(communityId)).thenReturn(Optional.of("Metalowcy"));
+		when(communityMembership.moderatorIds(communityId)).thenReturn(Set.of(moderator));
+		when(userEmailDirectory.emailsOf(Set.of(moderator))).thenReturn(Map.of(moderator, "mod@songly.io"));
+
+		assertThatCode(() -> mailer.onPostReported(reportedEvent())).doesNotThrowAnyException();
+
+		verify(mailSender).send(eq("mod@songly.io"), anyString(), anyString());
+	}
+
 	/** Usunięta społeczność nie wywraca wysyłki — treść dostaje tekst zastępczy. */
 	@Test
 	void deletedCommunityDoesNotBreakTheMail() {
+		mailSlotFree();
 		UUID moderator = UUID.randomUUID();
 		when(communityDirectory.nameOf(communityId)).thenReturn(Optional.empty());
 		when(communityMembership.moderatorIds(communityId)).thenReturn(Set.of(moderator));

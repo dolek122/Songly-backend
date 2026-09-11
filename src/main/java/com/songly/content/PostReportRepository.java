@@ -1,5 +1,6 @@
 package com.songly.content;
 
+import java.time.Instant;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -16,6 +17,13 @@ interface PostReportRepository extends JpaRepository<PostReport, UUID> {
 	 * Czy post ma już jakiekolwiek zgłoszenie — patrz {@code PostReportedEvent}.
 	 */
 	boolean existsByPostId(UUID postId);
+
+	/**
+	 * Zgłoszenia jednej osoby w oknie przesuwanym — limit z ADR 0018. Liczymy
+	 * wiersze zamiast trzymać licznik w Redisie, bo {@code created_at} i tak tu
+	 * jest, a limit ma być warunkiem domeny, nie zabezpieczeniem infrastruktury.
+	 */
+	long countByReporterIdAndCreatedAtAfter(UUID reporterId, Instant createdAfter);
 
 	/**
 	 * Kolejka jednej społeczności. Złączenie z {@code Post} jest tu konieczne, bo
