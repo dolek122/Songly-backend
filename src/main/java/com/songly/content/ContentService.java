@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -26,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@EnableConfigurationProperties(ReportProperties.class)
 class ContentService {
 
 	private final PostRepository postRepository;
@@ -38,6 +40,7 @@ class ContentService {
 	private final CommunityMembership communityMembership;
 	private final ObjectStorage objectStorage;
 	private final ApplicationEventPublisher eventPublisher;
+	private final ReportProperties reportProperties;
 
 	/**
 	 * Prefiks kluczy zdjęć postów. Stała, bo ten sam ciąg musi być użyty przy
@@ -49,7 +52,7 @@ class ContentService {
 	ContentService(PostRepository postRepository, LikeRepository likeRepository, CommentRepository commentRepository,
 			ShareRepository shareRepository, PostReportRepository reportRepository, ProfileDirectory profileDirectory,
 			SocialGraph socialGraph, CommunityMembership communityMembership, ObjectStorage objectStorage,
-			ApplicationEventPublisher eventPublisher) {
+			ApplicationEventPublisher eventPublisher, ReportProperties reportProperties) {
 		this.postRepository = postRepository;
 		this.likeRepository = likeRepository;
 		this.commentRepository = commentRepository;
@@ -60,6 +63,7 @@ class ContentService {
 		this.communityMembership = communityMembership;
 		this.objectStorage = objectStorage;
 		this.eventPublisher = eventPublisher;
+		this.reportProperties = reportProperties;
 	}
 
 	@Transactional
@@ -260,11 +264,23 @@ class ContentService {
 		if (post.getAuthorId().equals(reporterId)) {
 			throw new CannotReportOwnPostException();
 		}
+		// Zbanowany nie zgłasza (ADR 0018). Ban odcina ścieżki, które docierają do
+		// ludzi, a zostawia te będące czystymi liczbami (§8) — zgłoszenie niesie
+		// tożsamość i tekst prosto do moderatorów, więc należy do pierwszej grupy.
+		if (communityMembership.isBanned(post.getCommunityId(), reporterId)) {
+			throw new BannedFromCommunityException();
+		}
 		// Jeden zgłaszający = jedno zgłoszenie. Inaczej jedna osoba podbijałaby
 		// licznik w nieskończoność, a kolejka pokazywałaby upór zamiast liczby
 		// niezależnych osób, którym coś przeszkadza.
 		if (reportRepository.existsByPostIdAndReporterId(postId, reporterId)) {
 			throw new PostAlreadyReportedException();
+		}
+		// ...a to jest bramka w poprzek postów, której tamta nie zastępuje: bez niej
+		// jedno konto zapycha kolejkę setką zgłoszeń różnych postów (ADR 0018).
+		if (reportRepository.countByReporterIdAndCreatedAtAfter(reporterId,
+				Instant.now().minus(reportProperties.getWindow())) >= reportProperties.getLimit()) {
+			throw new ReportRateLimitExceededException();
 		}
 		boolean firstReport = !reportRepository.existsByPostId(postId);
 		Instant now = Instant.now();
