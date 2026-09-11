@@ -60,4 +60,14 @@ class User {
 	void changePassword(String newPasswordHash) {
 		this.passwordHash = newPasswordHash;
 	}
+
+	/**
+	 * Zmiana roli globalnej (ADR 0021). Bez settera na pole — nadanie i odebranie
+	 * uprawnień administratora to dwie nazwane operacje, a nie ustawienie booleana:
+	 * to jedyne miejsce w kodzie, przez które przechodzi eskalacja uprawnień, i ma
+	 * być widoczne w wyszukiwaniu po nazwie.
+	 */
+	void changeAdmin(boolean admin) {
+		this.admin = admin;
+	}
 }
