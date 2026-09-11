@@ -2,6 +2,8 @@ package com.songly.community;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
@@ -48,6 +50,17 @@ class CommunityBan {
 	@Column(name = "expires_at")
 	private Instant expiresAt;
 
+	/** Treść odwołania (ADR 0017); {@code null} = brak odwołania. */
+	@Column(name = "appeal_text", length = 1000)
+	private String appealText;
+
+	@Column(name = "appealed_at")
+	private Instant appealedAt;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "appeal_status", length = 20)
+	private BanAppealStatus appealStatus;
+
 	protected CommunityBan() {
 	}
 
@@ -73,12 +86,43 @@ class CommunityBan {
 	 * główny (społeczność, użytkownik) dopuszcza tylko jeden — a wygasły ban to
 	 * historia, nie stan. To <b>nowa decyzja moderacyjna</b>: wołający publikuje
 	 * dla niej nowe zdarzenie, jak przy pierwszym banie.
+	 *
+	 * <p>
+	 * Czyści też odwołanie (ADR 0017): dotyczyło poprzedniego bana, a nowy ban to
+	 * nowa sprawa — łącznie z prawem do świeżego odwołania, nawet jeśli poprzednie
+	 * odrzucono.
 	 */
 	void reimpose(UUID bannedBy, String reason, Instant createdAt, Instant expiresAt) {
 		this.bannedBy = bannedBy;
 		this.reason = reason;
 		this.createdAt = createdAt;
 		this.expiresAt = expiresAt;
+		this.appealText = null;
+		this.appealedAt = null;
+		this.appealStatus = null;
+	}
+
+	/**
+	 * Jedno odwołanie na ban — drugie się nie zdarza, niezależnie od losu
+	 * pierwszego. Odrzucone odwołanie jest więc ostateczne dla tego bana; świeże
+	 * prawo do odwołania daje dopiero nowy ban ({@link #reimpose}).
+	 */
+	void submitAppeal(String text, Instant at) {
+		this.appealText = text;
+		this.appealedAt = at;
+		this.appealStatus = BanAppealStatus.PENDING;
+	}
+
+	void rejectAppeal() {
+		this.appealStatus = BanAppealStatus.REJECTED;
+	}
+
+	boolean hasPendingAppeal() {
+		return appealStatus == BanAppealStatus.PENDING;
+	}
+
+	boolean hasAppeal() {
+		return appealStatus != null;
 	}
 
 	UUID getCommunityId() {
@@ -103,6 +147,18 @@ class CommunityBan {
 
 	Instant getExpiresAt() {
 		return expiresAt;
+	}
+
+	String getAppealText() {
+		return appealText;
+	}
+
+	Instant getAppealedAt() {
+		return appealedAt;
+	}
+
+	BanAppealStatus getAppealStatus() {
+		return appealStatus;
 	}
 
 }

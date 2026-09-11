@@ -1,5 +1,6 @@
 package com.songly.community;
 
+import com.songly.community.dto.BanAppealRequest;
 import com.songly.community.dto.BanMemberRequest;
 import com.songly.community.dto.CommunityBanResponse;
 import com.songly.community.dto.CommunityMemberResponse;
@@ -123,10 +124,33 @@ class CommunityController {
 		return ResponseEntity.noContent().build();
 	}
 
+	/**
+	 * Unban jest też uznaniem wiszącego odwołania (ADR 0017) — to ta sama decyzja,
+	 * więc nie ma osobnego endpointu uznania.
+	 */
 	@DeleteMapping("/{communityId}/bans/{userId}")
 	ResponseEntity<Void> unban(Authentication authentication, @PathVariable UUID communityId,
 			@PathVariable UUID userId) {
 		communityService.unban(communityId, currentUserId(authentication), userId);
+		return ResponseEntity.noContent().build();
+	}
+
+	/**
+	 * Odwołanie od własnego bana (ADR 0017). Treść czyta wyłącznie moderacja na
+	 * liście banów — kanały push mówią tylko, że odwołanie jest.
+	 */
+	@PostMapping("/{communityId}/ban-appeal")
+	ResponseEntity<Void> appealBan(Authentication authentication, @PathVariable UUID communityId,
+			@Valid @RequestBody BanAppealRequest request) {
+		communityService.appealBan(communityId, currentUserId(authentication), request.text());
+		return ResponseEntity.noContent().build();
+	}
+
+	/** Odrzucenie odwołania — ban zostaje, sprawa tego bana jest zamknięta. */
+	@PostMapping("/{communityId}/bans/{userId}/appeal/rejection")
+	ResponseEntity<Void> rejectBanAppeal(Authentication authentication, @PathVariable UUID communityId,
+			@PathVariable UUID userId) {
+		communityService.rejectBanAppeal(communityId, currentUserId(authentication), userId);
 		return ResponseEntity.noContent().build();
 	}
 

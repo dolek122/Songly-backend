@@ -1,5 +1,8 @@
 package com.songly.notification;
 
+import com.songly.community.CommunityBanAppealAcceptedEvent;
+import com.songly.community.CommunityBanAppealRejectedEvent;
+import com.songly.community.CommunityBanAppealSubmittedEvent;
 import com.songly.community.CommunityMemberBannedEvent;
 import com.songly.community.CommunityMemberJoinedEvent;
 import com.songly.community.CommunityMemberRoleChangedEvent;
@@ -95,6 +98,29 @@ class NotificationEventListener {
 				? NotificationType.COMMUNITY_MODERATOR_GRANTED
 				: NotificationType.COMMUNITY_MODERATOR_REVOKED;
 		notificationService.record(event.userId(), event.changedBy(), type, event.communityId(), event.occurredAt());
+	}
+
+	/**
+	 * Odwołanie od bana — do wszystkich moderatorów, jak zgłoszenie posta: kolejka
+	 * bez powiadomienia to narzędzie, którego nic nie uruchamia (ADR 0017).
+	 */
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onBanAppealSubmitted(CommunityBanAppealSubmittedEvent event) {
+		communityMembership.moderatorIds(event.communityId())
+				.forEach(moderatorId -> notificationService.record(moderatorId, event.userId(),
+						NotificationType.BAN_APPEAL_SUBMITTED, event.communityId(), event.occurredAt()));
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onBanAppealAccepted(CommunityBanAppealAcceptedEvent event) {
+		notificationService.record(event.userId(), event.moderatorId(), NotificationType.BAN_APPEAL_ACCEPTED,
+				event.communityId(), event.occurredAt());
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onBanAppealRejected(CommunityBanAppealRejectedEvent event) {
+		notificationService.record(event.userId(), event.moderatorId(), NotificationType.BAN_APPEAL_REJECTED,
+				event.communityId(), event.occurredAt());
 	}
 
 	/**
