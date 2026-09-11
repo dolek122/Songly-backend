@@ -1,5 +1,7 @@
 package com.songly.community;
 
+import java.util.Set;
+
 /**
  * Rola w społeczności.
  *
@@ -16,7 +18,15 @@ public enum CommunityRole {
 
 	MEMBER;
 
+	/**
+	 * Role z uprawnieniami moderacyjnymi. Jedno miejsce, bo ta sama lista odpowiada
+	 * na dwa pytania — „czy ten człowiek moderuje" i „kogo zawiadomić o zgłoszeniu"
+	 * — a rozjazd między nimi objawiłby się jako moderator bez powiadomień albo
+	 * powiadomienia dla kogoś, kto nic nie może z nimi zrobić.
+	 */
+	static final Set<CommunityRole> MODERATING = Set.of(OWNER, MODERATOR);
+
 	boolean canModerate() {
-		return this == OWNER || this == MODERATOR;
+		return MODERATING.contains(this);
 	}
 }

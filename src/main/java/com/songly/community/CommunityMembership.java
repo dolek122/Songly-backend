@@ -1,5 +1,6 @@
 package com.songly.community;
 
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -39,4 +40,14 @@ public interface CommunityMembership {
 	 * ponowne dołączenie jest jednym żądaniem.
 	 */
 	boolean isBanned(UUID communityId, UUID userId);
+
+	/**
+	 * Kto moderuje tę społeczność — właściciel i moderatorzy.
+	 *
+	 * <p>
+	 * Powstało dla modułu notification, który musi zawiadomić moderatorów o nowym
+	 * zgłoszeniu, ale nie ma prawa czytać tabeli członkostw. Zwracamy
+	 * identyfikatory, nie encje ani DTO — konsument potrzebuje wyłącznie adresatów.
+	 */
+	Set<UUID> moderatorIds(UUID communityId);
 }

@@ -99,6 +99,13 @@ class CommunityService implements CommunityMembership {
 		return banRepository.existsByCommunityIdAndUserId(communityId, userId);
 	}
 
+	@Override
+	@Transactional(readOnly = true)
+	public Set<UUID> moderatorIds(UUID communityId) {
+		return memberRepository.findByCommunityIdAndRoleIn(communityId, CommunityRole.MODERATING).stream()
+				.map(CommunityMember::getUserId).collect(Collectors.toSet());
+	}
+
 	/**
 	 * Nadaje rolę w społeczności. <b>Wyłącznie właściciel</b> — moderator mogący
 	 * rozdawać role mógłby zdegradować właściciela i przejąć społeczność.
@@ -152,7 +159,12 @@ class CommunityService implements CommunityMembership {
 		}
 		memberRepository.findById(new CommunityMemberId(communityId, targetUserId)).ifPresent(memberRepository::delete);
 		if (!banRepository.existsByCommunityIdAndUserId(communityId, targetUserId)) {
-			banRepository.save(new CommunityBan(communityId, targetUserId, requesterId, reason, Instant.now()));
+			Instant now = Instant.now();
+			banRepository.save(new CommunityBan(communityId, targetUserId, requesterId, reason, now));
+			// Tylko przy NOWYM banie. Operacja jest idempotentna, więc bez tego warunku
+			// powtórzone kliknięcie moderatora dokładałoby kolejne powiadomienie o tym
+			// samym.
+			eventPublisher.publishEvent(new CommunityMemberBannedEvent(communityId, targetUserId, requesterId, now));
 		}
 	}
 

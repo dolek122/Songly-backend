@@ -52,8 +52,8 @@ class NotificationService {
 	 */
 	@Transactional(readOnly = true)
 	Page<NotificationResponse> list(UUID userId, Pageable pageable) {
-		Page<Notification> page = notificationRepository.findByUserIdAndActorIdNotInOrderByCreatedAtDesc(userId,
-				socialGraph.blockedEitherWayIds(userId), pageable);
+		Page<Notification> page = notificationRepository.findVisible(userId, socialGraph.blockedEitherWayIds(userId),
+				NotificationType.MODERATION, pageable);
 		Set<UUID> actorIds = page.getContent().stream().map(Notification::getActorId).collect(Collectors.toSet());
 		Map<UUID, String> names = profileDirectory.displayNames(actorIds);
 		Map<UUID, String> avatars = profileDirectory.avatarUrls(actorIds);
@@ -69,8 +69,8 @@ class NotificationService {
 	 */
 	@Transactional(readOnly = true)
 	long unreadCount(UUID userId) {
-		return notificationRepository.countByUserIdAndReadAtIsNullAndActorIdNotIn(userId,
-				socialGraph.blockedEitherWayIds(userId));
+		return notificationRepository.countVisibleUnread(userId, socialGraph.blockedEitherWayIds(userId),
+				NotificationType.MODERATION);
 	}
 
 	/** Cudze powiadomienia zgłaszamy jako nieistniejące. */
@@ -91,7 +91,7 @@ class NotificationService {
 	void markAllRead(UUID userId) {
 		Instant now = Instant.now();
 		notificationRepository
-				.findByUserIdAndReadAtIsNullAndActorIdNotIn(userId, socialGraph.blockedEitherWayIds(userId))
+				.findVisibleUnread(userId, socialGraph.blockedEitherWayIds(userId), NotificationType.MODERATION)
 				.forEach(notification -> notification.markRead(now));
 	}
 

@@ -220,6 +220,12 @@ class ContentService {
 		if (post.getImageKey() != null) {
 			reportOrphanedImages(List.of(post.getImageKey()));
 		}
+		if (!post.getAuthorId().equals(requesterId)) {
+			// Tylko przy usunięciu cudzego posta — skasowanie własnego nie jest decyzją
+			// moderacyjną i nie ma o czym zawiadamiać.
+			eventPublisher.publishEvent(new CommunityPostRemovedEvent(post.getCommunityId(), post.getAuthorId(),
+					requesterId, Instant.now()));
+		}
 		postRepository.delete(post);
 	}
 
@@ -260,7 +266,13 @@ class ContentService {
 		if (reportRepository.existsByPostIdAndReporterId(postId, reporterId)) {
 			throw new PostAlreadyReportedException();
 		}
-		reportRepository.save(new PostReport(UUID.randomUUID(), postId, reporterId, reason, details, Instant.now()));
+		boolean firstReport = !reportRepository.existsByPostId(postId);
+		Instant now = Instant.now();
+		reportRepository.save(new PostReport(UUID.randomUUID(), postId, reporterId, reason, details, now));
+		if (firstReport) {
+			// Tylko pierwsze zgłoszenie zawiadamia moderatorów — patrz PostReportedEvent.
+			eventPublisher.publishEvent(new PostReportedEvent(post.getCommunityId(), postId, reporterId, now));
+		}
 	}
 
 	@Transactional(readOnly = true)
@@ -306,7 +318,10 @@ class ContentService {
 		if (!communityId.equals(post.getCommunityId())) {
 			throw new ReportNotFoundException();
 		}
-		report.dismiss(requesterId, Instant.now());
+		Instant now = Instant.now();
+		report.dismiss(requesterId, now);
+		eventPublisher.publishEvent(
+				new PostReportDismissedEvent(report.getPostId(), report.getReporterId(), requesterId, now));
 	}
 
 	private void requireModerator(UUID communityId, UUID requesterId) {

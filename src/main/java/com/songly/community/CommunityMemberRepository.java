@@ -13,6 +13,9 @@ interface CommunityMemberRepository extends JpaRepository<CommunityMember, Commu
 
 	Page<CommunityMember> findByCommunityIdOrderByJoinedAtAsc(UUID communityId, Pageable pageable);
 
+	/** Adresaci powiadomień moderacyjnych — właściciel i moderatorzy. */
+	List<CommunityMember> findByCommunityIdAndRoleIn(UUID communityId, Collection<CommunityRole> roles);
+
 	Page<CommunityMember> findByUserIdOrderByJoinedAtDesc(UUID userId, Pageable pageable);
 
 	List<CommunityMember> findByUserIdAndCommunityIdIn(UUID userId, Collection<UUID> communityIds);
