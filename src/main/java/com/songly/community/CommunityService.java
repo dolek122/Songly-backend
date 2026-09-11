@@ -1,8 +1,11 @@
 package com.songly.community;
 
+import com.songly.community.dto.BanDetailsResponse;
 import com.songly.community.dto.CommunityBanResponse;
 import com.songly.community.dto.CommunityMemberResponse;
+import com.songly.community.dto.CommunityMembershipStatus;
 import com.songly.community.dto.CommunityResponse;
+import com.songly.community.dto.MembershipStatusResponse;
 import com.songly.profile.ProfileDirectory;
 import java.time.Duration;
 import java.time.Instant;
@@ -112,6 +115,36 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 	@Transactional(readOnly = true)
 	public Optional<String> nameOf(UUID communityId) {
 		return communityRepository.findById(communityId).map(Community::getName);
+	}
+
+	/**
+	 * Własny status pytającego — w tym szczegóły <b>własnego</b> bana (ADR 0015).
+	 *
+	 * <p>
+	 * To jedyne miejsce, w którym zbanowany widzi powód i termin. Powiadomienie
+	 * jest płaskie (ADR 0012), a mail celowo powodu nie niesie: mail omija blokady
+	 * (ADR 0013) i jest kanałem push, więc powód-w-mailu zamieniałby cykl ban/unban
+	 * w doręczanie dowolnego tekstu moderatora prosto do cudzej skrzynki pocztowej.
+	 * Tu jest odwrotnie — po treść trzeba samemu przyjść.
+	 *
+	 * <p>
+	 * Członkostwo sprawdzane przed banem: po wygaśnięciu bana i powrocie oba
+	 * wiersze istnieją naraz (wygasły ban zostaje, ADR 0014), a stan opisuje
+	 * członkostwo.
+	 */
+	@Transactional(readOnly = true)
+	MembershipStatusResponse membershipStatus(UUID communityId, UUID userId) {
+		requireCommunity(communityId);
+		Optional<CommunityMember> membership = memberRepository.findById(new CommunityMemberId(communityId, userId));
+		if (membership.isPresent()) {
+			return new MembershipStatusResponse(CommunityMembershipStatus.MEMBER, membership.get().getRole(),
+					membership.get().getJoinedAt(), null);
+		}
+		Instant now = Instant.now();
+		return banRepository.findById(new CommunityBanId(communityId, userId)).filter(ban -> ban.isActiveAt(now))
+				.map(ban -> new MembershipStatusResponse(CommunityMembershipStatus.BANNED, null, null,
+						new BanDetailsResponse(ban.getReason(), ban.getCreatedAt(), ban.getExpiresAt())))
+				.orElseGet(() -> new MembershipStatusResponse(CommunityMembershipStatus.NONE, null, null, null));
 	}
 
 	/**

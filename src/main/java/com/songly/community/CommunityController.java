@@ -5,6 +5,7 @@ import com.songly.community.dto.CommunityBanResponse;
 import com.songly.community.dto.CommunityMemberResponse;
 import com.songly.community.dto.CommunityResponse;
 import com.songly.community.dto.CreateCommunityRequest;
+import com.songly.community.dto.MembershipStatusResponse;
 import com.songly.community.dto.SetMemberRoleRequest;
 import com.songly.community.dto.UpdateCommunityRequest;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -76,6 +77,15 @@ class CommunityController {
 	ResponseEntity<Void> join(Authentication authentication, @PathVariable UUID communityId) {
 		communityService.join(communityId, currentUserId(authentication));
 		return ResponseEntity.noContent().build();
+	}
+
+	/**
+	 * Własny status w społeczności — dla zbanowanego jedyne miejsce, w którym widzi
+	 * powód i termin swojego bana (ADR 0015).
+	 */
+	@GetMapping("/{communityId}/membership")
+	MembershipStatusResponse membershipStatus(Authentication authentication, @PathVariable UUID communityId) {
+		return communityService.membershipStatus(communityId, currentUserId(authentication));
 	}
 
 	@DeleteMapping("/{communityId}/membership")
