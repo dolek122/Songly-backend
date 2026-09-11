@@ -27,6 +27,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.testcontainers.utility.DockerImageName;
 
 /**
  * Kontenery uruchamiane raz na cały przebieg testów (singleton container
@@ -80,8 +81,22 @@ public abstract class AbstractIntegrationTest {
 	 * potwierdzałaby wyłącznie, że kod woła własną atrapę. Tutaj naprawdę zależy
 	 * nam na zachowaniu po tamtej stronie — na tym, że plik da się potem pobrać
 	 * publicznym adresem.
+	 *
+	 * <p>
+	 * Obraz z <b>quay.io</b>, nie z Docker Huba, i to nie jest kwestia gustu: MinIO
+	 * wycofało {@code minio/minio} z Docker Huba, który odpowiada teraz „pull
+	 * access denied ... repository does not exist" na anonimowe pobranie — również
+	 * dla {@code :latest}. Quay to oficjalny rejestr MinIO i ten sam release. Nie
+	 * wracać na Docker Huba bez sprawdzenia, że obraz da się tam pobrać bez
+	 * logowania: lokalnie awaria jest niewidoczna, bo obraz siedzi w cache'u
+	 * Dockera, i czerwienieje dopiero CI na czystym runnerze.
+	 *
+	 * <p>
+	 * {@code asCompatibleSubstituteFor} jest konieczne, bo {@code MinIOContainer}
+	 * sprawdza nazwę obrazu i odrzuca każdą inną niż {@code minio/minio}.
 	 */
-	static final MinIOContainer minio = new MinIOContainer("minio/minio:RELEASE.2024-11-07T00-52-20Z")
+	static final MinIOContainer minio = new MinIOContainer(DockerImageName
+			.parse("quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z").asCompatibleSubstituteFor("minio/minio"))
 			.withUserName(STORAGE_USER).withPassword(STORAGE_PASSWORD);
 
 	static {
