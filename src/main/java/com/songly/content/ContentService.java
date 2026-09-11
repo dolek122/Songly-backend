@@ -320,8 +320,8 @@ class ContentService {
 		}
 		Instant now = Instant.now();
 		report.dismiss(requesterId, now);
-		eventPublisher.publishEvent(
-				new PostReportDismissedEvent(report.getPostId(), report.getReporterId(), requesterId, now));
+		eventPublisher.publishEvent(new PostReportDismissedEvent(communityId, report.getPostId(),
+				report.getReporterId(), requesterId, now));
 	}
 
 	private void requireModerator(UUID communityId, UUID requesterId) {

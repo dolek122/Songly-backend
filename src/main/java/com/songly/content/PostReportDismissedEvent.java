@@ -11,5 +11,6 @@ import java.util.UUID;
  * kartek do zamkniętej skrzynki: nie wiadomo, czy ktokolwiek to przeczytał, a
  * po kilku takich razach przestaje się zgłaszać cokolwiek.
  */
-public record PostReportDismissedEvent(UUID postId, UUID reporterId, UUID moderatorId, Instant occurredAt) {
+public record PostReportDismissedEvent(UUID communityId, UUID postId, UUID reporterId, UUID moderatorId,
+		Instant occurredAt) {
 }
