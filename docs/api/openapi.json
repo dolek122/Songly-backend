@@ -1,6 +1,18 @@
 {
   "components" : {
     "schemas" : {
+      "AdminListResponse" : {
+        "properties" : {
+          "userIds" : {
+            "items" : {
+              "format" : "uuid",
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
       "AnalyticsCountResponse" : {
         "properties" : {
           "count" : {
@@ -1162,6 +1174,71 @@
   },
   "openapi" : "3.1.0",
   "paths" : {
+    "/api/v1/admin/admins" : {
+      "get" : {
+        "operationId" : "admins",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AdminListResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "admin-controller" ]
+      }
+    },
+    "/api/v1/admin/users/{userId}/admin" : {
+      "delete" : {
+        "operationId" : "revokeAdmin",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "admin-controller" ]
+      },
+      "put" : {
+        "operationId" : "grantAdmin",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "admin-controller" ]
+      }
+    },
     "/api/v1/analytics/summary" : {
       "get" : {
         "operationId" : "summary",

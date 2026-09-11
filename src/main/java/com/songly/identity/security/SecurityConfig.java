@@ -49,7 +49,10 @@ class SecurityConfig {
 						.requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
 						.requestMatchers("/actuator/prometheus", "/actuator/metrics/**").hasAuthority("ROLE_ADMIN")
 						.requestMatchers(HttpMethod.GET, "/api/v1/analytics/summary").hasAuthority("ROLE_ADMIN")
-						.anyRequest().authenticated())
+						// Cały prefiks, nie pojedyncze metody: kolejny endpoint admina jest
+						// wtedy chroniony domyślnie, a nie dopiero gdy ktoś dopisze regułę
+						// (ADR 0021).
+						.requestMatchers("/api/v1/admin/**").hasAuthority("ROLE_ADMIN").anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
 				.addFilterBefore(rateLimitingFilter, JwtAuthenticationFilter.class);
 		return http.build();
