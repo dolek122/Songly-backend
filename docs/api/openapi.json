@@ -68,8 +68,27 @@
         },
         "type" : "object"
       },
+      "BanAppealRequest" : {
+        "properties" : {
+          "text" : {
+            "maxLength" : 1000,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "text" ],
+        "type" : "object"
+      },
       "BanDetailsResponse" : {
         "properties" : {
+          "appealStatus" : {
+            "enum" : [ "PENDING", "REJECTED" ],
+            "type" : "string"
+          },
+          "appealedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
           "createdAt" : {
             "format" : "date-time",
             "type" : "string"
@@ -162,6 +181,17 @@
       },
       "CommunityBanResponse" : {
         "properties" : {
+          "appealStatus" : {
+            "enum" : [ "PENDING", "REJECTED" ],
+            "type" : "string"
+          },
+          "appealText" : {
+            "type" : "string"
+          },
+          "appealedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
           "avatarUrl" : {
             "type" : "string"
           },
@@ -513,7 +543,7 @@
             "type" : "string"
           },
           "type" : {
-            "enum" : [ "POST_LIKED", "POST_COMMENTED", "POST_SHARED", "FRIEND_REQUEST_RECEIVED", "FRIEND_REQUEST_ACCEPTED", "COMMUNITY_MEMBER_JOINED", "COMMUNITY_BANNED", "COMMUNITY_POST_REMOVED", "COMMUNITY_POST_REPORTED", "POST_REPORT_DISMISSED", "COMMUNITY_MODERATOR_GRANTED", "COMMUNITY_MODERATOR_REVOKED" ],
+            "enum" : [ "POST_LIKED", "POST_COMMENTED", "POST_SHARED", "FRIEND_REQUEST_RECEIVED", "FRIEND_REQUEST_ACCEPTED", "COMMUNITY_MEMBER_JOINED", "COMMUNITY_BANNED", "COMMUNITY_POST_REMOVED", "COMMUNITY_POST_REPORTED", "POST_REPORT_DISMISSED", "BAN_APPEAL_SUBMITTED", "BAN_APPEAL_ACCEPTED", "BAN_APPEAL_REJECTED", "COMMUNITY_MODERATOR_GRANTED", "COMMUNITY_MODERATOR_REVOKED" ],
             "type" : "string"
           }
         },
@@ -1605,6 +1635,39 @@
         "tags" : [ "community-controller" ]
       }
     },
+    "/api/v1/communities/{communityId}/ban-appeal" : {
+      "post" : {
+        "operationId" : "appealBan",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "communityId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/BanAppealRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "community-controller" ]
+      }
+    },
     "/api/v1/communities/{communityId}/bans" : {
       "get" : {
         "operationId" : "listBans",
@@ -1700,6 +1763,37 @@
             }
           }
         },
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "community-controller" ]
+      }
+    },
+    "/api/v1/communities/{communityId}/bans/{userId}/appeal/rejection" : {
+      "post" : {
+        "operationId" : "rejectBanAppeal",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "communityId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
         "responses" : {
           "200" : {
             "description" : "OK"

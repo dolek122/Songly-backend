@@ -1,5 +1,6 @@
 package com.songly.community.dto;
 
+import com.songly.community.BanAppealStatus;
 import java.time.Instant;
 
 /**
@@ -13,6 +14,12 @@ import java.time.Instant;
  *
  * <p>
  * {@code expiresAt} — {@code null} to ban bezterminowy (ADR 0014).
+ *
+ * <p>
+ * {@code appealStatus}/{@code appealedAt} (ADR 0017) — {@code null} = nie
+ * odwołano się (klient pokazuje wtedy „złóż odwołanie"). Bez treści: autor ją
+ * zna, a DTO niesie stan sprawy, nie jej akta.
  */
-public record BanDetailsResponse(String reason, Instant createdAt, Instant expiresAt) {
+public record BanDetailsResponse(String reason, Instant createdAt, Instant expiresAt, BanAppealStatus appealStatus,
+		Instant appealedAt) {
 }

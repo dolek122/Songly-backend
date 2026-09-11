@@ -143,7 +143,8 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		Instant now = Instant.now();
 		return banRepository.findById(new CommunityBanId(communityId, userId)).filter(ban -> ban.isActiveAt(now))
 				.map(ban -> new MembershipStatusResponse(CommunityMembershipStatus.BANNED, null, null,
-						new BanDetailsResponse(ban.getReason(), ban.getCreatedAt(), ban.getExpiresAt())))
+						new BanDetailsResponse(ban.getReason(), ban.getCreatedAt(), ban.getExpiresAt(),
+								ban.getAppealStatus(), ban.getAppealedAt())))
 				.orElseGet(() -> new MembershipStatusResponse(CommunityMembershipStatus.NONE, null, null, null));
 	}
 
@@ -234,12 +235,63 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		}
 	}
 
-	/** Idempotentne — zdjęcie nieistniejącego banu nie jest błędem. */
+	/**
+	 * Idempotentne — zdjęcie nieistniejącego banu nie jest błędem.
+	 *
+	 * <p>
+	 * Unban osoby z wiszącym odwołaniem <b>jest</b> uznaniem tego odwołania (ADR
+	 * 0017) i publikuje zdarzenie — osobnego „endpointu uznania" nie ma, bo to ta
+	 * sama decyzja. Bez tej reguły moderator zdejmujący ban wprost zostawiałby
+	 * petycję bez odpowiedzi, mimo że właśnie jej udzielił. Wygasły ban to sprawa
+	 * bezprzedmiotowa: sprzątnięcie martwego wiersza niczego nie uznaje.
+	 */
 	@Transactional
 	void unban(UUID communityId, UUID requesterId, UUID targetUserId) {
 		requireCommunity(communityId);
 		requireModerator(communityId, requesterId);
-		banRepository.findById(new CommunityBanId(communityId, targetUserId)).ifPresent(banRepository::delete);
+		banRepository.findById(new CommunityBanId(communityId, targetUserId)).ifPresent(ban -> {
+			if (ban.isActiveAt(Instant.now()) && ban.hasPendingAppeal()) {
+				eventPublisher.publishEvent(
+						new CommunityBanAppealAcceptedEvent(communityId, targetUserId, requesterId, Instant.now()));
+			}
+			banRepository.delete(ban);
+		});
+	}
+
+	/**
+	 * Odwołanie od własnego bana (ADR 0017). Wyłącznie od bana <b>aktywnego</b> —
+	 * wygasły to brak bana (ADR 0014), nie ma się od czego odwoływać. Jedno
+	 * odwołanie na ban, niezależnie od losu poprzedniego: to strukturalny anty-spam
+	 * kanału, który z natury działa od zbanowanego do moderacji.
+	 */
+	@Transactional
+	void appealBan(UUID communityId, UUID userId, String text) {
+		requireCommunity(communityId);
+		Instant now = Instant.now();
+		CommunityBan ban = banRepository.findById(new CommunityBanId(communityId, userId))
+				.filter(existing -> existing.isActiveAt(now)).orElseThrow(NoBanToAppealException::new);
+		if (ban.hasAppeal()) {
+			throw new BanAppealAlreadySubmittedException();
+		}
+		ban.submitAppeal(text, now);
+		eventPublisher.publishEvent(new CommunityBanAppealSubmittedEvent(communityId, userId, now));
+	}
+
+	/**
+	 * Odrzucenie odwołania — ban zostaje w mocy, a dla tego bana sprawa jest
+	 * zamknięta. Wymaga odwołania <b>oczekującego</b> przy banie <b>aktywnym</b>:
+	 * odwołanie przy banie wygasłym jest bezprzedmiotowe i nie ma na co odpowiadać.
+	 */
+	@Transactional
+	void rejectBanAppeal(UUID communityId, UUID requesterId, UUID targetUserId) {
+		requireCommunity(communityId);
+		requireModerator(communityId, requesterId);
+		Instant now = Instant.now();
+		CommunityBan ban = banRepository.findById(new CommunityBanId(communityId, targetUserId))
+				.filter(existing -> existing.isActiveAt(now)).filter(CommunityBan::hasPendingAppeal)
+				.orElseThrow(BanAppealNotFoundException::new);
+		ban.rejectAppeal();
+		eventPublisher.publishEvent(new CommunityBanAppealRejectedEvent(communityId, targetUserId, requesterId, now));
 	}
 
 	@Transactional(readOnly = true)
@@ -252,7 +304,7 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		Map<UUID, String> avatars = profileDirectory.avatarUrls(userIds);
 		return page.map(ban -> new CommunityBanResponse(ban.getUserId(), names.get(ban.getUserId()),
 				avatars.get(ban.getUserId()), ban.getReason(), ban.getBannedBy(), ban.getCreatedAt(),
-				ban.getExpiresAt()));
+				ban.getExpiresAt(), ban.getAppealText(), ban.getAppealedAt(), ban.getAppealStatus()));
 	}
 
 	private void requireModerator(UUID communityId, UUID requesterId) {

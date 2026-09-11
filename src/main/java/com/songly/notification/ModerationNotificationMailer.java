@@ -1,6 +1,9 @@
 package com.songly.notification;
 
 import com.songly.common.mail.MailSender;
+import com.songly.community.CommunityBanAppealAcceptedEvent;
+import com.songly.community.CommunityBanAppealRejectedEvent;
+import com.songly.community.CommunityBanAppealSubmittedEvent;
 import com.songly.community.CommunityDirectory;
 import com.songly.community.CommunityMemberBannedEvent;
 import com.songly.community.CommunityMembership;
@@ -128,6 +131,54 @@ class ModerationNotificationMailer {
 
 						Kolejne zgłoszenia tego samego posta nie wygenerują następnych
 						wiadomości — ich liczbę zobaczysz przy poście w kolejce.
+
+						Zespół Songly""".formatted(community));
+	}
+
+	/**
+	 * Bez treści odwołania — celowo, jak przy powodzie bana (ADR 0015): tekst od
+	 * użytkownika nie jedzie kanałem push. Mail mówi, że jest po co zajrzeć; treść
+	 * czeka na liście banów.
+	 */
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onBanAppealSubmitted(CommunityBanAppealSubmittedEvent event) {
+		String community = communityName(event.communityId());
+		sendTo(communityMembership.moderatorIds(event.communityId()), event.userId(),
+				"Songly — odwołanie od bana w społeczności „%s”".formatted(community), """
+						Cześć!
+
+						W społeczności „%s” w Songly ktoś odwołał się od bana.
+						Treść odwołania znajdziesz w aplikacji, na liście banów.
+
+						Odwołanie jest jedno na ban, więc kolejnych wiadomości w tej
+						sprawie nie będzie.
+
+						Zespół Songly""".formatted(community));
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onBanAppealAccepted(CommunityBanAppealAcceptedEvent event) {
+		String community = communityName(event.communityId());
+		sendTo(Set.of(event.userId()), event.moderatorId(),
+				"Songly — Twoje odwołanie w społeczności „%s” zostało uznane".formatted(community), """
+						Cześć!
+
+						Moderacja społeczności „%s” w Songly uznała Twoje odwołanie.
+						Ban został zdjęty — możesz wrócić do społeczności.
+
+						Zespół Songly""".formatted(community));
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onBanAppealRejected(CommunityBanAppealRejectedEvent event) {
+		String community = communityName(event.communityId());
+		sendTo(Set.of(event.userId()), event.moderatorId(),
+				"Songly — Twoje odwołanie w społeczności „%s” zostało odrzucone".formatted(community), """
+						Cześć!
+
+						Moderacja społeczności „%s” w Songly rozpatrzyła Twoje odwołanie
+						i uznała, że ban pozostaje w mocy. Ta decyzja jest ostateczna dla
+						tego bana.
 
 						Zespół Songly""".formatted(community));
 	}
