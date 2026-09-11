@@ -442,6 +442,17 @@
         "required" : [ "email", "password" ],
         "type" : "object"
       },
+      "MailPreferencesResponse" : {
+        "properties" : {
+          "decisionsAboutMe" : {
+            "type" : "boolean"
+          },
+          "moderationQueue" : {
+            "type" : "boolean"
+          }
+        },
+        "type" : "object"
+      },
       "ManualNowPlayingRequest" : {
         "properties" : {
           "album" : {
@@ -1071,6 +1082,18 @@
           }
         },
         "required" : [ "name" ],
+        "type" : "object"
+      },
+      "UpdateMailPreferencesRequest" : {
+        "properties" : {
+          "decisionsAboutMe" : {
+            "type" : "boolean"
+          },
+          "moderationQueue" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "decisionsAboutMe", "moderationQueue" ],
         "type" : "object"
       },
       "UpdateNowPlayingSettingsRequest" : {
@@ -2407,6 +2430,49 @@
                 }
               }
             },
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "notification-controller" ]
+      }
+    },
+    "/api/v1/notifications/mail-preferences" : {
+      "get" : {
+        "operationId" : "mailPreferences",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MailPreferencesResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "notification-controller" ]
+      },
+      "put" : {
+        "operationId" : "updateMailPreferences",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateMailPreferencesRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
             "description" : "OK"
           }
         },

@@ -3,6 +3,7 @@ package com.songly.notification;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -57,6 +58,9 @@ class ModerationNotificationMailerTest {
 	@Mock
 	private ValueOperations<String, String> valueOperations;
 
+	@Mock
+	private NotificationMailPreferenceService mailPreferences;
+
 	private ModerationNotificationMailer mailer;
 
 	private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
@@ -67,13 +71,21 @@ class ModerationNotificationMailerTest {
 	@BeforeEach
 	void setUp() {
 		mailer = new ModerationNotificationMailer(mailSender, userEmailDirectory, communityDirectory,
-				communityMembership, redisTemplate, new ModerationMailProperties(), meterRegistry);
+				communityMembership, redisTemplate, new ModerationMailProperties(), meterRegistry, mailPreferences);
 	}
 
 	/** Domyślnie okno wolne — wyciszanie sprawdzają osobne testy. */
 	private void mailSlotFree() {
 		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 		when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true);
+	}
+
+	/**
+	 * Nikt nie wypisał się z poczty — filtr preferencji (ADR 0020) ma osobne testy.
+	 */
+	private void allRecipientsAllowed() {
+		when(mailPreferences.allowedRecipients(anySet(), any(MailCategory.class)))
+				.thenAnswer(invocation -> invocation.getArgument(0));
 	}
 
 	private PostReportedEvent reportedEvent() {
@@ -87,6 +99,7 @@ class ModerationNotificationMailerTest {
 	@Test
 	void deliveryFailureForOneModeratorDoesNotStopTheOthers() {
 		mailSlotFree();
+		allRecipientsAllowed();
 		UUID first = UUID.randomUUID();
 		UUID second = UUID.randomUUID();
 		when(communityDirectory.nameOf(communityId)).thenReturn(Optional.of("Metalowcy"));
@@ -108,6 +121,7 @@ class ModerationNotificationMailerTest {
 	@Test
 	void reportingModeratorIsFilteredOutBeforeEmailLookup() {
 		mailSlotFree();
+		allRecipientsAllowed();
 		UUID otherModerator = UUID.randomUUID();
 		when(communityDirectory.nameOf(communityId)).thenReturn(Optional.of("Metalowcy"));
 		when(communityMembership.moderatorIds(communityId)).thenReturn(Set.of(reporterId, otherModerator));
@@ -125,6 +139,7 @@ class ModerationNotificationMailerTest {
 	@Test
 	void recipientWithoutAccountIsSkippedSilently() {
 		mailSlotFree();
+		allRecipientsAllowed();
 		UUID moderator = UUID.randomUUID();
 		when(communityDirectory.nameOf(communityId)).thenReturn(Optional.of("Metalowcy"));
 		when(communityMembership.moderatorIds(communityId)).thenReturn(Set.of(moderator));
@@ -161,6 +176,7 @@ class ModerationNotificationMailerTest {
 	 */
 	@Test
 	void redisFailureLetsTheMailThrough() {
+		allRecipientsAllowed();
 		UUID moderator = UUID.randomUUID();
 		when(redisTemplate.opsForValue()).thenThrow(new RuntimeException("Redis down"));
 		when(communityDirectory.nameOf(communityId)).thenReturn(Optional.of("Metalowcy"));
@@ -176,6 +192,7 @@ class ModerationNotificationMailerTest {
 	@Test
 	void deletedCommunityDoesNotBreakTheMail() {
 		mailSlotFree();
+		allRecipientsAllowed();
 		UUID moderator = UUID.randomUUID();
 		when(communityDirectory.nameOf(communityId)).thenReturn(Optional.empty());
 		when(communityMembership.moderatorIds(communityId)).thenReturn(Set.of(moderator));
