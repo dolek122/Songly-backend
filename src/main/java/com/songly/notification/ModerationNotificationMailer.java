@@ -48,6 +48,11 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * odwrotnie. Ograniczenie liczby zdarzeń (tylko pierwsze zgłoszenie, tylko nowy
  * ban — ADR 0012) ten kanał dziedziczy za darmo, bo bramka jest u
  * publikującego.
+ *
+ * <p>
+ * Ta niezależność kanałów jest dziś warunkiem tego, żeby preferencje poczty
+ * (ADR 0020) w ogóle mogły istnieć: wyłączenie maila nie rusza skrzynki, więc
+ * decyzja moderacyjna nadal dociera — tylko kanałem, po który trzeba przyjść.
  */
 @Component
 @EnableConfigurationProperties(ModerationMailProperties.class)
@@ -75,10 +80,12 @@ class ModerationNotificationMailer {
 	private final StringRedisTemplate redisTemplate;
 	private final ModerationMailProperties properties;
 	private final MeterRegistry meterRegistry;
+	private final NotificationMailPreferenceService mailPreferences;
 
 	ModerationNotificationMailer(MailSender mailSender, UserEmailDirectory userEmailDirectory,
 			CommunityDirectory communityDirectory, CommunityMembership communityMembership,
-			StringRedisTemplate redisTemplate, ModerationMailProperties properties, MeterRegistry meterRegistry) {
+			StringRedisTemplate redisTemplate, ModerationMailProperties properties, MeterRegistry meterRegistry,
+			NotificationMailPreferenceService mailPreferences) {
 		this.mailSender = mailSender;
 		this.userEmailDirectory = userEmailDirectory;
 		this.communityDirectory = communityDirectory;
@@ -86,6 +93,7 @@ class ModerationNotificationMailer {
 		this.redisTemplate = redisTemplate;
 		this.properties = properties;
 		this.meterRegistry = meterRegistry;
+		this.mailPreferences = mailPreferences;
 	}
 
 	/**
@@ -97,17 +105,18 @@ class ModerationNotificationMailer {
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onCommunityMemberBanned(CommunityMemberBannedEvent event) {
 		String community = communityName(event.communityId());
-		sendTo(Set.of(event.userId()), event.moderatorId(), "Songly — ban w społeczności „%s”".formatted(community), """
-				Cześć!
+		sendTo(Set.of(event.userId()), event.moderatorId(), MailCategory.DECISION_ABOUT_ME,
+				"Songly — ban w społeczności „%s”".formatted(community), """
+						Cześć!
 
-				Moderacja społeczności „%s” w Songly zablokowała Ci możliwość
-				publikowania i komentowania w niej. Nadal możesz czytać jej treści.
+						Moderacja społeczności „%s” w Songly zablokowała Ci możliwość
+						publikowania i komentowania w niej. Nadal możesz czytać jej treści.
 
-				%s
+						%s
 
-				Szczegóły znajdziesz w aplikacji, w skrzynce powiadomień.
+						Szczegóły znajdziesz w aplikacji, w skrzynce powiadomień.
 
-				Zespół Songly""".formatted(community, banTerm(event)));
+						Zespół Songly""".formatted(community, banTerm(event)));
 	}
 
 	private static String banTerm(CommunityMemberBannedEvent event) {
@@ -121,7 +130,7 @@ class ModerationNotificationMailer {
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onCommunityPostRemoved(CommunityPostRemovedEvent event) {
 		String community = communityName(event.communityId());
-		sendTo(Set.of(event.postAuthorId()), event.moderatorId(),
+		sendTo(Set.of(event.postAuthorId()), event.moderatorId(), MailCategory.DECISION_ABOUT_ME,
 				"Songly — Twój post w społeczności „%s” został usunięty".formatted(community), """
 						Cześć!
 
@@ -177,7 +186,7 @@ class ModerationNotificationMailer {
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onBanAppealAccepted(CommunityBanAppealAcceptedEvent event) {
 		String community = communityName(event.communityId());
-		sendTo(Set.of(event.userId()), event.moderatorId(),
+		sendTo(Set.of(event.userId()), event.moderatorId(), MailCategory.DECISION_ABOUT_ME,
 				"Songly — Twoje odwołanie w społeczności „%s” zostało uznane".formatted(community), """
 						Cześć!
 
@@ -190,7 +199,7 @@ class ModerationNotificationMailer {
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onBanAppealRejected(CommunityBanAppealRejectedEvent event) {
 		String community = communityName(event.communityId());
-		sendTo(Set.of(event.userId()), event.moderatorId(),
+		sendTo(Set.of(event.userId()), event.moderatorId(), MailCategory.DECISION_ABOUT_ME,
 				"Songly — Twoje odwołanie w społeczności „%s” zostało odrzucone".formatted(community), """
 						Cześć!
 
@@ -204,16 +213,17 @@ class ModerationNotificationMailer {
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onPostReportDismissed(PostReportDismissedEvent event) {
 		String community = communityName(event.communityId());
-		sendTo(Set.of(event.reporterId()), event.moderatorId(), "Songly — Twoje zgłoszenie zostało rozpatrzone", """
-				Cześć!
+		sendTo(Set.of(event.reporterId()), event.moderatorId(), MailCategory.DECISION_ABOUT_ME,
+				"Songly — Twoje zgłoszenie zostało rozpatrzone", """
+						Cześć!
 
-				Moderacja społeczności „%s” w Songly obejrzała zgłoszony przez Ciebie
-				post i uznała, że może zostać.
+						Moderacja społeczności „%s” w Songly obejrzała zgłoszony przez Ciebie
+						post i uznała, że może zostać.
 
-				Dziękujemy za zgłoszenie — to dzięki nim moderacja wie, czemu się
-				przyjrzeć, także wtedy, gdy decyzja jest inna, niż się spodziewasz.
+						Dziękujemy za zgłoszenie — to dzięki nim moderacja wie, czemu się
+						przyjrzeć, także wtedy, gdy decyzja jest inna, niż się spodziewasz.
 
-				Zespół Songly""".formatted(community));
+						Zespół Songly""".formatted(community));
 	}
 
 	/**
@@ -247,7 +257,7 @@ class ModerationNotificationMailer {
 			log.debug("Mail do moderatorów społeczności {} ({}) wyciszony odstępem", communityId, kind);
 			return;
 		}
-		sendTo(communityMembership.moderatorIds(communityId), actorId, subject, body);
+		sendTo(communityMembership.moderatorIds(communityId), actorId, MailCategory.MODERATION_QUEUE, subject, body);
 	}
 
 	private boolean claimModeratorMailSlot(UUID communityId, String kind) {
@@ -275,8 +285,13 @@ class ModerationNotificationMailer {
 	 * maila degraduje kanał, nie informację. W logu wyłącznie userId, nigdy adres
 	 * (Claude.md §13).
 	 */
-	private void sendTo(Set<UUID> recipientIds, UUID actorId, String subject, String body) {
+	private void sendTo(Set<UUID> recipientIds, UUID actorId, MailCategory category, String subject, String body) {
 		Set<UUID> recipients = recipientIds.stream().filter(id -> !id.equals(actorId)).collect(Collectors.toSet());
+		// Preferencje (ADR 0020) odsiewamy PER ADRESAT, nie „wyślij albo nie":
+		// jeden moderator z wyłączoną pocztą nie może wyciszyć maila pozostałym.
+		// Odstęp z ADR 0018 działa niezależnie i wcześniej — to okno należy do
+		// społeczności, nie do adresata.
+		recipients = mailPreferences.allowedRecipients(recipients, category);
 		Map<UUID, String> emails = userEmailDirectory.emailsOf(recipients);
 		emails.forEach((recipientId, email) -> {
 			try {

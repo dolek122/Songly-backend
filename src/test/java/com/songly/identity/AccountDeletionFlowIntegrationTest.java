@@ -120,6 +120,15 @@ class AccountDeletionFlowIntegrationTest extends AbstractIntegrationTest {
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"shareWithFriends":false}""")).andExpect(status().isNoContent());
 
+		// notification: preferencje poczty (ADR 0020) to drugi wiersz tego modulu z FK
+		// do users — wiersz powstaje dopiero przy zmianie ustawienia, wiec bez tego
+		// zadania kasowanie konta nigdy by o ten klucz nie zahaczylo
+		mockMvc.perform(
+				put("/api/v1/notifications/mail-preferences").header("Authorization", "Bearer " + leaving.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"decisionsAboutMe":false,"moderationQueue":false}"""))
+				.andExpect(status().isNoContent());
+
 		// moderacja: ban NALOZONY przez leaving (przezywa go, traci tylko autora) oraz
 		// zgloszenie ZLOZONE przez leaving (znika razem z nim). Oba maja FK do users
 		// bez CASCADE, wiec bez sprzatania kasowanie konta wywali sie o klucz obcy.
