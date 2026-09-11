@@ -137,6 +137,14 @@ public abstract class AbstractIntegrationTest {
 	 * powtarzać u siebie dwa żądania i wyciąganie tokenu z maila. To nie jest
 	 * obejście weryfikacji: każdy z tych testów naprawdę przechodzi pełną ścieżkę,
 	 * łącznie z odczytaniem linku z wysłanej wiadomości.
+	 *
+	 * <p>
+	 * <b>Adres musi być unikalny w całej suicie, nie tylko w swojej klasie.</b>
+	 * Baza jest jedna na cały przebieg, więc adres użyty wcześniej przez inną klasę
+	 * ma już konto — a wtedy rejestracja idzie gałęzią „ten adres jest zajęty" i
+	 * wysyła ostrzeżenie zamiast linku (ADR 0009). Objaw jest mylący: test
+	 * przechodzi uruchomiony sam, a pada w pełnym przebiegu, i to na asercji o
+	 * treści wiadomości, która z jego tematem nie ma nic wspólnego.
 	 */
 	protected MvcResult registerAndVerify(String email, String password) throws Exception {
 		mails.clearFor(email);

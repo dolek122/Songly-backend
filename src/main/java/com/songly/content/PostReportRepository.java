@@ -13,6 +13,11 @@ interface PostReportRepository extends JpaRepository<PostReport, UUID> {
 	boolean existsByPostIdAndReporterId(UUID postId, UUID reporterId);
 
 	/**
+	 * Czy post ma już jakiekolwiek zgłoszenie — patrz {@code PostReportedEvent}.
+	 */
+	boolean existsByPostId(UUID postId);
+
+	/**
 	 * Kolejka jednej społeczności. Złączenie z {@code Post} jest tu konieczne, bo
 	 * to post — nie zgłoszenie — wie, do której społeczności należy. Duplikowanie
 	 * {@code communityId} na zgłoszeniu dałoby drugie źródło prawdy, które

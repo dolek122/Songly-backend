@@ -97,7 +97,7 @@ class NotificationServiceTest {
 		Notification second = new Notification(UUID.randomUUID(), recipientId, NotificationType.POST_COMMENTED, actorId,
 				UUID.randomUUID(), Instant.now());
 		when(socialGraph.blockedEitherWayIds(recipientId)).thenReturn(Set.of());
-		when(notificationRepository.findByUserIdAndReadAtIsNullAndActorIdNotIn(recipientId, Set.of()))
+		when(notificationRepository.findVisibleUnread(recipientId, Set.of(), NotificationType.MODERATION))
 				.thenReturn(List.of(first, second));
 
 		notificationService.markAllRead(recipientId);
@@ -114,19 +114,19 @@ class NotificationServiceTest {
 	void markAllRead_leavesNotificationsFromBlockedUsersUntouched() {
 		UUID blockedId = UUID.randomUUID();
 		when(socialGraph.blockedEitherWayIds(recipientId)).thenReturn(Set.of(blockedId));
-		when(notificationRepository.findByUserIdAndReadAtIsNullAndActorIdNotIn(recipientId, Set.of(blockedId)))
+		when(notificationRepository.findVisibleUnread(recipientId, Set.of(blockedId), NotificationType.MODERATION))
 				.thenReturn(List.of());
 
 		notificationService.markAllRead(recipientId);
 
-		verify(notificationRepository).findByUserIdAndReadAtIsNullAndActorIdNotIn(recipientId, Set.of(blockedId));
+		verify(notificationRepository).findVisibleUnread(recipientId, Set.of(blockedId), NotificationType.MODERATION);
 	}
 
 	@Test
 	void unreadCount_excludesBlockedActors() {
 		UUID blockedId = UUID.randomUUID();
 		when(socialGraph.blockedEitherWayIds(recipientId)).thenReturn(Set.of(blockedId));
-		when(notificationRepository.countByUserIdAndReadAtIsNullAndActorIdNotIn(recipientId, Set.of(blockedId)))
+		when(notificationRepository.countVisibleUnread(recipientId, Set.of(blockedId), NotificationType.MODERATION))
 				.thenReturn(2L);
 
 		assertThat(notificationService.unreadCount(recipientId)).isEqualTo(2L);
