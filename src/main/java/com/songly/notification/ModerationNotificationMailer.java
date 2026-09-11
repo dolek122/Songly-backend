@@ -11,6 +11,7 @@ import com.songly.content.CommunityPostRemovedEvent;
 import com.songly.content.PostReportDismissedEvent;
 import com.songly.content.PostReportedEvent;
 import com.songly.identity.UserEmailDirectory;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
@@ -60,22 +61,31 @@ class ModerationNotificationMailer {
 	 */
 	private static final String DELETED_COMMUNITY = "(usunięta społeczność)";
 
+	/**
+	 * W Prometheusie:
+	 * {@code songly_moderation_mail_suppressed_total{kind="report|appeal"}} (ADR
+	 * 0019) — ile maili do moderatorów przepadło na odstępie z ADR 0018.
+	 */
+	private static final String MAIL_SUPPRESSED_METRIC = "songly.moderation.mail.suppressed";
+
 	private final MailSender mailSender;
 	private final UserEmailDirectory userEmailDirectory;
 	private final CommunityDirectory communityDirectory;
 	private final CommunityMembership communityMembership;
 	private final StringRedisTemplate redisTemplate;
 	private final ModerationMailProperties properties;
+	private final MeterRegistry meterRegistry;
 
 	ModerationNotificationMailer(MailSender mailSender, UserEmailDirectory userEmailDirectory,
 			CommunityDirectory communityDirectory, CommunityMembership communityMembership,
-			StringRedisTemplate redisTemplate, ModerationMailProperties properties) {
+			StringRedisTemplate redisTemplate, ModerationMailProperties properties, MeterRegistry meterRegistry) {
 		this.mailSender = mailSender;
 		this.userEmailDirectory = userEmailDirectory;
 		this.communityDirectory = communityDirectory;
 		this.communityMembership = communityMembership;
 		this.redisTemplate = redisTemplate;
 		this.properties = properties;
+		this.meterRegistry = meterRegistry;
 	}
 
 	/**
@@ -230,6 +240,10 @@ class ModerationNotificationMailer {
 	 */
 	private void sendToModerators(UUID communityId, String kind, UUID actorId, String subject, String body) {
 		if (!claimModeratorMailSlot(communityId, kind)) {
+			// Wyciszenie jest z zewnątrz niewidoczne — moderator nie wie, że mail nie
+			// przyszedł, bo wyglądałoby to tak samo jak brak spraw. Stąd licznik: stała
+			// seria to znak, że odstęp jest za długi albo że ktoś uprawia zasypywanie.
+			meterRegistry.counter(MAIL_SUPPRESSED_METRIC, "kind", kind).increment();
 			log.debug("Mail do moderatorów społeczności {} ({}) wyciszony odstępem", communityId, kind);
 			return;
 		}

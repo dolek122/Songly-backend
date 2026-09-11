@@ -14,6 +14,8 @@ import com.songly.common.storage.ObjectStorage;
 import com.songly.community.CommunityMembership;
 import com.songly.profile.ProfileDirectory;
 import com.songly.social.SocialGraph;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -62,11 +64,13 @@ class ContentServiceTest {
 
 	private ContentService contentService;
 
+	private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
+
 	@BeforeEach
 	void setUp() {
 		contentService = new ContentService(postRepository, likeRepository, commentRepository, shareRepository,
 				reportRepository, profileDirectory, socialGraph, communityMembership, objectStorage, eventPublisher,
-				new ReportProperties());
+				new ReportProperties(), meterRegistry);
 	}
 
 	@Test

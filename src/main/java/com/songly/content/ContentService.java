@@ -10,6 +10,7 @@ import com.songly.content.dto.PostReportResponse;
 import com.songly.content.dto.PostResponse;
 import com.songly.profile.ProfileDirectory;
 import com.songly.social.SocialGraph;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.HashSet;
@@ -41,6 +42,7 @@ class ContentService {
 	private final ObjectStorage objectStorage;
 	private final ApplicationEventPublisher eventPublisher;
 	private final ReportProperties reportProperties;
+	private final MeterRegistry meterRegistry;
 
 	/**
 	 * Prefiks kluczy zdjęć postów. Stała, bo ten sam ciąg musi być użyty przy
@@ -49,10 +51,20 @@ class ContentService {
 	 */
 	private static final String POST_IMAGE_PREFIX = "posts/";
 
+	/**
+	 * W Prometheusie: {@code songly_moderation_report_rejected_total{reason="..."}}
+	 * (ADR 0019). Obie serie w zdrowym ruchu stoją nisko, więc liczy się przyrost,
+	 * nie wartość: {@code rate-limit} to ktoś zasypujący kolejkę zgłoszeniami,
+	 * {@code banned} to zbanowany dobijający się kanałem, który właśnie stracił.
+	 * Bez licznika trafienie w którąkolwiek bramkę jest z zewnątrz niewidoczne —
+	 * dokładnie ten sam powód, dla którego liczymy odrzucenia rate limitera (§13).
+	 */
+	private static final String REPORT_REJECTED_METRIC = "songly.moderation.report.rejected";
+
 	ContentService(PostRepository postRepository, LikeRepository likeRepository, CommentRepository commentRepository,
 			ShareRepository shareRepository, PostReportRepository reportRepository, ProfileDirectory profileDirectory,
 			SocialGraph socialGraph, CommunityMembership communityMembership, ObjectStorage objectStorage,
-			ApplicationEventPublisher eventPublisher, ReportProperties reportProperties) {
+			ApplicationEventPublisher eventPublisher, ReportProperties reportProperties, MeterRegistry meterRegistry) {
 		this.postRepository = postRepository;
 		this.likeRepository = likeRepository;
 		this.commentRepository = commentRepository;
@@ -64,6 +76,7 @@ class ContentService {
 		this.objectStorage = objectStorage;
 		this.eventPublisher = eventPublisher;
 		this.reportProperties = reportProperties;
+		this.meterRegistry = meterRegistry;
 	}
 
 	@Transactional
@@ -268,6 +281,7 @@ class ContentService {
 		// ludzi, a zostawia te będące czystymi liczbami (§8) — zgłoszenie niesie
 		// tożsamość i tekst prosto do moderatorów, więc należy do pierwszej grupy.
 		if (communityMembership.isBanned(post.getCommunityId(), reporterId)) {
+			meterRegistry.counter(REPORT_REJECTED_METRIC, "reason", "banned").increment();
 			throw new BannedFromCommunityException();
 		}
 		// Jeden zgłaszający = jedno zgłoszenie. Inaczej jedna osoba podbijałaby
@@ -280,6 +294,7 @@ class ContentService {
 		// jedno konto zapycha kolejkę setką zgłoszeń różnych postów (ADR 0018).
 		if (reportRepository.countByReporterIdAndCreatedAtAfter(reporterId,
 				Instant.now().minus(reportProperties.getWindow())) >= reportProperties.getLimit()) {
+			meterRegistry.counter(REPORT_REJECTED_METRIC, "reason", "rate-limit").increment();
 			throw new ReportRateLimitExceededException();
 		}
 		boolean firstReport = !reportRepository.existsByPostId(postId);

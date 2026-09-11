@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.songly.AbstractIntegrationTest;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -34,7 +35,17 @@ class ReportAbuseIntegrationTest extends AbstractIntegrationTest {
 	@Autowired
 	private ObjectMapper objectMapper;
 
+	@Autowired
+	private MeterRegistry meterRegistry;
+
 	private record TestUser(String token, String userId, String email) {
+	}
+
+	/**
+	 * Rejestr jest współdzielony w kontekście, więc liczy się delta, nie wartość.
+	 */
+	private double rejectionCount(String reason) {
+		return meterRegistry.counter("songly.moderation.report.rejected", "reason", reason).count();
 	}
 
 	private TestUser user(String email) throws Exception {
@@ -135,8 +146,12 @@ class ReportAbuseIntegrationTest extends AbstractIntegrationTest {
 		report(reporter, first).andExpect(status().isAccepted());
 		report(reporter, second).andExpect(status().isAccepted());
 
+		double rejectionsBefore = rejectionCount("rate-limit");
 		report(reporter, third).andExpect(status().isTooManyRequests())
 				.andExpect(jsonPath("$.code").value("REPORT_RATE_LIMIT_EXCEEDED"));
+		// Odrzucenie musi zostawić ślad w metrykach, inaczej zasypywanie kolejki jest
+		// z zewnątrz niewidoczne (ADR 0019).
+		assertThat(rejectionCount("rate-limit")).isEqualTo(rejectionsBefore + 1);
 
 		// Limit jest per osoba: ktoś inny zgłasza normalnie, bo to jego pierwsze
 		// zgłoszenie — a nie trzecie w cudzym oknie.

@@ -1,5 +1,6 @@
 package com.songly.notification;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -15,6 +16,8 @@ import com.songly.community.CommunityDirectory;
 import com.songly.community.CommunityMembership;
 import com.songly.content.PostReportedEvent;
 import com.songly.identity.UserEmailDirectory;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -56,13 +59,15 @@ class ModerationNotificationMailerTest {
 
 	private ModerationNotificationMailer mailer;
 
+	private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
+
 	private final UUID communityId = UUID.randomUUID();
 	private final UUID reporterId = UUID.randomUUID();
 
 	@BeforeEach
 	void setUp() {
 		mailer = new ModerationNotificationMailer(mailSender, userEmailDirectory, communityDirectory,
-				communityMembership, redisTemplate, new ModerationMailProperties());
+				communityMembership, redisTemplate, new ModerationMailProperties(), meterRegistry);
 	}
 
 	/** Domyślnie okno wolne — wyciszanie sprawdzają osobne testy. */
@@ -145,6 +150,9 @@ class ModerationNotificationMailerTest {
 
 		verify(communityMembership, never()).moderatorIds(any());
 		verify(mailSender, never()).send(anyString(), anyString(), anyString());
+		// Wyciszenie musi być widoczne w metrykach — z zewnątrz wygląda identycznie
+		// jak brak spraw (ADR 0019).
+		assertThat(meterRegistry.counter("songly.moderation.mail.suppressed", "kind", "report").count()).isEqualTo(1);
 	}
 
 	/**
