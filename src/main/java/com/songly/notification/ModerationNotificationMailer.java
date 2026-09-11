@@ -11,6 +11,8 @@ import com.songly.content.CommunityPostRemovedEvent;
 import com.songly.content.PostReportDismissedEvent;
 import com.songly.content.PostReportedEvent;
 import com.songly.identity.UserEmailDirectory;
+import com.songly.identity.UserSuspendedEvent;
+import com.songly.identity.UserSuspensionLiftedEvent;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.Map;
@@ -125,6 +127,52 @@ class ModerationNotificationMailer {
 		}
 		long days = Duration.between(event.occurredAt(), event.expiresAt()).toDays();
 		return "Ban jest czasowy — wygasa za %d %s i wtedy możesz wrócić.".formatted(days, days == 1 ? "dzień" : "dni");
+	}
+
+	/**
+	 * Zawieszenie konta (ADR 0022) — jedyny mail tego mailera bez społeczności, bo
+	 * to sankcja platformy, nie decyzja moderacji społecznościowej.
+	 *
+	 * <p>
+	 * Mail jest tu <b>jedynym</b> kanałem powiadomienia: zawieszone konto nie ma
+	 * dostępu do skrzynki w aplikacji (dostaje wyłącznie {@code ROLE_SUSPENDED}),
+	 * więc zapis w skrzynce byłby informacją zamkniętą przed adresatem. Bez powodu,
+	 * z terminem — dokładnie jak przy banie (ADR 0014 i 0015).
+	 */
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onUserSuspended(UserSuspendedEvent event) {
+		sendTo(Set.of(event.userId()), null, MailCategory.DECISION_ABOUT_ME, "Songly — konto zawieszone", """
+				Cześć!
+
+				Twoje konto w Songly zostało zawieszone i na czas zawieszenia nie
+				możesz z niego korzystać.
+
+				%s
+
+				Powód poznasz w aplikacji — zawieszone konto ma dostęp do informacji o
+				swoim zawieszeniu oraz do usunięcia konta.
+
+				Zespół Songly""".formatted(suspensionTerm(event)));
+	}
+
+	private static String suspensionTerm(UserSuspendedEvent event) {
+		if (event.expiresAt() == null) {
+			return "Zawieszenie jest bezterminowe.";
+		}
+		long days = Duration.between(event.occurredAt(), event.expiresAt()).toDays();
+		return "Zawieszenie jest czasowe — wygasa za %d %s i wtedy konto wróci samo.".formatted(days,
+				days == 1 ? "dzień" : "dni");
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onUserSuspensionLifted(UserSuspensionLiftedEvent event) {
+		sendTo(Set.of(event.userId()), null, MailCategory.DECISION_ABOUT_ME, "Songly — zawieszenie konta zdjęte", """
+				Cześć!
+
+				Zawieszenie Twojego konta w Songly zostało zdjęte — możesz znów
+				korzystać z aplikacji normalnie.
+
+				Zespół Songly""");
 	}
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)

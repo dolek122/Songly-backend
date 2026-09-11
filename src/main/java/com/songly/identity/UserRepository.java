@@ -18,4 +18,11 @@ interface UserRepository extends JpaRepository<User, UUID> {
 	 * {@code AdminRoleService#admins}.
 	 */
 	List<User> findByAdminTrueOrderByCreatedAtAsc();
+
+	/**
+	 * Konta z jakimkolwiek zawieszeniem — także wygasłym, bo ten warunek wyraża się
+	 * w SQL-u jedną alternatywą mniej, a odsianie wygasłych w Javie jest tu tanie:
+	 * zawieszonych kont jest z natury niewiele (ADR 0022).
+	 */
+	List<User> findBySuspendedAtIsNotNullOrderBySuspendedAtDesc();
 }
