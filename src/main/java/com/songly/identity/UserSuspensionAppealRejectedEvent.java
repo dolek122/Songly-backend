@@ -8,5 +8,5 @@ import java.util.UUID;
  * zawieszenia decyzja jest ostateczna: jedno odwołanie na zawieszenie, a świeże
  * prawo daje dopiero nowe zawieszenie.
  */
-public record UserSuspensionAppealRejectedEvent(UUID userId, Instant occurredAt) {
+public record UserSuspensionAppealRejectedEvent(UUID userId, UUID actorId, Instant occurredAt) {
 }

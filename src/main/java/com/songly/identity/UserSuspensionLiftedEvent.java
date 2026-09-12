@@ -9,5 +9,5 @@ import java.util.UUID;
  * 0014), więc powiadomienie o powrocie dostaje tylko ten, komu konto przywrócił
  * człowiek.
  */
-public record UserSuspensionLiftedEvent(UUID userId, Instant occurredAt) {
+public record UserSuspensionLiftedEvent(UUID userId, UUID actorId, Instant occurredAt) {
 }

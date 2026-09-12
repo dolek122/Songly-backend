@@ -250,9 +250,18 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		requireCommunity(communityId);
 		requireModerator(communityId, requesterId);
 		banRepository.findById(new CommunityBanId(communityId, targetUserId)).ifPresent(ban -> {
-			if (ban.isActiveAt(Instant.now()) && ban.hasPendingAppeal()) {
-				eventPublisher.publishEvent(
-						new CommunityBanAppealAcceptedEvent(communityId, targetUserId, requesterId, Instant.now()));
+			Instant now = Instant.now();
+			boolean wasActive = ban.isActiveAt(now);
+			if (wasActive && ban.hasPendingAppeal()) {
+				eventPublisher
+						.publishEvent(new CommunityBanAppealAcceptedEvent(communityId, targetUserId, requesterId, now));
+			}
+			if (wasActive) {
+				// Osobne zdarzenie od uznania odwołania i publikowane obok niego: tamto
+				// mówi, dlaczego ban zniknął (i zasila powiadomienie), to mówi tylko, że
+				// zniknął — i zasila historię moderacji (ADR 0024). Zdjęcie banu już
+				// wygasłego to sprzątanie martwego wiersza, nie decyzja.
+				eventPublisher.publishEvent(new CommunityBanLiftedEvent(communityId, targetUserId, requesterId, now));
 			}
 			banRepository.delete(ban);
 		});

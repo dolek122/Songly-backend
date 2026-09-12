@@ -13,5 +13,5 @@ import java.util.UUID;
  * administratora, a kanały push go nie przenoszą (ADR 0015). Po powód
  * zawieszony przychodzi sam, do {@code GET /api/v1/auth/me/suspension}.
  */
-public record UserSuspendedEvent(UUID userId, Instant expiresAt, Instant occurredAt) {
+public record UserSuspendedEvent(UUID userId, UUID actorId, Instant expiresAt, Instant occurredAt) {
 }
