@@ -70,13 +70,13 @@ class ContentServiceTest {
 	private com.songly.identity.SuspendedAccounts suspendedAccounts;
 
 	@Mock
-	private ReporterReputationRepository reputationRepository;
+	private ReporterDecisionRepository decisionRepository;
 
 	@BeforeEach
 	void setUp() {
 		contentService = new ContentService(postRepository, likeRepository, commentRepository, shareRepository,
 				reportRepository, profileDirectory, socialGraph, communityMembership, objectStorage, eventPublisher,
-				new ReportProperties(), meterRegistry, suspendedAccounts, reputationRepository);
+				new ReportProperties(), meterRegistry, suspendedAccounts, decisionRepository);
 	}
 
 	@Test
