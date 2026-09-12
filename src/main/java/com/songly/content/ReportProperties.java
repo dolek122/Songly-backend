@@ -10,6 +10,10 @@ class ReportProperties {
 
 	private Duration window = Duration.ofHours(1);
 
+	private int dismissalPenalty = 5;
+
+	private int minLimit = 1;
+
 	/**
 	 * Ile zgłoszeń może złożyć <b>jedna osoba</b> w oknie {@link #getWindow()}.
 	 *
@@ -44,5 +48,39 @@ class ReportProperties {
 
 	void setWindow(Duration window) {
 		this.window = window;
+	}
+
+	/**
+	 * Ile „sztuk" limitu kosztuje jedno <b>odrzucone</b> zgłoszenie (ADR 0025).
+	 * Przy domyślnych 20 i karze 5 wychodzi: bez odrzuceń 20/h, po jednym 15, po
+	 * dwóch 10, po trzech 5, potem {@link #getMinLimit()}.
+	 *
+	 * <p>
+	 * To jest realizacja „wagi zgłoszenia zależnej od historii" z ADR 0018 —
+	 * jedynego rozwiązania, które tamten ADR uznał za prawdziwe lekarstwo na
+	 * zasypywanie kolejki. Kara rośnie liniowo, nie wykładniczo: odrzucenie jest
+	 * oceną moderatora, nie dowodem złej woli, więc nie powinno zjeżdżać w
+	 * wyciszenie po dwóch pomyłkach.
+	 */
+	int getDismissalPenalty() {
+		return dismissalPenalty;
+	}
+
+	void setDismissalPenalty(int dismissalPenalty) {
+		this.dismissalPenalty = dismissalPenalty;
+	}
+
+	/**
+	 * Podłoga limitu — <b>nigdy zero</b>, i to jest warunek, nie ostrożność.
+	 * Zgłaszanie wyłączone na stałe oznaczałoby, że wystarczy kilka razy odrzucić
+	 * czyjeś zgłoszenia, żeby odebrać mu narzędzie, którym może zgłosić nadużycie
+	 * samego moderatora. Jedno zgłoszenie na okno zostaje zawsze.
+	 */
+	int getMinLimit() {
+		return minLimit;
+	}
+
+	void setMinLimit(int minLimit) {
+		this.minLimit = minLimit;
 	}
 }

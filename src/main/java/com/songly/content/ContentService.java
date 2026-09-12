@@ -296,8 +296,10 @@ class ContentService {
 		}
 		// ...a to jest bramka w poprzek postów, której tamta nie zastępuje: bez niej
 		// jedno konto zapycha kolejkę setką zgłoszeń różnych postów (ADR 0018).
+		// Limit zależy od historii zgłaszającego (ADR 0025): każde odrzucone
+		// zgłoszenie zabiera część przydziału, ale nigdy całego.
 		if (reportRepository.countByReporterIdAndCreatedAtAfter(reporterId,
-				Instant.now().minus(reportProperties.getWindow())) >= reportProperties.getLimit()) {
+				Instant.now().minus(reportProperties.getWindow())) >= effectiveReportLimit(reporterId)) {
 			meterRegistry.counter(REPORT_REJECTED_METRIC, "reason", "rate-limit").increment();
 			throw new ReportRateLimitExceededException();
 		}
@@ -308,6 +310,22 @@ class ContentService {
 			// Tylko pierwsze zgłoszenie zawiadamia moderatorów — patrz PostReportedEvent.
 			eventPublisher.publishEvent(new PostReportedEvent(post.getCommunityId(), postId, reporterId, now));
 		}
+	}
+
+	/**
+	 * Przydział zgłoszeń na okno, pomniejszony o historię odrzuceń (ADR 0025).
+	 *
+	 * <p>
+	 * Liczba odrzuceń jest <b>globalna</b>, a nie per społeczność: zasypywanie
+	 * rozłożone na dziesięć społeczności wymyka się każdemu licznikowi liczonemu
+	 * osobno dla każdej z nich. Nie jest to przy tym wyciek, bo ta liczba nigdzie
+	 * nie wychodzi — służy wyłącznie do odpowiedzi „nie" wobec samego
+	 * zgłaszającego.
+	 */
+	private int effectiveReportLimit(UUID reporterId) {
+		long dismissed = reportRepository.countByReporterIdAndStatus(reporterId, ReportStatus.DISMISSED);
+		long reduced = reportProperties.getLimit() - dismissed * reportProperties.getDismissalPenalty();
+		return (int) Math.max(reportProperties.getMinLimit(), reduced);
 	}
 
 	@Transactional(readOnly = true)
@@ -327,11 +345,20 @@ class ContentService {
 		Map<UUID, Long> counts = reportRepository.countByPostIdIn(postIds, ReportStatus.PENDING).stream()
 				.collect(Collectors.toMap(PostReportRepository.PostIdCount::getPostId,
 						PostReportRepository.PostIdCount::getReportCount));
-		Map<UUID, String> reporterNames = profileDirectory
-				.displayNames(page.getContent().stream().map(PostReport::getReporterId).collect(Collectors.toSet()));
+		Set<UUID> reporterIds = page.getContent().stream().map(PostReport::getReporterId).collect(Collectors.toSet());
+		Map<UUID, String> reporterNames = profileDirectory.displayNames(reporterIds);
+		// Historia zgłaszającego widziana przez moderatora jest ograniczona do JEGO
+		// społeczności (ADR 0025) — inaczej kolejka wynosiłaby na wierzch to, co ten
+		// człowiek robił w społecznościach, z którymi ten moderator nie ma nic
+		// wspólnego (§8: moderacja jest społecznościowa, nie globalna).
+		Map<UUID, Long> dismissed = reportRepository
+				.countDismissedByReporterIdIn(communityId, reporterIds, ReportStatus.DISMISSED).stream()
+				.collect(Collectors.toMap(PostReportRepository.ReporterDismissedCount::getReporterId,
+						PostReportRepository.ReporterDismissedCount::getDismissedCount));
 		return page.map(report -> new PostReportResponse(report.getId(), report.getReason(), report.getDetails(),
 				report.getReporterId(), reporterNames.get(report.getReporterId()), report.getCreatedAt(),
-				counts.getOrDefault(report.getPostId(), 0L), posts.get(report.getPostId())));
+				counts.getOrDefault(report.getPostId(), 0L), dismissed.getOrDefault(report.getReporterId(), 0L),
+				posts.get(report.getPostId())));
 	}
 
 	/**

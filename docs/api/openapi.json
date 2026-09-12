@@ -939,6 +939,10 @@
             "format" : "int64",
             "type" : "integer"
           },
+          "reporterDismissedCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
           "reporterDisplayName" : {
             "type" : "string"
           },

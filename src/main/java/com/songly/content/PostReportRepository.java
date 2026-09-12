@@ -1,6 +1,8 @@
 package com.songly.content;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -27,6 +29,42 @@ interface PostReportRepository extends JpaRepository<PostReport, UUID> {
 	 * jest, a limit ma być warunkiem domeny, nie zabezpieczeniem infrastruktury.
 	 */
 	long countByReporterIdAndCreatedAtAfter(UUID reporterId, Instant createdAfter);
+
+	/**
+	 * Ile zgłoszeń tej osoby moderacja odrzuciła — <b>w całej aplikacji</b>, bez
+	 * podziału na społeczności (ADR 0025). Zasięg globalny jest tu konieczny:
+	 * zasypywanie rozłożone na dziesięć społeczności wymyka się każdemu licznikowi
+	 * liczonemu per społeczność. Ta liczba nigdzie nie wypływa — służy wyłącznie do
+	 * policzenia limitu, czyli do odpowiedzi „nie" wobec samego zgłaszającego.
+	 *
+	 * <p>
+	 * Liczymy po tabeli zgłoszeń, nie po historii moderacji (ADR 0024): dziennik
+	 * jest w module, który konsumuje zdarzenia modułu content, więc sięgnięcie po
+	 * niego stąd zrobiłoby cykl między modułami (reguła 2
+	 * {@code ModuleBoundariesTest}). Koszt: odrzucenia, których post usunięto
+	 * później, znikają razem z nim — licznik jest więc zaniżony, nigdy zawyżony, i
+	 * to jest właściwa strona pomyłki.
+	 */
+	long countByReporterIdAndStatus(UUID reporterId, ReportStatus status);
+
+	/**
+	 * Odrzucone zgłoszenia podanych osób <b>w jednej społeczności</b> — do
+	 * pokazania w kolejce. Zasięg jest tu celowo węższy niż przy limicie: moderator
+	 * społeczności nie ma prawa dowiedzieć się, co ten człowiek robił w innych
+	 * społecznościach (Claude.md §8 — moderacja jest społecznościowa, nie
+	 * globalna).
+	 *
+	 * <p>
+	 * Jedno zapytanie na stronę kolejki, nie jedno na zgłoszenie.
+	 */
+	@Query("""
+			select r.reporterId as reporterId, count(r) as dismissedCount from PostReport r
+			join Post p on p.id = r.postId
+			where p.communityId = :communityId and r.status = :status and r.reporterId in :reporterIds
+			group by r.reporterId
+			""")
+	List<ReporterDismissedCount> countDismissedByReporterIdIn(@Param("communityId") UUID communityId,
+			@Param("reporterIds") Collection<UUID> reporterIds, @Param("status") ReportStatus status);
 
 	/**
 	 * Kolejka jednej społeczności. Złączenie z {@code Post} jest tu konieczne, bo
@@ -85,5 +123,12 @@ interface PostReportRepository extends JpaRepository<PostReport, UUID> {
 		UUID getPostId();
 
 		long getReportCount();
+	}
+
+	interface ReporterDismissedCount {
+
+		UUID getReporterId();
+
+		long getDismissedCount();
 	}
 }
