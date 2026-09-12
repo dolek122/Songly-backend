@@ -14,6 +14,8 @@ class ReportProperties {
 
 	private int minLimit = 1;
 
+	private Duration historyWindow = Duration.ofDays(90);
+
 	/**
 	 * Ile zgłoszeń może złożyć <b>jedna osoba</b> w oknie {@link #getWindow()}.
 	 *
@@ -82,5 +84,31 @@ class ReportProperties {
 
 	void setMinLimit(int minLimit) {
 		this.minLimit = minLimit;
+	}
+
+	/**
+	 * Jak długo rozstrzygnięte zgłoszenie liczy się do historii zgłaszającego (ADR
+	 * 0030). Liczą się decyzje młodsze niż {@code now - historyWindow}, zarówno
+	 * odrzucenia (kara), jak i trafienia (wybaczanie 1:1) — obie strony bilansu
+	 * starzeją się razem.
+	 *
+	 * <p>
+	 * <b>To nie jest {@link #getWindow()}.</b> Tamto okno mierzy natężenie („ile
+	 * zgłoszeń w ciągu godziny"), to mierzy pamięć („jak długo pomyłka obniża
+	 * przydział"). Są o dwa rzędy wielkości różne i o dwóch różnych rzeczach:
+	 * pomieszanie ich dałoby albo limit bez pamięci, albo karę na godzinę.
+	 *
+	 * <p>
+	 * Domyślne 90 dni to kompromis: dość długo, żeby zasypywanie kolejki nie
+	 * opłacało się przez przeczekanie, i dość krótko, żeby czyjeś pomyłki z
+	 * zeszłego roku nie zostały z nim na zawsze. Kara zaczyna odpuszczać sama, bez
+	 * żadnego procesu w tle — to ta sama leniwość co przy wygasaniu banów (§8).
+	 */
+	Duration getHistoryWindow() {
+		return historyWindow;
+	}
+
+	void setHistoryWindow(Duration historyWindow) {
+		this.historyWindow = historyWindow;
 	}
 }

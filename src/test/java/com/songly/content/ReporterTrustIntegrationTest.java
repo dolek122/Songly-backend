@@ -32,7 +32,8 @@ import tools.jackson.databind.ObjectMapper;
  * wykonywać dwudziestu żądań na przypadek.
  */
 @TestPropertySource(properties = {"songly.security.rate-limit.enabled=false", "songly.content.report.limit=4",
-		"songly.content.report.dismissal-penalty=2", "songly.content.report.min-limit=1"})
+		"songly.content.report.dismissal-penalty=2", "songly.content.report.min-limit=1",
+		"songly.content.report.history-window=PT1H"})
 class ReporterTrustIntegrationTest extends AbstractIntegrationTest {
 
 	@Autowired
@@ -108,6 +109,21 @@ class ReporterTrustIntegrationTest extends AbstractIntegrationTest {
 	 */
 	private void slideWindow(TestUser reporter) {
 		jdbcTemplate.update("UPDATE post_reports SET created_at = now() - interval '2 hours' WHERE reporter_id = ?",
+				java.util.UUID.fromString(reporter.userId()));
+	}
+
+	/**
+	 * Starzeje rozstrzygnięcia tej osoby poza okno historii (ADR 0030) — przy
+	 * {@code history-window=PT1H} dwie godziny wystarczą.
+	 *
+	 * <p>
+	 * To jedyny sposób, żeby przetestować wygaszanie kary bez czekania: daty
+	 * zapadły razem z decyzjami, więc nie ma ich jak podać z zewnątrz. Ta sama
+	 * sztuczka co w {@link #slideWindow}, tylko na innej tabeli i w innym celu —
+	 * tam chodzi o okno natężenia, tu o okno pamięci.
+	 */
+	private void ageDecisions(TestUser reporter) {
+		jdbcTemplate.update("UPDATE reporter_decisions SET decided_at = now() - interval '2 hours' WHERE user_id = ?",
 				java.util.UUID.fromString(reporter.userId()));
 	}
 
@@ -252,6 +268,79 @@ class ReporterTrustIntegrationTest extends AbstractIntegrationTest {
 
 		// ...ale moderator drugiej społeczności nie widzi tamtych odrzuceń.
 		JsonNode entry = queue(secondOwner, secondCommunity).get(0);
+		assertThat(entry.get("reporterId").asText()).isEqualTo(troll.userId());
+		assertThat(entry.get("reporterDismissedCount").asInt()).isZero();
+	}
+
+	/**
+	 * Sedno ADR 0030: kara wygasa. Odrzucenia starsze niż okno historii przestają
+	 * zjadać przydział, więc pomyłka nie zostaje z człowiekiem na zawsze — a nikt
+	 * nie musi o tym pamiętać, bo nic się nie budzi w chwili wygaśnięcia (§8).
+	 */
+	@Test
+	void dismissalsStopCountingOnceTheyLeaveTheHistoryWindow() throws Exception {
+		TestUser owner = user("trust-decay-owner@songly.io");
+		TestUser author = user("trust-decay-author@songly.io");
+		TestUser troll = user("trust-decay-troll@songly.io");
+		String communityId = createCommunity(owner, "Trust-wygasanie");
+		join(author, communityId);
+		List<String> posts = new ArrayList<>();
+		for (int i = 0; i < 8; i++) {
+			posts.add(createPost(author, communityId, "post " + i));
+		}
+
+		// Dwa odrzucenia zjadają przydział do podłogi — stan sprzed ADR 0030.
+		report(troll, posts.get(0));
+		report(troll, posts.get(1));
+		dismissAll(owner, communityId);
+		slideWindow(troll);
+		report(troll, posts.get(2));
+		mockMvc.perform(post("/api/v1/posts/" + posts.get(3) + "/reports")
+				.header("Authorization", "Bearer " + troll.token()).contentType(MediaType.APPLICATION_JSON).content("""
+						{"reason":"SPAM"}""")).andExpect(status().isTooManyRequests());
+
+		// Te same odrzucenia, tylko starsze niż okno historii: przydział wraca do
+		// bazowego. Okno limitu przesuwamy osobno — inaczej odmowę dawałyby zgłoszenia
+		// siedzące w tej godzinie, a nie kara, i test nie dowodziłby niczego.
+		ageDecisions(troll);
+		slideWindow(troll);
+		for (int i = 3; i < 7; i++) {
+			report(troll, posts.get(i));
+		}
+
+		// Przydział wrócił do bazowego, a nie „do nieskończoności": piąte w tym oknie
+		// już nie przechodzi.
+		mockMvc.perform(post("/api/v1/posts/" + posts.get(7) + "/reports")
+				.header("Authorization", "Bearer " + troll.token()).contentType(MediaType.APPLICATION_JSON).content("""
+						{"reason":"SPAM"}""")).andExpect(status().isTooManyRequests())
+				.andExpect(jsonPath("$.code").value("REPORT_RATE_LIMIT_EXCEEDED"));
+	}
+
+	/**
+	 * Kolejka liczy w tym samym oknie co przydział (ADR 0030). Inaczej moderator
+	 * czytałby „3 odrzucenia" bez wiedzy, czy były w tym tygodniu, czy dwa lata
+	 * temu — a liczba bez skali czasu nie jest wagą, którą da się rozważyć.
+	 */
+	@Test
+	void queueForgetsDismissalsOlderThanTheWindow() throws Exception {
+		TestUser owner = user("trust-decayqueue-owner@songly.io");
+		TestUser author = user("trust-decayqueue-author@songly.io");
+		TestUser troll = user("trust-decayqueue-troll@songly.io");
+		String communityId = createCommunity(owner, "Trust-kolejka-wygasanie");
+		join(author, communityId);
+		String first = createPost(author, communityId, "post pierwszy");
+		String second = createPost(author, communityId, "post drugi");
+		report(troll, first);
+		dismissAll(owner, communityId);
+		report(troll, second);
+
+		assertThat(queue(owner, communityId).get(0).get("reporterDismissedCount").asInt()).isEqualTo(1);
+
+		ageDecisions(troll);
+
+		JsonNode entry = queue(owner, communityId).get(0);
+		// Samo zgłoszenie zostaje w kolejce — starzeje się historia zgłaszającego, nie
+		// sprawa do rozpatrzenia.
 		assertThat(entry.get("reporterId").asText()).isEqualTo(troll.userId());
 		assertThat(entry.get("reporterDismissedCount").asInt()).isZero();
 	}

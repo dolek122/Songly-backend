@@ -45,7 +45,7 @@ class ContentService {
 	private final ReportProperties reportProperties;
 	private final MeterRegistry meterRegistry;
 	private final SuspendedAccounts suspendedAccounts;
-	private final ReporterReputationRepository reputationRepository;
+	private final ReporterDecisionRepository decisionRepository;
 
 	/**
 	 * Prefiks kluczy zdjęć postów. Stała, bo ten sam ciąg musi być użyty przy
@@ -68,7 +68,7 @@ class ContentService {
 			ShareRepository shareRepository, PostReportRepository reportRepository, ProfileDirectory profileDirectory,
 			SocialGraph socialGraph, CommunityMembership communityMembership, ObjectStorage objectStorage,
 			ApplicationEventPublisher eventPublisher, ReportProperties reportProperties, MeterRegistry meterRegistry,
-			SuspendedAccounts suspendedAccounts, ReporterReputationRepository reputationRepository) {
+			SuspendedAccounts suspendedAccounts, ReporterDecisionRepository decisionRepository) {
 		this.postRepository = postRepository;
 		this.likeRepository = likeRepository;
 		this.commentRepository = commentRepository;
@@ -82,7 +82,7 @@ class ContentService {
 		this.reportProperties = reportProperties;
 		this.meterRegistry = meterRegistry;
 		this.suspendedAccounts = suspendedAccounts;
-		this.reputationRepository = reputationRepository;
+		this.decisionRepository = decisionRepository;
 	}
 
 	@Transactional
@@ -323,21 +323,33 @@ class ContentService {
 
 	/**
 	 * Przydział zgłoszeń na okno, pomniejszony o historię odrzuceń i podniesiony
-	 * przez historię trafień (ADR 0025, uzupełniony w 0027).
+	 * przez historię trafień (ADR 0025, uzupełniony w 0027 i 0030).
 	 *
 	 * <p>
 	 * Liczby są <b>globalne</b>, a nie per społeczność: zasypywanie rozłożone na
 	 * dziesięć społeczności wymyka się każdemu licznikowi liczonemu osobno dla
 	 * każdej z nich. Nie jest to przy tym wyciek, bo te liczby nigdzie nie wychodzą
 	 * — służą wyłącznie do odpowiedzi „nie" wobec samego zgłaszającego.
+	 *
+	 * <p>
+	 * Uwaga na dwa różne okna, które spotykają się w tej jednej decyzji:
+	 * {@code window} mówi, ile zgłoszeń wolno złożyć w godzinie, a
+	 * {@code historyWindow} — jak długo pomyłka obniża ten przydział.
 	 */
 	private int effectiveReportLimit(UUID reporterId) {
-		ReporterReputationRepository.Totals totals = reputationRepository.sumByUserId(reporterId);
+		// Historia ma okno (ADR 0030): decyzja starsza niż historyWindow nie liczy się
+		// już do niczego. Kara przestaje być bezterminowa, a odpuszcza sama — bez
+		// żadnego procesu budzącego się w chwili wygaśnięcia, jak przy banach (§8).
+		Instant since = historyCutoff();
+		long dismissed = decisionRepository.countByUserIdAndOutcomeAndDecidedAtAfter(reporterId,
+				ReporterDecisionOutcome.DISMISSED, since);
+		long upheld = decisionRepository.countByUserIdAndOutcomeAndDecidedAtAfter(reporterId,
+				ReporterDecisionOutcome.UPHELD, since);
 		// Zgłoszenia trafne wybaczają odrzucenia jeden za jeden (ADR 0027). Ktoś z
 		// dziesięcioma uwzględnionymi i dwoma odrzuconymi jest dobrym zgłaszającym, nie
 		// podejrzanym — a przed tym ADR-em dostawał taką samą karę jak troll z dwoma
-		// odrzuceniami i zerem trafień.
-		long netDismissed = Math.max(0, totals.getDismissed() - totals.getUpheld());
+		// odrzuceniami i zerem trafień. Obie strony bilansu starzeją się razem.
+		long netDismissed = Math.max(0, dismissed - upheld);
 		long reduced = reportProperties.getLimit() - netDismissed * reportProperties.getDismissalPenalty();
 		// Trafne zgłoszenia nie podnoszą przydziału POWYŻEJ bazowego: limit i tak jest
 		// hojny, a premia otwierałaby szerszy kanał zasypywania komuś, kto raz zgłaszał
@@ -367,17 +379,26 @@ class ContentService {
 		// Historia zgłaszającego widziana przez moderatora jest ograniczona do JEGO
 		// społeczności (ADR 0025) — inaczej kolejka wynosiłaby na wierzch to, co ten
 		// człowiek robił w społecznościach, z którymi ten moderator nie ma nic
-		// wspólnego (§8: moderacja jest społecznościowa, nie globalna).
-		Map<UUID, ReporterReputation> reputations = reputationRepository
-				.findByCommunityIdAndUserIdIn(communityId, reporterIds).stream()
-				.collect(Collectors.toMap(ReporterReputation::getUserId, Function.identity()));
+		// wspólnego (§8: moderacja jest społecznościowa, nie globalna) — i do tego
+		// samego okna, co przydział (ADR 0030): liczba bez skali czasu nie jest wagą,
+		// którą człowiek umie rozważyć.
+		Instant since = historyCutoff();
+		Map<UUID, Long> upheld = decisionCounts(communityId, ReporterDecisionOutcome.UPHELD, reporterIds, since);
+		Map<UUID, Long> dismissed = decisionCounts(communityId, ReporterDecisionOutcome.DISMISSED, reporterIds, since);
 		return page.map(report -> {
-			ReporterReputation history = reputations.get(report.getReporterId());
-			return new PostReportResponse(report.getId(), report.getReason(), report.getDetails(),
-					report.getReporterId(), reporterNames.get(report.getReporterId()), report.getCreatedAt(),
-					counts.getOrDefault(report.getPostId(), 0L), history == null ? 0 : history.getUpheld(),
-					history == null ? 0 : history.getDismissed(), posts.get(report.getPostId()));
+			UUID reporterId = report.getReporterId();
+			return new PostReportResponse(report.getId(), report.getReason(), report.getDetails(), reporterId,
+					reporterNames.get(reporterId), report.getCreatedAt(), counts.getOrDefault(report.getPostId(), 0L),
+					upheld.getOrDefault(reporterId, 0L).intValue(), dismissed.getOrDefault(reporterId, 0L).intValue(),
+					posts.get(report.getPostId()));
 		});
+	}
+
+	private Map<UUID, Long> decisionCounts(UUID communityId, ReporterDecisionOutcome outcome, Set<UUID> reporterIds,
+			Instant since) {
+		return decisionRepository.countByCommunityAndOutcomeSince(communityId, outcome, reporterIds, since).stream()
+				.collect(Collectors.toMap(ReporterDecisionRepository.UserDecisionCount::getUserId,
+						ReporterDecisionRepository.UserDecisionCount::getDecisionCount));
 	}
 
 	/**
@@ -401,7 +422,7 @@ class ContentService {
 		}
 		Instant now = Instant.now();
 		report.dismiss(requesterId, now);
-		reputation(report.getReporterId(), communityId, now).recordDismissed(now);
+		recordDecision(report.getReporterId(), communityId, ReporterDecisionOutcome.DISMISSED, now);
 		eventPublisher.publishEvent(new PostReportDismissedEvent(communityId, report.getPostId(),
 				report.getReporterId(), requesterId, now));
 	}
@@ -416,16 +437,25 @@ class ContentService {
 		if (communityId == null) {
 			return;
 		}
-		reporterIds.forEach(reporterId -> reputation(reporterId, communityId, now).recordUpheld(now));
+		reporterIds.forEach(reporterId -> recordDecision(reporterId, communityId, ReporterDecisionOutcome.UPHELD, now));
 	}
 
 	/**
-	 * Wiersz reputacji, zakładany przy pierwszym rozstrzygnięciu w tej
-	 * społeczności.
+	 * Wiersz rozstrzygnięcia — zawsze nowy, nigdy aktualizacja (ADR 0030). To jest
+	 * cała różnica wobec licznika z ADR 0027: data zapada razem z decyzją, więc da
+	 * się potem zapytać „co z ostatnich 90 dni".
 	 */
-	private ReporterReputation reputation(UUID userId, UUID communityId, Instant now) {
-		return reputationRepository.findByUserIdAndCommunityId(userId, communityId)
-				.orElseGet(() -> reputationRepository.save(new ReporterReputation(userId, communityId, now)));
+	private void recordDecision(UUID userId, UUID communityId, ReporterDecisionOutcome outcome, Instant now) {
+		decisionRepository.save(new ReporterDecision(UUID.randomUUID(), userId, communityId, outcome, now));
+	}
+
+	/**
+	 * Granica okna historii — decyzje starsze nie liczą się do niczego. Stąd wynika
+	 * też, że wiersze sprzed okna nie są już przez nikogo czytane: gdyby tabela
+	 * kiedyś urosła, kasowanie ich jest bezpieczne z definicji.
+	 */
+	private Instant historyCutoff() {
+		return Instant.now().minus(reportProperties.getHistoryWindow());
 	}
 
 	private void requireModerator(UUID communityId, UUID requesterId) {
@@ -449,7 +479,7 @@ class ContentService {
 		// społeczności nie ma górnego ograniczenia.
 		reportOrphanedImages(postRepository.findImageKeysByCommunityId(communityId));
 		postRepository.deleteByCommunityId(communityId);
-		reputationRepository.deleteByCommunityId(communityId);
+		decisionRepository.deleteByCommunityId(communityId);
 	}
 
 	private Page<PostResponse> mapToResponses(Page<Post> page, UUID viewerId, Set<UUID> hiddenAuthors) {
@@ -556,9 +586,9 @@ class ContentService {
 		// zgłoszenia. Zgłoszenia przez niego ROZPATRZONE zostają, tracą tylko autora
 		// decyzji: odejście moderatora nie może cofać rozstrzygnięć, które podjął.
 		reportRepository.deleteByReporterId(userId);
-		// Reputacja zgłaszającego znika razem z kontem: nowe konto to nowa tożsamość,
+		// Historia zgłaszającego znika razem z kontem: nowe konto to nowa tożsamość,
 		// więc trzymanie jej nie chroniłoby przed niczym (ADR 0027).
-		reputationRepository.deleteByUserId(userId);
+		decisionRepository.deleteByUserId(userId);
 		reportRepository.clearReviewer(userId);
 		reportOrphanedImages(postRepository.findImageKeysByAuthorId(userId));
 		postRepository.deleteByAuthorId(userId);

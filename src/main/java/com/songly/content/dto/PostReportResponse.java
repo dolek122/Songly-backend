@@ -15,15 +15,20 @@ import java.util.UUID;
  *
  * <p>
  * {@code reporterUpheldCount} i {@code reporterDismissedCount} to trafność tej
- * osoby <b>w tej społeczności</b> (ADR 0025, uzupełnione w 0027) — waga podana
- * moderatorowi do oceny, nie odjęta za niego. Dopiero obie liczby razem coś
- * znaczą: „5 uwzględnionych, 1 odrzucone" czyta się zupełnie inaczej niż „0 i
- * 1", a przed ADR 0027 widać było tylko drugą z nich.
+ * osoby <b>w tej społeczności</b> i <b>w oknie historii</b> (ADR 0025,
+ * uzupełnione w 0027 i 0030) — waga podana moderatorowi do oceny, nie odjęta za
+ * niego. Dopiero obie liczby razem coś znaczą: „5 uwzględnionych, 1 odrzucone"
+ * czyta się zupełnie inaczej niż „0 i 1", a przed ADR 0027 widać było tylko
+ * drugą z nich.
  *
  * <p>
- * Zasięg jest celowo węższy niż przy limicie liczonym globalnie: moderator nie
- * ma prawa dowiedzieć się, co zgłaszający robił w innych społecznościach
- * (Claude.md §8).
+ * Oba ograniczenia są celowe i różne. <b>Społeczność</b>, bo moderator nie ma
+ * prawa dowiedzieć się, co zgłaszający robił w obcych społecznościach
+ * (Claude.md §8) — przydział liczy to szerzej, globalnie. <b>Okno</b>
+ * (domyślnie 90 dni, {@code songly.content.report.history-window}), bo te same
+ * liczby sterują karą, a kara nie jest bezterminowa: liczba bez skali czasu nie
+ * jest przy tym wagą, którą człowiek umie rozważyć — „3 odrzucenia" znaczy coś
+ * innego w tym tygodniu, a coś innego dwa lata temu.
  */
 public record PostReportResponse(UUID id, ReportReason reason, String details, UUID reporterId,
 		String reporterDisplayName, Instant createdAt, long reportCount, int reporterUpheldCount,
