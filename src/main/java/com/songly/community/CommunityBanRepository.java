@@ -1,6 +1,7 @@
 package com.songly.community;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -36,6 +37,12 @@ interface CommunityBanRepository extends JpaRepository<CommunityBan, CommunityBa
 			""")
 	Page<CommunityBan> findActiveByCommunityId(@Param("communityId") UUID communityId, @Param("now") Instant now,
 			Pageable pageable);
+
+	/**
+	 * Sprawy czekające na drugą instancję (ADR 0028) — najstarsze pierwsze, bo
+	 * kolejka administracji ma być kolejką, nie stosem.
+	 */
+	List<CommunityBan> findByAppealStatusOrderByAppealEscalatedAtAsc(BanAppealStatus appealStatus);
 
 	/**
 	 * Wsadowo, i to jest warunek poprawności, nie optymalizacja. Przy usuwaniu

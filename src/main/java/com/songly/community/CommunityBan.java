@@ -61,6 +61,13 @@ class CommunityBan {
 	@Column(name = "appeal_status", length = 20)
 	private BanAppealStatus appealStatus;
 
+	/**
+	 * Kiedy sprawa poszła do drugiej instancji (ADR 0028); {@code null} = nie
+	 * poszła.
+	 */
+	@Column(name = "appeal_escalated_at")
+	private Instant appealEscalatedAt;
+
 	protected CommunityBan() {
 	}
 
@@ -100,6 +107,7 @@ class CommunityBan {
 		this.appealText = null;
 		this.appealedAt = null;
 		this.appealStatus = null;
+		this.appealEscalatedAt = null;
 	}
 
 	/**
@@ -117,12 +125,39 @@ class CommunityBan {
 		this.appealStatus = BanAppealStatus.REJECTED;
 	}
 
+	/**
+	 * Przekazanie sprawy administracji platformy (ADR 0028) — wyłącznie ze stanu
+	 * {@code REJECTED}, bo drugą instancję można uruchomić tylko wtedy, gdy
+	 * pierwsza już orzekła.
+	 */
+	void escalateAppeal(Instant at) {
+		this.appealStatus = BanAppealStatus.ESCALATED;
+		this.appealEscalatedAt = at;
+	}
+
+	/** Administracja utrzymała ban — koniec drabiny. */
+	void rejectEscalation() {
+		this.appealStatus = BanAppealStatus.ESCALATION_REJECTED;
+	}
+
 	boolean hasPendingAppeal() {
 		return appealStatus == BanAppealStatus.PENDING;
 	}
 
+	boolean hasRejectedAppeal() {
+		return appealStatus == BanAppealStatus.REJECTED;
+	}
+
+	boolean hasEscalatedAppeal() {
+		return appealStatus == BanAppealStatus.ESCALATED;
+	}
+
 	boolean hasAppeal() {
 		return appealStatus != null;
+	}
+
+	Instant getAppealEscalatedAt() {
+		return appealEscalatedAt;
 	}
 
 	UUID getCommunityId() {

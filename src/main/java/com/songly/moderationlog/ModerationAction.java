@@ -37,6 +37,17 @@ public enum ModerationAction {
 
 	COMMUNITY_BAN_APPEAL_REJECTED,
 
+	/**
+	 * Druga instancja (ADR 0028): sprawa przekazana administracji platformy, a
+	 * potem jej rozstrzygnięcie. {@code ESCALATION_ACCEPTED} to ban uchylony przez
+	 * kogoś z zewnątrz społeczności — jedyny taki przypadek w tym dzienniku.
+	 */
+	COMMUNITY_BAN_APPEAL_ESCALATED,
+
+	COMMUNITY_BAN_ESCALATION_ACCEPTED,
+
+	COMMUNITY_BAN_ESCALATION_REJECTED,
+
 	COMMUNITY_MODERATOR_GRANTED,
 
 	COMMUNITY_MODERATOR_REVOKED,

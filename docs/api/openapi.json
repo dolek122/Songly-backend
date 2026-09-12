@@ -94,7 +94,7 @@
       "BanDetailsResponse" : {
         "properties" : {
           "appealStatus" : {
-            "enum" : [ "PENDING", "REJECTED" ],
+            "enum" : [ "PENDING", "REJECTED", "ESCALATED", "ESCALATION_REJECTED" ],
             "type" : "string"
           },
           "appealedAt" : {
@@ -194,7 +194,7 @@
       "CommunityBanResponse" : {
         "properties" : {
           "appealStatus" : {
-            "enum" : [ "PENDING", "REJECTED" ],
+            "enum" : [ "PENDING", "REJECTED", "ESCALATED", "ESCALATION_REJECTED" ],
             "type" : "string"
           },
           "appealText" : {
@@ -351,6 +351,44 @@
           }
         },
         "required" : [ "password" ],
+        "type" : "object"
+      },
+      "EscalatedAppealResponse" : {
+        "properties" : {
+          "appealText" : {
+            "type" : "string"
+          },
+          "appealedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "bannedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "communityId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "communityName" : {
+            "type" : "string"
+          },
+          "escalatedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "reason" : {
+            "type" : "string"
+          },
+          "userId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
         "type" : "object"
       },
       "FriendNowPlayingResponse" : {
@@ -540,7 +578,7 @@
       "ModerationLogEntryResponse" : {
         "properties" : {
           "action" : {
-            "enum" : [ "COMMUNITY_BAN_ISSUED", "COMMUNITY_BAN_LIFTED", "COMMUNITY_POST_REMOVED", "POST_REPORT_DISMISSED", "POST_REPORT_UPHELD", "COMMUNITY_BAN_APPEAL_SUBMITTED", "COMMUNITY_BAN_APPEAL_ACCEPTED", "COMMUNITY_BAN_APPEAL_REJECTED", "COMMUNITY_MODERATOR_GRANTED", "COMMUNITY_MODERATOR_REVOKED", "ACCOUNT_SUSPENDED", "ACCOUNT_SUSPENSION_LIFTED", "SUSPENSION_APPEAL_SUBMITTED", "SUSPENSION_APPEAL_ACCEPTED", "SUSPENSION_APPEAL_REJECTED" ],
+            "enum" : [ "COMMUNITY_BAN_ISSUED", "COMMUNITY_BAN_LIFTED", "COMMUNITY_POST_REMOVED", "POST_REPORT_DISMISSED", "POST_REPORT_UPHELD", "COMMUNITY_BAN_APPEAL_SUBMITTED", "COMMUNITY_BAN_APPEAL_ACCEPTED", "COMMUNITY_BAN_APPEAL_REJECTED", "COMMUNITY_BAN_APPEAL_ESCALATED", "COMMUNITY_BAN_ESCALATION_ACCEPTED", "COMMUNITY_BAN_ESCALATION_REJECTED", "COMMUNITY_MODERATOR_GRANTED", "COMMUNITY_MODERATOR_REVOKED", "ACCOUNT_SUSPENDED", "ACCOUNT_SUSPENSION_LIFTED", "SUSPENSION_APPEAL_SUBMITTED", "SUSPENSION_APPEAL_ACCEPTED", "SUSPENSION_APPEAL_REJECTED" ],
             "type" : "string"
           },
           "actorId" : {
@@ -599,7 +637,7 @@
             "type" : "string"
           },
           "type" : {
-            "enum" : [ "POST_LIKED", "POST_COMMENTED", "POST_SHARED", "FRIEND_REQUEST_RECEIVED", "FRIEND_REQUEST_ACCEPTED", "COMMUNITY_MEMBER_JOINED", "COMMUNITY_BANNED", "COMMUNITY_POST_REMOVED", "COMMUNITY_POST_REPORTED", "POST_REPORT_DISMISSED", "BAN_APPEAL_SUBMITTED", "BAN_APPEAL_ACCEPTED", "BAN_APPEAL_REJECTED", "COMMUNITY_MODERATOR_GRANTED", "COMMUNITY_MODERATOR_REVOKED" ],
+            "enum" : [ "POST_LIKED", "POST_COMMENTED", "POST_SHARED", "FRIEND_REQUEST_RECEIVED", "FRIEND_REQUEST_ACCEPTED", "COMMUNITY_MEMBER_JOINED", "COMMUNITY_BANNED", "COMMUNITY_POST_REMOVED", "COMMUNITY_POST_REPORTED", "BAN_ESCALATION_ACCEPTED", "BAN_ESCALATION_REJECTED", "POST_REPORT_DISMISSED", "BAN_APPEAL_SUBMITTED", "BAN_APPEAL_ACCEPTED", "BAN_APPEAL_REJECTED", "COMMUNITY_MODERATOR_GRANTED", "COMMUNITY_MODERATOR_REVOKED" ],
             "type" : "string"
           }
         },
@@ -1333,6 +1371,92 @@
           "bearerAuth" : [ ]
         } ],
         "tags" : [ "admin-controller" ]
+      }
+    },
+    "/api/v1/admin/ban-appeals" : {
+      "get" : {
+        "operationId" : "escalatedAppeals",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/EscalatedAppealResponse"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "community-admin-controller" ]
+      }
+    },
+    "/api/v1/admin/communities/{communityId}/bans/{userId}" : {
+      "delete" : {
+        "operationId" : "overturnBan",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "communityId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "community-admin-controller" ]
+      }
+    },
+    "/api/v1/admin/communities/{communityId}/bans/{userId}/escalation-rejection" : {
+      "post" : {
+        "operationId" : "rejectEscalation",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "communityId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "community-admin-controller" ]
       }
     },
     "/api/v1/admin/moderation-log" : {
@@ -2080,6 +2204,29 @@
           },
           "required" : true
         },
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "community-controller" ]
+      }
+    },
+    "/api/v1/communities/{communityId}/ban-appeal/escalation" : {
+      "post" : {
+        "operationId" : "escalateBanAppeal",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "communityId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
         "responses" : {
           "200" : {
             "description" : "OK"

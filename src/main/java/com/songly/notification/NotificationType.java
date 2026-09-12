@@ -27,6 +27,14 @@ public enum NotificationType {
 	/** Do moderatorów, przy pierwszym zgłoszeniu danego posta. */
 	COMMUNITY_POST_REPORTED,
 
+	/**
+	 * Druga instancja odwoławcza (ADR 0028): rozstrzygnięcie administracji
+	 * platformy w sprawie banu społecznościowego. Zasobem jest społeczność.
+	 */
+	BAN_ESCALATION_ACCEPTED,
+
+	BAN_ESCALATION_REJECTED,
+
 	/** Do zgłaszającego, gdy moderator uznał, że post zostaje. */
 	POST_REPORT_DISMISSED,
 
@@ -81,5 +89,5 @@ public enum NotificationType {
 	 */
 	static final Set<NotificationType> MODERATION = Set.of(COMMUNITY_BANNED, COMMUNITY_POST_REMOVED,
 			COMMUNITY_POST_REPORTED, POST_REPORT_DISMISSED, BAN_APPEAL_SUBMITTED, BAN_APPEAL_ACCEPTED,
-			BAN_APPEAL_REJECTED);
+			BAN_APPEAL_REJECTED, BAN_ESCALATION_ACCEPTED, BAN_ESCALATION_REJECTED);
 }
