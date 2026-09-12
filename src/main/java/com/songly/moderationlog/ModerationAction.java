@@ -23,6 +23,14 @@ public enum ModerationAction {
 
 	POST_REPORT_DISMISSED,
 
+	/**
+	 * Zgłoszenie <b>uwzględnione</b>: post zniknął, więc zgłaszający miał rację
+	 * (ADR 0027). Wpis powstaje per zgłaszający, obok jednego
+	 * {@link #COMMUNITY_POST_REMOVED} opisującego tę samą decyzję od strony autora
+	 * — bez tego dziennik wiedział, ile zgłoszeń post miał, ale nie czyje.
+	 */
+	POST_REPORT_UPHELD,
+
 	COMMUNITY_BAN_APPEAL_SUBMITTED,
 
 	COMMUNITY_BAN_APPEAL_ACCEPTED,
