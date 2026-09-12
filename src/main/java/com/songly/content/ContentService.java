@@ -240,8 +240,12 @@ class ContentService {
 		if (!post.getAuthorId().equals(requesterId)) {
 			// Tylko przy usunięciu cudzego posta — skasowanie własnego nie jest decyzją
 			// moderacyjną i nie ma o czym zawiadamiać.
+			//
+			// Zgłoszenia liczymy PRZED kasowaniem: znikają razem z postem (kaskada), więc
+			// po fakcie nie ma już czego zliczyć i nie dałoby się odróżnić usunięcia
+			// zamykającego zgłoszenie od usunięcia z własnej inicjatywy (ADR 0024).
 			eventPublisher.publishEvent(new CommunityPostRemovedEvent(post.getCommunityId(), post.getAuthorId(),
-					requesterId, Instant.now()));
+					requesterId, (int) reportRepository.countByPostId(postId), Instant.now()));
 		}
 		postRepository.delete(post);
 	}

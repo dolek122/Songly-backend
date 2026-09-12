@@ -14,5 +14,5 @@ import java.util.UUID;
  * jedną wiadomość mówiącą, <i>dlaczego</i> konto wróciło, a nie dwie o tym
  * samym.
  */
-public record UserSuspensionAppealAcceptedEvent(UUID userId, Instant occurredAt) {
+public record UserSuspensionAppealAcceptedEvent(UUID userId, UUID actorId, Instant occurredAt) {
 }

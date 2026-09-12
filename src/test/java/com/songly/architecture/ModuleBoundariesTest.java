@@ -40,7 +40,7 @@ class ModuleBoundariesTest {
 	 * współdzielona infrastruktura, z której wolno korzystać każdemu.
 	 */
 	private static final Set<String> DOMAIN_MODULES = Set.of("analytics", "community", "content", "identity",
-			"matching", "notification", "nowplaying", "profile", "social");
+			"matching", "moderationlog", "notification", "nowplaying", "profile", "social");
 
 	/**
 	 * Publiczne API modułu: interfejsy (dziś {@code ProfileDirectory} i

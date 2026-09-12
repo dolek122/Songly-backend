@@ -537,6 +537,39 @@
         },
         "type" : "object"
       },
+      "ModerationLogEntryResponse" : {
+        "properties" : {
+          "action" : {
+            "enum" : [ "COMMUNITY_BAN_ISSUED", "COMMUNITY_BAN_LIFTED", "COMMUNITY_POST_REMOVED", "POST_REPORT_DISMISSED", "COMMUNITY_BAN_APPEAL_SUBMITTED", "COMMUNITY_BAN_APPEAL_ACCEPTED", "COMMUNITY_BAN_APPEAL_REJECTED", "COMMUNITY_MODERATOR_GRANTED", "COMMUNITY_MODERATOR_REVOKED", "ACCOUNT_SUSPENDED", "ACCOUNT_SUSPENSION_LIFTED", "SUSPENSION_APPEAL_SUBMITTED", "SUSPENSION_APPEAL_ACCEPTED", "SUSPENSION_APPEAL_REJECTED" ],
+            "type" : "string"
+          },
+          "actorId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "communityId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "occurredAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "reportCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "subjectId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "NotificationResponse" : {
         "properties" : {
           "actorAvatarUrl" : {
@@ -766,6 +799,20 @@
           "content" : {
             "items" : {
               "$ref" : "#/components/schemas/MatchResponse"
+            },
+            "type" : "array"
+          },
+          "page" : {
+            "$ref" : "#/components/schemas/PageMetadata"
+          }
+        },
+        "type" : "object"
+      },
+      "PagedModelModerationLogEntryResponse" : {
+        "properties" : {
+          "content" : {
+            "items" : {
+              "$ref" : "#/components/schemas/ModerationLogEntryResponse"
             },
             "type" : "array"
           },
@@ -1278,6 +1325,43 @@
           "bearerAuth" : [ ]
         } ],
         "tags" : [ "admin-controller" ]
+      }
+    },
+    "/api/v1/admin/moderation-log" : {
+      "get" : {
+        "operationId" : "platformLog",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "userId",
+          "required" : false,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "pageable",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/Pageable"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedModelModerationLogEntryResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "moderation-log-controller" ]
       }
     },
     "/api/v1/admin/suspensions" : {
@@ -2284,6 +2368,43 @@
           "bearerAuth" : [ ]
         } ],
         "tags" : [ "community-controller" ]
+      }
+    },
+    "/api/v1/communities/{communityId}/moderation-log" : {
+      "get" : {
+        "operationId" : "communityLog",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "communityId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "pageable",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/Pageable"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedModelModerationLogEntryResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "moderation-log-controller" ]
       }
     },
     "/api/v1/communities/{communityId}/post-reports" : {

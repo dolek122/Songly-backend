@@ -14,6 +14,13 @@ import java.util.UUID;
  * Zasobem jest {@code communityId}, a nie {@code postId}: post w tym momencie
  * przestaje istnieć, więc identyfikator, w który klient miałby kliknąć,
  * prowadziłby donikąd.
+ *
+ * <p>
+ * {@code reportCount} to liczba zgłoszeń, które post miał w chwili usunięcia
+ * (ADR 0024). Bez niej nie dało się policzyć, ile zgłoszeń było trafnych —
+ * kasowanie posta zabiera kaskadą jego zgłoszenia, więc po fakcie nie ma już
+ * czego zliczyć (dokładnie ta luka, którą ADR 0019 zapisał w konsekwencjach).
  */
-public record CommunityPostRemovedEvent(UUID communityId, UUID postAuthorId, UUID moderatorId, Instant occurredAt) {
+public record CommunityPostRemovedEvent(UUID communityId, UUID postAuthorId, UUID moderatorId, int reportCount,
+		Instant occurredAt) {
 }

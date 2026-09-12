@@ -82,7 +82,8 @@ class AccountSuspensionService {
 		log.warn("Zawieszono konto {} (wykonał {}, bezterminowo: {})", targetUserId, requesterId, durationDays == null);
 		meterRegistry.counter(SUSPENSIONS_METRIC, "action", "suspended").increment();
 		if (wasActive) {
-			eventPublisher.publishEvent(new UserSuspendedEvent(targetUserId, target.getSuspensionExpiresAt(), now));
+			eventPublisher.publishEvent(
+					new UserSuspendedEvent(targetUserId, requesterId, target.getSuspensionExpiresAt(), now));
 		}
 	}
 
@@ -107,9 +108,9 @@ class AccountSuspensionService {
 			// odwołania (ADR 0023) — osobnego endpointu nie ma, bo to jedna decyzja.
 			// Zdarzenie zastępuje wtedy „zawieszenie zdjęte", żeby nie wysłać dwóch
 			// maili o tym samym; ten mówi dodatkowo, dlaczego konto wróciło.
-			eventPublisher.publishEvent(new UserSuspensionAppealAcceptedEvent(targetUserId, now));
+			eventPublisher.publishEvent(new UserSuspensionAppealAcceptedEvent(targetUserId, requesterId, now));
 		} else if (wasSuspended) {
-			eventPublisher.publishEvent(new UserSuspensionLiftedEvent(targetUserId, now));
+			eventPublisher.publishEvent(new UserSuspensionLiftedEvent(targetUserId, requesterId, now));
 		}
 	}
 
@@ -161,7 +162,7 @@ class AccountSuspensionService {
 		target.rejectAppeal();
 		log.warn("Odrzucono odwołanie od zawieszenia konta {} (wykonał {})", targetUserId, requesterId);
 		meterRegistry.counter(SUSPENSIONS_METRIC, "action", "appeal-rejected").increment();
-		eventPublisher.publishEvent(new UserSuspensionAppealRejectedEvent(targetUserId, now));
+		eventPublisher.publishEvent(new UserSuspensionAppealRejectedEvent(targetUserId, requesterId, now));
 	}
 
 	/**

@@ -18,6 +18,9 @@ interface PostReportRepository extends JpaRepository<PostReport, UUID> {
 	 */
 	boolean existsByPostId(UUID postId);
 
+	/** Ile zgłoszeń ma post — liczone przed jego usunięciem (ADR 0024). */
+	long countByPostId(UUID postId);
+
 	/**
 	 * Zgłoszenia jednej osoby w oknie przesuwanym — limit z ADR 0018. Liczymy
 	 * wiersze zamiast trzymać licznik w Redisie, bo {@code created_at} i tak tu
