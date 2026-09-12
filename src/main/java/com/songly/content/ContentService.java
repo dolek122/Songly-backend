@@ -45,6 +45,7 @@ class ContentService {
 	private final ReportProperties reportProperties;
 	private final MeterRegistry meterRegistry;
 	private final SuspendedAccounts suspendedAccounts;
+	private final ReporterReputationRepository reputationRepository;
 
 	/**
 	 * Prefiks kluczy zdjęć postów. Stała, bo ten sam ciąg musi być użyty przy
@@ -67,7 +68,7 @@ class ContentService {
 			ShareRepository shareRepository, PostReportRepository reportRepository, ProfileDirectory profileDirectory,
 			SocialGraph socialGraph, CommunityMembership communityMembership, ObjectStorage objectStorage,
 			ApplicationEventPublisher eventPublisher, ReportProperties reportProperties, MeterRegistry meterRegistry,
-			SuspendedAccounts suspendedAccounts) {
+			SuspendedAccounts suspendedAccounts, ReporterReputationRepository reputationRepository) {
 		this.postRepository = postRepository;
 		this.likeRepository = likeRepository;
 		this.commentRepository = commentRepository;
@@ -81,6 +82,7 @@ class ContentService {
 		this.reportProperties = reportProperties;
 		this.meterRegistry = meterRegistry;
 		this.suspendedAccounts = suspendedAccounts;
+		this.reputationRepository = reputationRepository;
 	}
 
 	@Transactional
@@ -245,11 +247,14 @@ class ContentService {
 			// Tylko przy usunięciu cudzego posta — skasowanie własnego nie jest decyzją
 			// moderacyjną i nie ma o czym zawiadamiać.
 			//
-			// Zgłoszenia liczymy PRZED kasowaniem: znikają razem z postem (kaskada), więc
-			// po fakcie nie ma już czego zliczyć i nie dałoby się odróżnić usunięcia
-			// zamykającego zgłoszenie od usunięcia z własnej inicjatywy (ADR 0024).
+			// Zgłaszających czytamy PRZED kasowaniem: znikają razem z postem (kaskada),
+			// a to właśnie usunięcie posta jest chwilą, w której ich zgłoszenia okazują
+			// się trafne (ADR 0027). Po fakcie nie ma już czego czytać.
+			Set<UUID> reporterIds = Set.copyOf(reportRepository.findReporterIdsByPostId(postId));
+			Instant now = Instant.now();
+			recordUpheldReports(post.getCommunityId(), reporterIds, now);
 			eventPublisher.publishEvent(new CommunityPostRemovedEvent(post.getCommunityId(), post.getAuthorId(),
-					requesterId, (int) reportRepository.countByPostId(postId), Instant.now()));
+					requesterId, reporterIds, now));
 		}
 		postRepository.delete(post);
 	}
@@ -317,19 +322,27 @@ class ContentService {
 	}
 
 	/**
-	 * Przydział zgłoszeń na okno, pomniejszony o historię odrzuceń (ADR 0025).
+	 * Przydział zgłoszeń na okno, pomniejszony o historię odrzuceń i podniesiony
+	 * przez historię trafień (ADR 0025, uzupełniony w 0027).
 	 *
 	 * <p>
-	 * Liczba odrzuceń jest <b>globalna</b>, a nie per społeczność: zasypywanie
-	 * rozłożone na dziesięć społeczności wymyka się każdemu licznikowi liczonemu
-	 * osobno dla każdej z nich. Nie jest to przy tym wyciek, bo ta liczba nigdzie
-	 * nie wychodzi — służy wyłącznie do odpowiedzi „nie" wobec samego
-	 * zgłaszającego.
+	 * Liczby są <b>globalne</b>, a nie per społeczność: zasypywanie rozłożone na
+	 * dziesięć społeczności wymyka się każdemu licznikowi liczonemu osobno dla
+	 * każdej z nich. Nie jest to przy tym wyciek, bo te liczby nigdzie nie wychodzą
+	 * — służą wyłącznie do odpowiedzi „nie" wobec samego zgłaszającego.
 	 */
 	private int effectiveReportLimit(UUID reporterId) {
-		long dismissed = reportRepository.countByReporterIdAndStatus(reporterId, ReportStatus.DISMISSED);
-		long reduced = reportProperties.getLimit() - dismissed * reportProperties.getDismissalPenalty();
-		return (int) Math.max(reportProperties.getMinLimit(), reduced);
+		ReporterReputationRepository.Totals totals = reputationRepository.sumByUserId(reporterId);
+		// Zgłoszenia trafne wybaczają odrzucenia jeden za jeden (ADR 0027). Ktoś z
+		// dziesięcioma uwzględnionymi i dwoma odrzuconymi jest dobrym zgłaszającym, nie
+		// podejrzanym — a przed tym ADR-em dostawał taką samą karę jak troll z dwoma
+		// odrzuceniami i zerem trafień.
+		long netDismissed = Math.max(0, totals.getDismissed() - totals.getUpheld());
+		long reduced = reportProperties.getLimit() - netDismissed * reportProperties.getDismissalPenalty();
+		// Trafne zgłoszenia nie podnoszą przydziału POWYŻEJ bazowego: limit i tak jest
+		// hojny, a premia otwierałaby szerszy kanał zasypywania komuś, kto raz zgłaszał
+		// dobrze.
+		return (int) Math.max(reportProperties.getMinLimit(), Math.min(reportProperties.getLimit(), reduced));
 	}
 
 	@Transactional(readOnly = true)
@@ -355,14 +368,16 @@ class ContentService {
 		// społeczności (ADR 0025) — inaczej kolejka wynosiłaby na wierzch to, co ten
 		// człowiek robił w społecznościach, z którymi ten moderator nie ma nic
 		// wspólnego (§8: moderacja jest społecznościowa, nie globalna).
-		Map<UUID, Long> dismissed = reportRepository
-				.countDismissedByReporterIdIn(communityId, reporterIds, ReportStatus.DISMISSED).stream()
-				.collect(Collectors.toMap(PostReportRepository.ReporterDismissedCount::getReporterId,
-						PostReportRepository.ReporterDismissedCount::getDismissedCount));
-		return page.map(report -> new PostReportResponse(report.getId(), report.getReason(), report.getDetails(),
-				report.getReporterId(), reporterNames.get(report.getReporterId()), report.getCreatedAt(),
-				counts.getOrDefault(report.getPostId(), 0L), dismissed.getOrDefault(report.getReporterId(), 0L),
-				posts.get(report.getPostId())));
+		Map<UUID, ReporterReputation> reputations = reputationRepository
+				.findByCommunityIdAndUserIdIn(communityId, reporterIds).stream()
+				.collect(Collectors.toMap(ReporterReputation::getUserId, Function.identity()));
+		return page.map(report -> {
+			ReporterReputation history = reputations.get(report.getReporterId());
+			return new PostReportResponse(report.getId(), report.getReason(), report.getDetails(),
+					report.getReporterId(), reporterNames.get(report.getReporterId()), report.getCreatedAt(),
+					counts.getOrDefault(report.getPostId(), 0L), history == null ? 0 : history.getUpheld(),
+					history == null ? 0 : history.getDismissed(), posts.get(report.getPostId()));
+		});
 	}
 
 	/**
@@ -386,8 +401,31 @@ class ContentService {
 		}
 		Instant now = Instant.now();
 		report.dismiss(requesterId, now);
+		reputation(report.getReporterId(), communityId, now).recordDismissed(now);
 		eventPublisher.publishEvent(new PostReportDismissedEvent(communityId, report.getPostId(),
 				report.getReporterId(), requesterId, now));
+	}
+
+	/**
+	 * Liczy zgłoszenia uwzględnione — czyli te, po których post zniknął (ADR 0027).
+	 * Wołane tylko przy usunięciu przez moderację: skasowanie własnego posta nie
+	 * jest rozstrzygnięciem zgłoszenia, a autor kasujący swój post na zgłoszenie
+	 * cudze nie rozstrzyga niczyjej sprawy.
+	 */
+	private void recordUpheldReports(UUID communityId, Set<UUID> reporterIds, Instant now) {
+		if (communityId == null) {
+			return;
+		}
+		reporterIds.forEach(reporterId -> reputation(reporterId, communityId, now).recordUpheld(now));
+	}
+
+	/**
+	 * Wiersz reputacji, zakładany przy pierwszym rozstrzygnięciu w tej
+	 * społeczności.
+	 */
+	private ReporterReputation reputation(UUID userId, UUID communityId, Instant now) {
+		return reputationRepository.findByUserIdAndCommunityId(userId, communityId)
+				.orElseGet(() -> reputationRepository.save(new ReporterReputation(userId, communityId, now)));
 	}
 
 	private void requireModerator(UUID communityId, UUID requesterId) {
@@ -411,6 +449,7 @@ class ContentService {
 		// społeczności nie ma górnego ograniczenia.
 		reportOrphanedImages(postRepository.findImageKeysByCommunityId(communityId));
 		postRepository.deleteByCommunityId(communityId);
+		reputationRepository.deleteByCommunityId(communityId);
 	}
 
 	private Page<PostResponse> mapToResponses(Page<Post> page, UUID viewerId, Set<UUID> hiddenAuthors) {
@@ -517,6 +556,9 @@ class ContentService {
 		// zgłoszenia. Zgłoszenia przez niego ROZPATRZONE zostają, tracą tylko autora
 		// decyzji: odejście moderatora nie może cofać rozstrzygnięć, które podjął.
 		reportRepository.deleteByReporterId(userId);
+		// Reputacja zgłaszającego znika razem z kontem: nowe konto to nowa tożsamość,
+		// więc trzymanie jej nie chroniłoby przed niczym (ADR 0027).
+		reputationRepository.deleteByUserId(userId);
 		reportRepository.clearReviewer(userId);
 		reportOrphanedImages(postRepository.findImageKeysByAuthorId(userId));
 		postRepository.deleteByAuthorId(userId);

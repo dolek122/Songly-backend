@@ -24,6 +24,14 @@ interface PostReportRepository extends JpaRepository<PostReport, UUID> {
 	long countByPostId(UUID postId);
 
 	/**
+	 * Kto zgłosił ten post — czytane PRZED jego usunięciem (ADR 0027), bo kaskada
+	 * zabiera zgłoszenia razem z postem, a to właśnie usunięcie posta jest chwilą,
+	 * w której zgłoszenie okazuje się trafne.
+	 */
+	@Query("select r.reporterId from PostReport r where r.postId = :postId")
+	List<UUID> findReporterIdsByPostId(@Param("postId") UUID postId);
+
+	/**
 	 * Zgłoszenia jednej osoby w oknie przesuwanym — limit z ADR 0018. Liczymy
 	 * wiersze zamiast trzymać licznik w Redisie, bo {@code created_at} i tak tu
 	 * jest, a limit ma być warunkiem domeny, nie zabezpieczeniem infrastruktury.

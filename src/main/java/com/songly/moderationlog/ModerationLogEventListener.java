@@ -55,10 +55,22 @@ class ModerationLogEventListener {
 				event.moderatorId(), null, null, event.occurredAt());
 	}
 
+	/**
+	 * Usunięcie posta zapisujemy <b>dwa razy</b> i z dwóch różnych perspektyw (ADR
+	 * 0027): raz jako decyzję wobec autora (z liczbą zgłoszeń, które post miał), a
+	 * raz jako rozstrzygnięcie <b>na korzyść każdego zgłaszającego</b>.
+	 *
+	 * <p>
+	 * Bez tego drugiego wpisu dziennik wiedział tylko, ile zgłoszeń post miał, ale
+	 * nie czyje — a więc nie dawał odpowiedzi „czyje zgłoszenia bywają trafne", o
+	 * którą upominały się ADR 0019 i 0025.
+	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onCommunityPostRemoved(CommunityPostRemovedEvent event) {
 		moderationLogService.record(ModerationAction.COMMUNITY_POST_REMOVED, event.communityId(), event.postAuthorId(),
-				event.moderatorId(), null, event.reportCount(), event.occurredAt());
+				event.moderatorId(), null, event.reporterIds().size(), event.occurredAt());
+		event.reporterIds().forEach(reporterId -> moderationLogService.record(ModerationAction.POST_REPORT_UPHELD,
+				event.communityId(), reporterId, event.moderatorId(), null, null, event.occurredAt()));
 	}
 
 	/**
