@@ -1,6 +1,9 @@
 package com.songly.moderationlog;
 
 import com.songly.community.CommunityBanAppealAcceptedEvent;
+import com.songly.community.CommunityBanAppealEscalatedEvent;
+import com.songly.community.CommunityBanAppealEscalationAcceptedEvent;
+import com.songly.community.CommunityBanAppealEscalationRejectedEvent;
 import com.songly.community.CommunityBanAppealRejectedEvent;
 import com.songly.community.CommunityBanAppealSubmittedEvent;
 import com.songly.community.CommunityBanLiftedEvent;
@@ -105,6 +108,30 @@ class ModerationLogEventListener {
 	void onCommunityBanAppealRejected(CommunityBanAppealRejectedEvent event) {
 		moderationLogService.record(ModerationAction.COMMUNITY_BAN_APPEAL_REJECTED, event.communityId(), event.userId(),
 				event.moderatorId(), null, null, event.occurredAt());
+	}
+
+	/**
+	 * Druga instancja (ADR 0028). Eskalację zapisuje sam zbanowany jako autor — tak
+	 * jak przy złożeniu odwołania; rozstrzygnięcia mają w polu autora
+	 * administratora, więc dziennik pokazuje, że decyzję podjął ktoś z zewnątrz
+	 * społeczności.
+	 */
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onBanAppealEscalated(CommunityBanAppealEscalatedEvent event) {
+		moderationLogService.record(ModerationAction.COMMUNITY_BAN_APPEAL_ESCALATED, event.communityId(),
+				event.userId(), event.userId(), null, null, event.occurredAt());
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onBanEscalationAccepted(CommunityBanAppealEscalationAcceptedEvent event) {
+		moderationLogService.record(ModerationAction.COMMUNITY_BAN_ESCALATION_ACCEPTED, event.communityId(),
+				event.userId(), event.adminId(), null, null, event.occurredAt());
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onBanEscalationRejected(CommunityBanAppealEscalationRejectedEvent event) {
+		moderationLogService.record(ModerationAction.COMMUNITY_BAN_ESCALATION_REJECTED, event.communityId(),
+				event.userId(), event.adminId(), null, null, event.occurredAt());
 	}
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)

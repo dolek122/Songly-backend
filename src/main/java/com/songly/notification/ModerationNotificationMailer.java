@@ -2,6 +2,9 @@ package com.songly.notification;
 
 import com.songly.common.mail.MailSender;
 import com.songly.community.CommunityBanAppealAcceptedEvent;
+import com.songly.community.CommunityBanAppealEscalatedEvent;
+import com.songly.community.CommunityBanAppealEscalationAcceptedEvent;
+import com.songly.community.CommunityBanAppealEscalationRejectedEvent;
 import com.songly.community.CommunityBanAppealRejectedEvent;
 import com.songly.community.CommunityBanAppealSubmittedEvent;
 import com.songly.community.CommunityDirectory;
@@ -312,6 +315,67 @@ class ModerationNotificationMailer {
 						Moderacja społeczności „%s” w Songly rozpatrzyła Twoje odwołanie
 						i uznała, że ban pozostaje w mocy. Ta decyzja jest ostateczna dla
 						tego bana.
+
+						Zespół Songly""".formatted(community));
+	}
+
+	/**
+	 * Druga instancja (ADR 0028). Do <b>administracji platformy</b>, bo nie ma w
+	 * aplikacji kolejki, do której zaglądałaby sama z siebie — dokładnie ten sam
+	 * argument co przy odwołaniach od zawieszenia (ADR 0023). Bez treści odwołania:
+	 * tekst zbanowanego nie jedzie kanałem push (ADR 0015), czeka w kolejce spraw.
+	 */
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onBanAppealEscalated(CommunityBanAppealEscalatedEvent event) {
+		String community = communityName(event.communityId());
+		sendTo(adminDirectory.adminIds(), event.userId(), MailCategory.MODERATION_QUEUE,
+				"Songly — odwołanie przekazane do administracji", """
+						Cześć!
+
+						Zbanowany w społeczności „%s” przekazał swoje odwołanie do
+						administracji platformy, bo moderacja społeczności je odrzuciła.
+						Treść znajdziesz w aplikacji, w kolejce spraw drugiej instancji.
+
+						Zespół Songly""".formatted(community));
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onBanEscalationAccepted(CommunityBanAppealEscalationAcceptedEvent event) {
+		String community = communityName(event.communityId());
+		sendTo(Set.of(event.userId()), event.adminId(), MailCategory.DECISION_ABOUT_ME,
+				"Songly — administracja uchyliła ban w społeczności „%s”".formatted(community), """
+						Cześć!
+
+						Administracja Songly rozpatrzyła Twoje odwołanie i uchyliła ban w
+						społeczności „%s”. Możesz do niej wrócić.
+
+						Zespół Songly""".formatted(community));
+		// Moderatorzy muszą się dowiedzieć, że ich decyzja została uchylona — inaczej
+		// zbanowany wraca do społeczności bez żadnego wyjaśnienia i wygląda to na
+		// awarię (ten sam argument, od którego zaczął się ADR 0012).
+		sendToModerators(event.communityId(), "escalation", event.userId(),
+				"Songly — administracja uchyliła ban w społeczności „%s”".formatted(community), """
+						Cześć!
+
+						Administracja Songly rozpatrzyła odwołanie od banu w społeczności
+						„%s” i uchyliła tę decyzję, więc zbanowana osoba wraca do
+						społeczności.
+
+						Szczegóły sprawy znajdziesz w historii moderacji w aplikacji.
+
+						Zespół Songly""".formatted(community));
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onBanEscalationRejected(CommunityBanAppealEscalationRejectedEvent event) {
+		String community = communityName(event.communityId());
+		sendTo(Set.of(event.userId()), event.adminId(), MailCategory.DECISION_ABOUT_ME,
+				"Songly — administracja utrzymała ban w społeczności „%s”".formatted(community), """
+						Cześć!
+
+						Administracja Songly rozpatrzyła Twoje odwołanie od banu w
+						społeczności „%s” i utrzymała decyzję moderacji. To rozstrzygnięcie
+						jest ostateczne dla tego banu.
 
 						Zespół Songly""".formatted(community));
 	}

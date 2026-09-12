@@ -146,6 +146,18 @@ class CommunityController {
 		return ResponseEntity.noContent().build();
 	}
 
+	/**
+	 * Przekazanie odrzuconego odwołania do administracji platformy — druga
+	 * instancja (ADR 0028). Dostępne wyłącznie po odmowie moderacji społeczności:
+	 * to ona jest instancją domyślną (§8), a platforma wkracza tylko wtedy, gdy sam
+	 * zbanowany ją o to poprosi.
+	 */
+	@PostMapping("/{communityId}/ban-appeal/escalation")
+	ResponseEntity<Void> escalateBanAppeal(Authentication authentication, @PathVariable UUID communityId) {
+		communityService.escalateBanAppeal(communityId, currentUserId(authentication));
+		return ResponseEntity.noContent().build();
+	}
+
 	/** Odrzucenie odwołania — ban zostaje, sprawa tego bana jest zamknięta. */
 	@PostMapping("/{communityId}/bans/{userId}/appeal/rejection")
 	ResponseEntity<Void> rejectBanAppeal(Authentication authentication, @PathVariable UUID communityId,

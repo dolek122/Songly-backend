@@ -1,6 +1,8 @@
 package com.songly.notification;
 
 import com.songly.community.CommunityBanAppealAcceptedEvent;
+import com.songly.community.CommunityBanAppealEscalationAcceptedEvent;
+import com.songly.community.CommunityBanAppealEscalationRejectedEvent;
 import com.songly.community.CommunityBanAppealRejectedEvent;
 import com.songly.community.CommunityBanAppealSubmittedEvent;
 import com.songly.community.CommunityMemberBannedEvent;
@@ -114,6 +116,23 @@ class NotificationEventListener {
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onBanAppealAccepted(CommunityBanAppealAcceptedEvent event) {
 		notificationService.record(event.userId(), event.moderatorId(), NotificationType.BAN_APPEAL_ACCEPTED,
+				event.communityId(), event.occurredAt());
+	}
+
+	/**
+	 * Druga instancja (ADR 0028). W {@code MODERATION}, bo to odpowiedź na własną
+	 * petycję — nie da się odmówić odpowiedzi, o którą się prosiło (kryterium z ADR
+	 * 0017).
+	 */
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onBanEscalationAccepted(CommunityBanAppealEscalationAcceptedEvent event) {
+		notificationService.record(event.userId(), event.adminId(), NotificationType.BAN_ESCALATION_ACCEPTED,
+				event.communityId(), event.occurredAt());
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onBanEscalationRejected(CommunityBanAppealEscalationRejectedEvent event) {
+		notificationService.record(event.userId(), event.adminId(), NotificationType.BAN_ESCALATION_REJECTED,
 				event.communityId(), event.occurredAt());
 	}
 

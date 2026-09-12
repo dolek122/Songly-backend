@@ -5,6 +5,7 @@ import com.songly.community.dto.CommunityBanResponse;
 import com.songly.community.dto.CommunityMemberResponse;
 import com.songly.community.dto.CommunityMembershipStatus;
 import com.songly.community.dto.CommunityResponse;
+import com.songly.community.dto.EscalatedAppealResponse;
 import com.songly.community.dto.MembershipStatusResponse;
 import com.songly.profile.ProfileDirectory;
 import java.time.Duration;
@@ -291,6 +292,87 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 	 * zamknięta. Wymaga odwołania <b>oczekującego</b> przy banie <b>aktywnym</b>:
 	 * odwołanie przy banie wygasłym jest bezprzedmiotowe i nie ma na co odpowiadać.
 	 */
+	/**
+	 * Przekazanie odrzuconego odwołania do <b>drugiej instancji</b> (ADR 0028) —
+	 * administracji platformy. Wyłącznie ze stanu „odwołanie odrzucone": eskalacja
+	 * przed orzeczeniem pierwszej instancji omijałaby moderację społeczności, a to
+	 * ona jest tu instancją domyślną (Claude.md §8).
+	 *
+	 * <p>
+	 * Jedna eskalacja na ban — wychodzi z tego samego mechanizmu co jedno odwołanie
+	 * na ban (ADR 0017): ze stanu {@code REJECTED} wychodzi się bezpowrotnie, więc
+	 * drugi raz nie ma z czego eskalować.
+	 */
+	@Transactional
+	void escalateBanAppeal(UUID communityId, UUID userId) {
+		requireCommunity(communityId);
+		Instant now = Instant.now();
+		CommunityBan ban = banRepository.findById(new CommunityBanId(communityId, userId))
+				.filter(existing -> existing.isActiveAt(now)).orElseThrow(NoBanToAppealException::new);
+		if (!ban.hasRejectedAppeal()) {
+			throw new BanAppealNotEscalatableException();
+		}
+		ban.escalateAppeal(now);
+		eventPublisher.publishEvent(new CommunityBanAppealEscalatedEvent(communityId, userId, now));
+	}
+
+	/**
+	 * Kolejka drugiej instancji — sprawy skierowane do administracji, najstarsze
+	 * pierwsze. Bez paginacji, z tego samego powodu co wykazy administracyjne (ADR
+	 * 0021, 0022): to lista do przejrzenia, a eskalacji jest z natury tyle, ile
+	 * spraw, które przeszły dwa szczeble.
+	 */
+	@Transactional(readOnly = true)
+	List<EscalatedAppealResponse> escalatedAppeals() {
+		Instant now = Instant.now();
+		List<CommunityBan> escalated = banRepository
+				.findByAppealStatusOrderByAppealEscalatedAtAsc(BanAppealStatus.ESCALATED).stream()
+				.filter(ban -> ban.isActiveAt(now)).toList();
+		Map<UUID, String> names = communityRepository
+				.findAllById(escalated.stream().map(CommunityBan::getCommunityId).collect(Collectors.toSet())).stream()
+				.collect(Collectors.toMap(Community::getId, Community::getName));
+		return escalated.stream()
+				.map(ban -> new EscalatedAppealResponse(ban.getCommunityId(), names.get(ban.getCommunityId()),
+						ban.getUserId(), ban.getReason(), ban.getCreatedAt(), ban.getExpiresAt(), ban.getAppealText(),
+						ban.getAppealedAt(), ban.getAppealEscalatedAt()))
+				.toList();
+	}
+
+	/**
+	 * Druga instancja <b>uchyla</b> ban społeczności (ADR 0028). Jedyna operacja w
+	 * tym module, którą wykonuje ktoś z zewnątrz społeczności — i dlatego wymaga
+	 * wcześniejszej eskalacji: administracja nie przegląda cudzych banów z własnej
+	 * inicjatywy, tylko rozstrzyga sprawy, które sam zbanowany do niej skierował.
+	 * Autonomia społeczności zostaje regułą, przegląd platformy — wyjątkiem.
+	 */
+	@Transactional
+	void overturnBan(UUID communityId, UUID targetUserId, UUID adminId) {
+		requireCommunity(communityId);
+		Instant now = Instant.now();
+		CommunityBan ban = banRepository.findById(new CommunityBanId(communityId, targetUserId))
+				.filter(existing -> existing.isActiveAt(now)).filter(CommunityBan::hasEscalatedAppeal)
+				.orElseThrow(EscalatedAppealNotFoundException::new);
+		banRepository.delete(ban);
+		eventPublisher
+				.publishEvent(new CommunityBanAppealEscalationAcceptedEvent(communityId, targetUserId, adminId, now));
+		// Dziennik moderacji notuje samo zdjęcie banu z tego samego zdarzenia co przy
+		// decyzji moderatora (ADR 0024) — kto je podjął, niesie osobne pole.
+		eventPublisher.publishEvent(new CommunityBanLiftedEvent(communityId, targetUserId, adminId, now));
+	}
+
+	/** Druga instancja utrzymuje ban — koniec drabiny (ADR 0028). */
+	@Transactional
+	void rejectBanAppealEscalation(UUID communityId, UUID targetUserId, UUID adminId) {
+		requireCommunity(communityId);
+		Instant now = Instant.now();
+		CommunityBan ban = banRepository.findById(new CommunityBanId(communityId, targetUserId))
+				.filter(existing -> existing.isActiveAt(now)).filter(CommunityBan::hasEscalatedAppeal)
+				.orElseThrow(EscalatedAppealNotFoundException::new);
+		ban.rejectEscalation();
+		eventPublisher
+				.publishEvent(new CommunityBanAppealEscalationRejectedEvent(communityId, targetUserId, adminId, now));
+	}
+
 	@Transactional
 	void rejectBanAppeal(UUID communityId, UUID requesterId, UUID targetUserId) {
 		requireCommunity(communityId);
