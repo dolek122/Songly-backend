@@ -66,11 +66,14 @@ class ContentServiceTest {
 
 	private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
 
+	@Mock
+	private com.songly.identity.SuspendedAccounts suspendedAccounts;
+
 	@BeforeEach
 	void setUp() {
 		contentService = new ContentService(postRepository, likeRepository, commentRepository, shareRepository,
 				reportRepository, profileDirectory, socialGraph, communityMembership, objectStorage, eventPublisher,
-				new ReportProperties(), meterRegistry);
+				new ReportProperties(), meterRegistry, suspendedAccounts);
 	}
 
 	@Test
