@@ -109,8 +109,13 @@ Kluczowe relacje (bez szczegółów kolumn — to na etapie implementacji):
 
 ## 8. Dopasowywanie i społeczności
 
-- MVP: podobieństwo gatunków między dwoma użytkownikami liczone prostym współczynnikiem Jaccarda (część wspólna gatunków / suma unikalnych) — tanie obliczeniowo, wystarczające żeby zweryfikować, czy funkcja w ogóle ma sens dla userów.
-- Nie buduj od razu ML-owego silnika rekomendacji — to premature optimization dla produktu bez danych o zachowaniu userów. Najpierw zbierz dane (polubienia, komentarze, kogo user obserwuje), potem myśl o modelu.
+- Podobieństwo gatunków liczone **ważonym** współczynnikiem Jaccarda (ADR 0029): suma wag części wspólnej przez sumę wag złączenia, gdzie wagą gatunku jest jego rzadkość `ln(1 + N/n)`. Liczone na żądanie, bez tabeli `match_scores`.
+  - **Wagą jest rzadkość, bo bez niej wynik nie znaczył tego, co obiecywał.** Surowy Jaccard (tak było do ADR 0029) traktował „Pop" wskazany przez połowę serwisu identycznie jak „Dark Ambient" wskazany przez dwie osoby — a wspólny „Pop" nie mówi o nikim niczego. Skutek był odwrotny do celu funkcji: wszyscy z mainstreamowym gustem wyglądali na identycznie dopasowanych do wszystkich.
+  - **Popularność liczona globalnie**, nie wśród kandydatów z danego żądania — inaczej te same dwie osoby widziałyby różne wyniki dopasowania do siebie samych, zależnie od tego, która pyta. „Niszowy" musi znaczyć „rzadki w serwisie".
+  - **Więcej wspólnych gatunków nie znaczy już automatycznie wyżej** — jeden wspólny niszowy bije dwa mainstreamowe, i to jest cel, nie efekt uboczny. Konsekwencja dla testów: wyniki zależą od stanu całej bazy, więc dokładne liczby asertujemy tylko przy jawnie ustawionej popularności (przy równej popularności wagi się skracają i wychodzi dokładnie surowy Jaccard).
+  - **Mianownik zostaje złączeniem**, nie liczbą wspólnych gatunków: kto wskazał wszystko, ma być słabym dopasowaniem do każdego, bo jego zbiór nie niesie informacji o guście.
+  - **Zawieszone konta wypadają z propozycji** (ADR 0029, luka po ADR 0026) — dopasowanie to zaproszenie do kontaktu, a nie odczyt treści; proponowanie kontaktu z kimś, komu platforma odebrała dostęp za nękanie, szkodzi temu, komu to proponujemy. Blokady odsiewa warstwa niżej (`blockedEitherWayIds`).
+- Nie buduj od razu ML-owego silnika rekomendacji — to premature optimization dla produktu bez danych o zachowaniu userów. Najpierw zbierz dane (polubienia, komentarze, kogo user obserwuje), potem myśl o modelu. Ważenie rzadkością tego nie narusza: to wciąż jedna formuła nad danymi, które user sam o sobie podał, wyjaśnialna jednym zdaniem — zmienia się waga składnika, nie natura metody.
 - Społeczności to grupy tematyczne (np. po gatunku) — osobny moduł, bo logika członkostwa/moderacji różni się od zwykłego social graphu.
 - **Posty w społecznościach**: `posts.community_id` (nullable) — `NULL` to zwykły post, wartość to post w społeczności. Celowo jedna tabela, nie osobna `community_posts`: post to ten sam byt niezależnie od miejsca publikacji, a rozdzielenie zduplikowałoby lajki, komentarze i udostępnienia razem z całą ich obsługą. Przyjęte reguły:
   - **Czyta każdy zalogowany, publikują członkowie.** Społeczności są w pełni publiczne (listowanie, podglądanie i dołączanie nie wymagają zgody właściciela), więc ukrywanie treści przed nie-członkiem byłoby ochroną pozorną — dołączenie to jedno żądanie. Wymóg członkostwa przy pisaniu sprawia tylko, że publikacja jest świadomą decyzją.
@@ -278,7 +283,7 @@ Dopasowywanie po gatunkach, społeczności, powiadomienia, udostępnianie, podst
 **Faza 3 — skala (w toku)**
 - ✅ Ręczny fallback "co teraz słucham" dla serwisów bez oficjalnego API (ADR 0005) — świadomie zamiast integracji z nieoficjalnymi/reverse-engineered API (Claude.md §7).
 - ⏸️ Integracja z kolejnymi serwisami muzycznymi przez *oficjalne* API — odłożone, dopóki takie API nie pojawi się dla YouTube Music/Apple Music/Tidal.
-- ⏸️ Bardziej zaawansowane rekomendacje na bazie realnych danych o zachowaniu userów — odłożone celowo (Claude.md §8): najpierw trzeba zebrać dane zachowań (mamy już analytics, ale nie per-user), potem myśleć o modelu.
+- ⏸️ Bardziej zaawansowane rekomendacje na bazie realnych danych o zachowaniu userów — odłożone celowo (Claude.md §8): najpierw trzeba zebrać dane zachowań (mamy już analytics, ale nie per-user), potem myśleć o modelu. Samo dopasowywanie dostało w międzyczasie ważenie rzadkością gatunku (ADR 0029) — poprawa jakości wyniku, która nie wymagała żadnych danych o zachowaniu.
 - ⏸️ Aplikacja webowa — poza zakresem tego repo (backend); do podjęcia gdy zacznie się prace nad `web/`.
 - ⏸️ Wydzielanie modułów do serwisów — celowo nie planowane szczegółowo teraz (Claude.md §10), dopóki konkretny moduł nie pokaże zmierzonej potrzeby skalowania.
 

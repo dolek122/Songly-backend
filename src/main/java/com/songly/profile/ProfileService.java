@@ -170,6 +170,22 @@ class ProfileService implements ProfileDirectory {
 
 	@Override
 	@Transactional(readOnly = true)
+	public Map<UUID, Long> genreUserCounts(Collection<UUID> genreIds) {
+		if (genreIds.isEmpty()) {
+			return Map.of();
+		}
+		return userGenreRepository.countUsersByGenreIdIn(genreIds).stream().collect(Collectors
+				.toMap(UserGenreRepository.GenreCount::getGenreId, UserGenreRepository.GenreCount::getUserCount));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public long usersWithAnyGenreCount() {
+		return userGenreRepository.countDistinctUsers();
+	}
+
+	@Override
+	@Transactional(readOnly = true)
 	public Set<UUID> userIdsWithAnyGenre(Collection<UUID> genreIds) {
 		if (genreIds.isEmpty()) {
 			return Set.of();
