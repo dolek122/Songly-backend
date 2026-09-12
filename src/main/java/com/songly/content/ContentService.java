@@ -4,6 +4,7 @@ import com.songly.common.media.ImageType;
 import com.songly.common.media.UnsupportedImageException;
 import com.songly.common.storage.ObjectStorage;
 import com.songly.community.CommunityMembership;
+import com.songly.identity.SuspendedAccounts;
 import com.songly.content.dto.CommentResponse;
 import com.songly.content.dto.PostImageResponse;
 import com.songly.content.dto.PostReportResponse;
@@ -43,6 +44,7 @@ class ContentService {
 	private final ApplicationEventPublisher eventPublisher;
 	private final ReportProperties reportProperties;
 	private final MeterRegistry meterRegistry;
+	private final SuspendedAccounts suspendedAccounts;
 
 	/**
 	 * Prefiks kluczy zdjęć postów. Stała, bo ten sam ciąg musi być użyty przy
@@ -64,7 +66,8 @@ class ContentService {
 	ContentService(PostRepository postRepository, LikeRepository likeRepository, CommentRepository commentRepository,
 			ShareRepository shareRepository, PostReportRepository reportRepository, ProfileDirectory profileDirectory,
 			SocialGraph socialGraph, CommunityMembership communityMembership, ObjectStorage objectStorage,
-			ApplicationEventPublisher eventPublisher, ReportProperties reportProperties, MeterRegistry meterRegistry) {
+			ApplicationEventPublisher eventPublisher, ReportProperties reportProperties, MeterRegistry meterRegistry,
+			SuspendedAccounts suspendedAccounts) {
 		this.postRepository = postRepository;
 		this.likeRepository = likeRepository;
 		this.commentRepository = commentRepository;
@@ -77,6 +80,7 @@ class ContentService {
 		this.eventPublisher = eventPublisher;
 		this.reportProperties = reportProperties;
 		this.meterRegistry = meterRegistry;
+		this.suspendedAccounts = suspendedAccounts;
 	}
 
 	@Transactional
@@ -529,9 +533,26 @@ class ContentService {
 	 * chowa obie strony przed sobą nawzajem, więc zablokowany traci widok tak samo
 	 * jak blokujący. Jedno zapytanie na żądanie — wynik wędruje w dół zamiast być
 	 * pobierany osobno przez każdy filtr.
+	 *
+	 * <p>
+	 * Do tego <b>wszystkie konta zawieszone</b> (ADR 0026), niezależnie od
+	 * pytającego: zawieszenie odcinało konto od pisania i czytania (ADR 0022), ale
+	 * jego treści stały dalej — zawieszało się kogoś za nękanie, a nękające posty
+	 * zostawały. To jest jedyne miejsce, w którym trzeba to dopisać: wszystkie
+	 * ścieżki odczytu i zapisu modułu przechodzą przez ten zbiór, więc ukrycie
+	 * obejmuje feed, listę publiczną, oś czasu, posty społeczności, pojedynczy post
+	 * i komentarze — a także lajk, udostępnienie i komentarz pod ukrytym postem.
+	 *
+	 * <p>
+	 * <b>Ukrywamy przy odczycie, nigdy nie kasujemy</b>, dokładnie jak przy
+	 * blokadach: zawieszenia bywają czasowe i zdejmowane, a zdjęcie musi przywrócić
+	 * wszystko. Kasowanie byłoby nieodwracalne, więc zamieniałoby zawieszenie na
+	 * karę cięższą od samego zawieszenia.
 	 */
 	private Set<UUID> hiddenAuthorsFor(UUID viewerId) {
-		return socialGraph.blockedEitherWayIds(viewerId);
+		Set<UUID> hidden = new HashSet<>(socialGraph.blockedEitherWayIds(viewerId));
+		hidden.addAll(suspendedAccounts.suspendedUserIds());
+		return hidden;
 	}
 
 	/**

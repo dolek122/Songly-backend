@@ -3,6 +3,7 @@ package com.songly.profile;
 import com.songly.common.media.ImageType;
 import com.songly.common.media.UnsupportedImageException;
 import com.songly.common.storage.ObjectStorage;
+import com.songly.identity.SuspendedAccounts;
 import com.songly.profile.dto.GenreResponse;
 import com.songly.profile.dto.ProfileResponse;
 import com.songly.profile.dto.PublicProfileResponse;
@@ -10,6 +11,7 @@ import com.songly.profile.dto.UpdateProfileRequest;
 import com.songly.profile.dto.UserSearchResponse;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -30,15 +32,17 @@ class ProfileService implements ProfileDirectory {
 	private final UserGenreRepository userGenreRepository;
 	private final ObjectStorage objectStorage;
 	private final ApplicationEventPublisher eventPublisher;
+	private final SuspendedAccounts suspendedAccounts;
 
 	ProfileService(ProfileRepository profileRepository, GenreRepository genreRepository,
 			UserGenreRepository userGenreRepository, ObjectStorage objectStorage,
-			ApplicationEventPublisher eventPublisher) {
+			ApplicationEventPublisher eventPublisher, SuspendedAccounts suspendedAccounts) {
 		this.profileRepository = profileRepository;
 		this.genreRepository = genreRepository;
 		this.userGenreRepository = userGenreRepository;
 		this.objectStorage = objectStorage;
 		this.eventPublisher = eventPublisher;
+		this.suspendedAccounts = suspendedAccounts;
 	}
 
 	/**
@@ -65,9 +69,19 @@ class ProfileService implements ProfileDirectory {
 	 * Publiczny profil dowolnego użytkownika (do oglądania cudzych profili). Rzuca
 	 * {@link ProfileNotFoundException} (→ 404) gdy profilu nie ma. Ulubione gatunki
 	 * dokładamy tą samą ścieżką co dla własnego profilu — to dane publiczne.
+	 *
+	 * <p>
+	 * Profil konta zawieszonego zgłaszamy jako <b>nieistniejący</b> (ADR 0026).
+	 * Ukrycie w wyszukiwarce bez ukrycia samego profilu byłoby połowicznym
+	 * środkiem: wystarczyłby zapamiętany link. 404, nie 403 — status konta to nie
+	 * informacja dla osób postronnych, ta sama zasada co przy postach zablokowanych
+	 * autorów.
 	 */
 	@Transactional(readOnly = true)
 	PublicProfileResponse getPublicProfile(UUID userId) {
+		if (suspendedAccounts.suspendedUserIds().contains(userId)) {
+			throw new ProfileNotFoundException();
+		}
 		Profile profile = profileRepository.findByUserId(userId).orElseThrow(ProfileNotFoundException::new);
 		return new PublicProfileResponse(profile.getUserId(), profile.getDisplayName(), profile.getBio(),
 				avatarUrl(profile), getFavoriteGenres(userId));
@@ -80,6 +94,22 @@ class ProfileService implements ProfileDirectory {
 	 * pytający jest wykluczany z wyników. Wyszukiwarka celowo nie filtruje po
 	 * blokadach (to dane modułu social, poza granicą §2) — wysłanie zaproszenia do
 	 * zablokowanego i tak odrzuci moduł social.
+	 *
+	 * <p>
+	 * Konta <b>zawieszone</b> odsiewa natomiast (ADR 0026), i nie jest to
+	 * niekonsekwencja wobec zdania wyżej: blokada to relacja dwóch osób, której ten
+	 * moduł nie ma prawa znać, a zawieszenie to stan konta, czyli dane modułu
+	 * identity — od którego profile już zależy. Bez tego filtru sankcja platformowa
+	 * zostawiała nękającego w wyszukiwarce, czyli tam, gdzie się go szuka.
+	 *
+	 * <p>
+	 * Filtr jest <b>w zapytaniu</b>, nie po pobraniu strony: odsiewanie po fakcie
+	 * psuje paginację (strona o rozmiarze 20 wracałaby z 19 wynikami, a
+	 * {@code totalElements} liczyłby też ukrytych). Pusty zbiór zawieszeń jest tu
+	 * przypadkiem normalnym i bezpiecznym tylko dlatego, że wrzucamy do niego
+	 * pytającego — {@code not in ()} nie jest w SQL-u prawdą dla żadnego wiersza,
+	 * więc wyszukiwarka zwracałaby wtedy pustkę wszystkim (ta sama pułapka co przy
+	 * filtrze blokad, §9).
 	 */
 	@Transactional(readOnly = true)
 	Page<UserSearchResponse> searchUsers(UUID requesterId, String query, Pageable pageable) {
@@ -87,7 +117,9 @@ class ProfileService implements ProfileDirectory {
 		if (trimmed.isEmpty()) {
 			return Page.empty(pageable);
 		}
-		return profileRepository.findByDisplayNameContainingIgnoreCaseAndUserIdNot(trimmed, requesterId, pageable).map(
+		Set<UUID> excluded = new HashSet<>(suspendedAccounts.suspendedUserIds());
+		excluded.add(requesterId);
+		return profileRepository.searchByDisplayName(trimmed, excluded, pageable).map(
 				profile -> new UserSearchResponse(profile.getUserId(), profile.getDisplayName(), avatarUrl(profile)));
 	}
 

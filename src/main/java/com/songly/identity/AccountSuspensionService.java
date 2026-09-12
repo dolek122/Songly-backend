@@ -6,6 +6,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
  * filtr czyta przy każdym żądaniu.
  */
 @Service
-class AccountSuspensionService {
+class AccountSuspensionService implements SuspendedAccounts {
 
 	private static final Logger log = LoggerFactory.getLogger(AccountSuspensionService.class);
 
@@ -171,6 +172,17 @@ class AccountSuspensionService {
 	 * {@code ACCOUNT_SUSPENDED} i nie powinien musieć rozróżniać „nie jesteś
 	 * zawieszony" od „nie ma takiego zasobu".
 	 */
+	/**
+	 * Konta, których treści trzeba ukryć (ADR 0026). Wygasłe zawieszenia nie
+	 * wchodzą — treści wracają same, bez niczyjej akcji, dokładnie jak konto (ADR
+	 * 0014).
+	 */
+	@Override
+	@Transactional(readOnly = true)
+	public Set<UUID> suspendedUserIds() {
+		return Set.copyOf(userRepository.findSuspendedIds(Instant.now()));
+	}
+
 	@Transactional(readOnly = true)
 	SuspensionResponse ownSuspension(UUID userId) {
 		Instant now = Instant.now();

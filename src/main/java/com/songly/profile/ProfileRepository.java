@@ -7,6 +7,8 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 interface ProfileRepository extends JpaRepository<Profile, UUID> {
 
@@ -17,9 +19,18 @@ interface ProfileRepository extends JpaRepository<Profile, UUID> {
 	List<Profile> findByUserIdIn(Collection<UUID> userIds);
 
 	/**
-	 * Wyszukiwanie po fragmencie nazwy (case-insensitive), z pominięciem samego
-	 * siebie.
+	 * Wyszukiwanie po fragmencie nazwy (case-insensitive) z pominięciem podanych
+	 * identyfikatorów: pytającego i kont zawieszonych (ADR 0026).
+	 *
+	 * <p>
+	 * Jedno {@code not in} zamiast dwóch warunków, bo wołający i tak musi zbudować
+	 * ten zbiór — a przy rozdzieleniu łatwo dopisać filtr w jednym miejscu i
+	 * zapomnieć o drugim.
 	 */
-	Page<Profile> findByDisplayNameContainingIgnoreCaseAndUserIdNot(String displayName, UUID excludedUserId,
-			Pageable pageable);
+	@Query("""
+			select p from Profile p
+			where lower(p.displayName) like lower(concat('%', :displayName, '%')) and p.userId not in :excludedUserIds
+			""")
+	Page<Profile> searchByDisplayName(@Param("displayName") String displayName,
+			@Param("excludedUserIds") Collection<UUID> excludedUserIds, Pageable pageable);
 }
