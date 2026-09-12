@@ -8,6 +8,7 @@ import com.songly.identity.dto.PasswordResetConfirmRequest;
 import com.songly.identity.dto.PasswordResetRequest;
 import com.songly.identity.dto.RefreshRequest;
 import com.songly.identity.dto.RegisterRequest;
+import com.songly.identity.dto.SuspensionAppealRequest;
 import com.songly.identity.dto.SuspensionResponse;
 import com.songly.identity.dto.VerifyEmailRequest;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -141,5 +142,18 @@ class AuthController {
 	@SecurityRequirement(name = "bearerAuth")
 	SuspensionResponse suspension(Authentication authentication) {
 		return suspensionService.ownSuspension((UUID) authentication.getPrincipal());
+	}
+
+	/**
+	 * Odwołanie od własnego zawieszenia (ADR 0023) — drugi, obok odczytu statusu,
+	 * endpoint dostępny zawieszonemu koncie. Treść czyta wyłącznie administracja, w
+	 * wykazie zawieszeń.
+	 */
+	@PostMapping("/me/suspension/appeal")
+	@SecurityRequirement(name = "bearerAuth")
+	ResponseEntity<Void> appealSuspension(Authentication authentication,
+			@Valid @RequestBody SuspensionAppealRequest request) {
+		suspensionService.appeal((UUID) authentication.getPrincipal(), request.text());
+		return ResponseEntity.noContent().build();
 	}
 }

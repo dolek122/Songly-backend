@@ -2,6 +2,8 @@ package com.songly.identity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -36,6 +38,17 @@ class User {
 	/** {@code null} przy trwającym zawieszeniu = bezterminowe. */
 	@Column(name = "suspension_expires_at")
 	private Instant suspensionExpiresAt;
+
+	/** Odwołanie od zawieszenia (ADR 0023); {@code null} = nie odwołano się. */
+	@Column(name = "suspension_appeal_text", length = 1000)
+	private String suspensionAppealText;
+
+	@Column(name = "suspension_appealed_at")
+	private Instant suspensionAppealedAt;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "suspension_appeal_status", length = 20)
+	private SuspensionAppealStatus suspensionAppealStatus;
 
 	protected User() {
 	}
@@ -89,6 +102,57 @@ class User {
 		this.suspendedAt = null;
 		this.suspensionReason = null;
 		this.suspensionExpiresAt = null;
+		resetAppeal();
+	}
+
+	/**
+	 * Czyści odwołanie (ADR 0023). Wołane przy zdjęciu zawieszenia oraz przy
+	 * <b>nowym</b> zawieszeniu konta aktywnego — nowa sprawa daje świeże prawo do
+	 * odwołania, nawet po wcześniejszym odrzuceniu.
+	 *
+	 * <p>
+	 * Celowo <b>nie</b> przy poprawianiu powodu albo terminu trwającego
+	 * zawieszenia: to ta sama sprawa, a wyczyszczenie pól skasowałoby po cichu
+	 * złożoną petycję.
+	 */
+	void resetAppeal() {
+		this.suspensionAppealText = null;
+		this.suspensionAppealedAt = null;
+		this.suspensionAppealStatus = null;
+	}
+
+	/**
+	 * Jedno odwołanie na zawieszenie — drugie się nie zdarza, niezależnie od losu
+	 * pierwszego ({@code hasAppeal} pilnuje tego u wołającego).
+	 */
+	void submitAppeal(String text, Instant at) {
+		this.suspensionAppealText = text;
+		this.suspensionAppealedAt = at;
+		this.suspensionAppealStatus = SuspensionAppealStatus.PENDING;
+	}
+
+	void rejectAppeal() {
+		this.suspensionAppealStatus = SuspensionAppealStatus.REJECTED;
+	}
+
+	boolean hasAppeal() {
+		return suspensionAppealStatus != null;
+	}
+
+	boolean hasPendingAppeal() {
+		return suspensionAppealStatus == SuspensionAppealStatus.PENDING;
+	}
+
+	String getSuspensionAppealText() {
+		return suspensionAppealText;
+	}
+
+	Instant getSuspensionAppealedAt() {
+		return suspensionAppealedAt;
+	}
+
+	SuspensionAppealStatus getSuspensionAppealStatus() {
+		return suspensionAppealStatus;
 	}
 
 	/**

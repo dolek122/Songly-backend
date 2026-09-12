@@ -10,8 +10,12 @@ import com.songly.community.CommunityMembership;
 import com.songly.content.CommunityPostRemovedEvent;
 import com.songly.content.PostReportDismissedEvent;
 import com.songly.content.PostReportedEvent;
+import com.songly.identity.AdminDirectory;
 import com.songly.identity.UserEmailDirectory;
 import com.songly.identity.UserSuspendedEvent;
+import com.songly.identity.UserSuspensionAppealAcceptedEvent;
+import com.songly.identity.UserSuspensionAppealRejectedEvent;
+import com.songly.identity.UserSuspensionAppealSubmittedEvent;
 import com.songly.identity.UserSuspensionLiftedEvent;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
@@ -83,11 +87,12 @@ class ModerationNotificationMailer {
 	private final ModerationMailProperties properties;
 	private final MeterRegistry meterRegistry;
 	private final NotificationMailPreferenceService mailPreferences;
+	private final AdminDirectory adminDirectory;
 
 	ModerationNotificationMailer(MailSender mailSender, UserEmailDirectory userEmailDirectory,
 			CommunityDirectory communityDirectory, CommunityMembership communityMembership,
 			StringRedisTemplate redisTemplate, ModerationMailProperties properties, MeterRegistry meterRegistry,
-			NotificationMailPreferenceService mailPreferences) {
+			NotificationMailPreferenceService mailPreferences, AdminDirectory adminDirectory) {
 		this.mailSender = mailSender;
 		this.userEmailDirectory = userEmailDirectory;
 		this.communityDirectory = communityDirectory;
@@ -96,6 +101,7 @@ class ModerationNotificationMailer {
 		this.properties = properties;
 		this.meterRegistry = meterRegistry;
 		this.mailPreferences = mailPreferences;
+		this.adminDirectory = adminDirectory;
 	}
 
 	/**
@@ -162,6 +168,58 @@ class ModerationNotificationMailer {
 		long days = Duration.between(event.occurredAt(), event.expiresAt()).toDays();
 		return "Zawieszenie jest czasowe — wygasa za %d %s i wtedy konto wróci samo.".formatted(days,
 				days == 1 ? "dzień" : "dni");
+	}
+
+	/**
+	 * Do <b>wszystkich administratorów</b> (ADR 0023) — wykaz zawieszeń jest
+	 * jednocześnie kolejką odwołań, a kolejka bez powiadomienia to narzędzie,
+	 * którego nic nie uruchamia. Tu jest to ostrzejsze niż przy zgłoszeniach
+	 * społecznościowych: odwołanie przychodzi od użytkownika, więc bez maila nikt z
+	 * administracji nie ma skąd o nim wiedzieć.
+	 *
+	 * <p>
+	 * Bez odstępu wyciszającego (ADR 0018): odwołanie jest jedno na zawieszenie, a
+	 * zawieszenia nakłada ręcznie administrator, więc wolumen jest ograniczony
+	 * strukturalnie, nie czasowo. Bez treści odwołania — tekst od użytkownika nie
+	 * jedzie kanałem push (ADR 0015).
+	 */
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onSuspensionAppealSubmitted(UserSuspensionAppealSubmittedEvent event) {
+		sendTo(adminDirectory.adminIds(), event.userId(), MailCategory.MODERATION_QUEUE,
+				"Songly — odwołanie od zawieszenia konta", """
+						Cześć!
+
+						Zawieszony użytkownik odwołał się od decyzji. Treść odwołania
+						znajdziesz w aplikacji, w wykazie zawieszonych kont.
+
+						Odwołanie jest jedno na zawieszenie, więc kolejnych wiadomości w tej
+						sprawie nie będzie.
+
+						Zespół Songly""");
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onSuspensionAppealAccepted(UserSuspensionAppealAcceptedEvent event) {
+		sendTo(Set.of(event.userId()), null, MailCategory.DECISION_ABOUT_ME, "Songly — Twoje odwołanie zostało uznane",
+				"""
+						Cześć!
+
+						Uznaliśmy Twoje odwołanie — zawieszenie konta zostało zdjęte i
+						możesz znów korzystać z Songly normalnie.
+
+						Zespół Songly""");
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onSuspensionAppealRejected(UserSuspensionAppealRejectedEvent event) {
+		sendTo(Set.of(event.userId()), null, MailCategory.DECISION_ABOUT_ME,
+				"Songly — Twoje odwołanie zostało odrzucone", """
+						Cześć!
+
+						Rozpatrzyliśmy Twoje odwołanie i zawieszenie konta pozostaje w mocy.
+						Ta decyzja jest ostateczna dla tego zawieszenia.
+
+						Zespół Songly""");
 	}
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)

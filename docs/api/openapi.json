@@ -1089,6 +1089,17 @@
       },
       "SuspendedAccountResponse" : {
         "properties" : {
+          "appealStatus" : {
+            "enum" : [ "PENDING", "REJECTED" ],
+            "type" : "string"
+          },
+          "appealText" : {
+            "type" : "string"
+          },
+          "appealedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
           "expiresAt" : {
             "format" : "date-time",
             "type" : "string"
@@ -1107,8 +1118,27 @@
         },
         "type" : "object"
       },
+      "SuspensionAppealRequest" : {
+        "properties" : {
+          "text" : {
+            "maxLength" : 1000,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "text" ],
+        "type" : "object"
+      },
       "SuspensionResponse" : {
         "properties" : {
+          "appealStatus" : {
+            "enum" : [ "PENDING", "REJECTED" ],
+            "type" : "string"
+          },
+          "appealedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
           "expiresAt" : {
             "format" : "date-time",
             "type" : "string"
@@ -1372,6 +1402,29 @@
         "tags" : [ "admin-controller" ]
       }
     },
+    "/api/v1/admin/users/{userId}/suspension/appeal/rejection" : {
+      "post" : {
+        "operationId" : "rejectSuspensionAppeal",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "admin-controller" ]
+      }
+    },
     "/api/v1/analytics/summary" : {
       "get" : {
         "operationId" : "summary",
@@ -1488,6 +1541,30 @@
                 }
               }
             },
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/api/v1/auth/me/suspension/appeal" : {
+      "post" : {
+        "operationId" : "appealSuspension",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SuspensionAppealRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
             "description" : "OK"
           }
         },

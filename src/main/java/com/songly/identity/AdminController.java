@@ -12,6 +12,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -65,9 +66,23 @@ class AdminController {
 		return ResponseEntity.noContent().build();
 	}
 
+	/**
+	 * Zdjęcie zawieszenia jest też <b>uznaniem</b> wiszącego odwołania (ADR 0023) —
+	 * to ta sama decyzja, więc nie ma osobnego endpointu uznania.
+	 */
 	@DeleteMapping("/users/{userId}/suspension")
 	ResponseEntity<Void> liftSuspension(Authentication authentication, @PathVariable UUID userId) {
 		suspensionService.lift(userId, currentUserId(authentication));
+		return ResponseEntity.noContent().build();
+	}
+
+	/**
+	 * Odrzucenie odwołania — zawieszenie zostaje, sprawa tego zawieszenia
+	 * zamknięta.
+	 */
+	@PostMapping("/users/{userId}/suspension/appeal/rejection")
+	ResponseEntity<Void> rejectSuspensionAppeal(Authentication authentication, @PathVariable UUID userId) {
+		suspensionService.rejectAppeal(userId, currentUserId(authentication));
 		return ResponseEntity.noContent().build();
 	}
 

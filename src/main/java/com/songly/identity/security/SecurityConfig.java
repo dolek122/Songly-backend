@@ -64,6 +64,12 @@ class SecurityConfig {
 						.requestMatchers(HttpMethod.DELETE, "/api/v1/auth/me")
 						.hasAnyAuthority(JwtAuthenticationFilter.USER_AUTHORITY,
 								JwtAuthenticationFilter.SUSPENDED_AUTHORITY)
+						// Odwołanie od zawieszenia (ADR 0023) — bez tego wpisu zawieszony nie
+						// miałby jak zakwestionować decyzji, a sam fakt jej poznania byłby
+						// tylko lepiej opisaną ścianą.
+						.requestMatchers(HttpMethod.POST, "/api/v1/auth/me/suspension/appeal")
+						.hasAnyAuthority(JwtAuthenticationFilter.USER_AUTHORITY,
+								JwtAuthenticationFilter.SUSPENDED_AUTHORITY)
 						// Reszta wymaga PEŁNYCH uprawnień konta, nie samego uwierzytelnienia:
 						// dzięki temu każdy nowy endpoint jest domyślnie zamknięty dla
 						// zawieszonego, zamiast wymagać dopisania sprawdzenia w kodzie.
