@@ -26,6 +26,17 @@ class User {
 	@Column(name = "is_admin", nullable = false)
 	private boolean admin;
 
+	/** {@code null} = konto aktywne (ADR 0022). */
+	@Column(name = "suspended_at")
+	private Instant suspendedAt;
+
+	@Column(name = "suspension_reason", length = 500)
+	private String suspensionReason;
+
+	/** {@code null} przy trwającym zawieszeniu = bezterminowe. */
+	@Column(name = "suspension_expires_at")
+	private Instant suspensionExpiresAt;
+
 	protected User() {
 	}
 
@@ -59,6 +70,45 @@ class User {
 
 	void changePassword(String newPasswordHash) {
 		this.passwordHash = newPasswordHash;
+	}
+
+	/**
+	 * Zawieszenie konta (ADR 0022). {@code expiresAt} {@code null} = bezterminowo.
+	 * Nadpisuje istniejące zawieszenie w całości — zmiana powodu albo terminu to ta
+	 * sama decyzja podjęta na nowo, w odróżnieniu od banu społecznościowego, gdzie
+	 * aktywny wiersz jest nietykalny (ADR 0014). Powód: zawiesza administrator,
+	 * więc nie ma tu wyścigu dwóch moderatorów, przed którym ta reguła chroniła.
+	 */
+	void suspend(String reason, Instant at, Instant expiresAt) {
+		this.suspendedAt = at;
+		this.suspensionReason = reason;
+		this.suspensionExpiresAt = expiresAt;
+	}
+
+	void liftSuspension() {
+		this.suspendedAt = null;
+		this.suspensionReason = null;
+		this.suspensionExpiresAt = null;
+	}
+
+	/**
+	 * Wygasanie jest leniwe — wiersz zostaje, a zawieszenie po terminie po prostu
+	 * przestaje się liczyć (ADR 0014).
+	 */
+	public boolean isSuspendedAt(Instant now) {
+		return suspendedAt != null && (suspensionExpiresAt == null || suspensionExpiresAt.isAfter(now));
+	}
+
+	Instant getSuspendedAt() {
+		return suspendedAt;
+	}
+
+	String getSuspensionReason() {
+		return suspensionReason;
+	}
+
+	Instant getSuspensionExpiresAt() {
+		return suspensionExpiresAt;
 	}
 
 	/**

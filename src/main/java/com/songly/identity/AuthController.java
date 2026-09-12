@@ -8,6 +8,7 @@ import com.songly.identity.dto.PasswordResetConfirmRequest;
 import com.songly.identity.dto.PasswordResetRequest;
 import com.songly.identity.dto.RefreshRequest;
 import com.songly.identity.dto.RegisterRequest;
+import com.songly.identity.dto.SuspensionResponse;
 import com.songly.identity.dto.VerifyEmailRequest;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
@@ -16,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -30,12 +32,14 @@ class AuthController {
 	private final AuthService authService;
 	private final RegistrationService registrationService;
 	private final PasswordResetService passwordResetService;
+	private final AccountSuspensionService suspensionService;
 
 	AuthController(AuthService authService, RegistrationService registrationService,
-			PasswordResetService passwordResetService) {
+			PasswordResetService passwordResetService, AccountSuspensionService suspensionService) {
 		this.authService = authService;
 		this.registrationService = registrationService;
 		this.passwordResetService = passwordResetService;
+		this.suspensionService = suspensionService;
 	}
 
 	/**
@@ -126,5 +130,16 @@ class AuthController {
 			@Valid @RequestBody DeleteAccountRequest request) {
 		authService.deleteAccount((UUID) authentication.getPrincipal(), request.password());
 		return ResponseEntity.noContent().build();
+	}
+
+	/**
+	 * Własny stan zawieszenia (ADR 0022) — jeden z nielicznych endpointów
+	 * dostępnych zawieszonemu koncie, bo inaczej nie miałoby jak poznać powodu ani
+	 * terminu. Konto aktywne dostaje {@code suspended=false}, nie 404.
+	 */
+	@GetMapping("/me/suspension")
+	@SecurityRequirement(name = "bearerAuth")
+	SuspensionResponse suspension(Authentication authentication) {
+		return suspensionService.ownSuspension((UUID) authentication.getPrincipal());
 	}
 }

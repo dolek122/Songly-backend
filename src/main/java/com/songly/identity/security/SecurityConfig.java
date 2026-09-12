@@ -52,7 +52,22 @@ class SecurityConfig {
 						// Cały prefiks, nie pojedyncze metody: kolejny endpoint admina jest
 						// wtedy chroniony domyślnie, a nie dopiero gdy ktoś dopisze regułę
 						// (ADR 0021).
-						.requestMatchers("/api/v1/admin/**").hasAuthority("ROLE_ADMIN").anyRequest().authenticated())
+						.requestMatchers("/api/v1/admin/**").hasAuthority("ROLE_ADMIN")
+						// Co wolno ZAWIESZONEMU koncie (ADR 0022). Lista jest celowo krótka i
+						// zamknięta: poznać swój stan, wylogować się i usunąć konto. To
+						// ostatnie jest wymogiem RODO (§9) — zawieszenie nie może odcinać od
+						// prawa do usunięcia danych, więc twardy blok logowania był
+						// nieakceptowalny.
+						.requestMatchers(HttpMethod.GET, "/api/v1/auth/me/suspension")
+						.hasAnyAuthority(JwtAuthenticationFilter.USER_AUTHORITY,
+								JwtAuthenticationFilter.SUSPENDED_AUTHORITY)
+						.requestMatchers(HttpMethod.DELETE, "/api/v1/auth/me")
+						.hasAnyAuthority(JwtAuthenticationFilter.USER_AUTHORITY,
+								JwtAuthenticationFilter.SUSPENDED_AUTHORITY)
+						// Reszta wymaga PEŁNYCH uprawnień konta, nie samego uwierzytelnienia:
+						// dzięki temu każdy nowy endpoint jest domyślnie zamknięty dla
+						// zawieszonego, zamiast wymagać dopisania sprawdzenia w kodzie.
+						.anyRequest().hasAuthority(JwtAuthenticationFilter.USER_AUTHORITY))
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
 				.addFilterBefore(rateLimitingFilter, JwtAuthenticationFilter.class);
 		return http.build();

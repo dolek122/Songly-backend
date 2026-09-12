@@ -1,7 +1,8 @@
 package com.songly.identity.security;
 
 import com.songly.common.web.RequestIdFilter;
-import com.songly.identity.AdminStatusService;
+import com.songly.identity.AccountStatus;
+import com.songly.identity.AccountStatusService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,12 +28,20 @@ class JwtAuthenticationFilter extends OncePerRequestFilter {
 
 	private static final String BEARER_PREFIX = "Bearer ";
 
-	private final JwtService jwtService;
-	private final AdminStatusService adminStatusService;
+	/**
+	 * Zwykłe, pełne uprawnienia konta — wszystko poza listą wyjątków ich wymaga.
+	 */
+	static final String USER_AUTHORITY = "ROLE_USER";
 
-	JwtAuthenticationFilter(JwtService jwtService, AdminStatusService adminStatusService) {
+	/** Konto zawieszone (ADR 0022) — zamiast {@link #USER_AUTHORITY}, nie obok. */
+	static final String SUSPENDED_AUTHORITY = "ROLE_SUSPENDED";
+
+	private final JwtService jwtService;
+	private final AccountStatusService accountStatusService;
+
+	JwtAuthenticationFilter(JwtService jwtService, AccountStatusService accountStatusService) {
 		this.jwtService = jwtService;
-		this.adminStatusService = adminStatusService;
+		this.accountStatusService = accountStatusService;
 	}
 
 	@Override
@@ -42,10 +51,19 @@ class JwtAuthenticationFilter extends OncePerRequestFilter {
 		if (header != null && header.startsWith(BEARER_PREFIX)) {
 			try {
 				UUID userId = jwtService.parseUserId(header.substring(BEARER_PREFIX.length()));
-				boolean admin = adminStatusService.isAdmin(userId);
-				List<GrantedAuthority> authorities = admin
-						? List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))
-						: List.of();
+				AccountStatus status = accountStatusService.statusOf(userId);
+				boolean admin = status.admin();
+				// Zawieszone konto dostaje WYŁĄCZNIE ROLE_SUSPENDED, nigdy ROLE_USER (ADR
+				// 0022). Uprawnienia są tu całą egzekucją zawieszenia: wszystko poza krótką
+				// listą z SecurityConfig wymaga ROLE_USER, więc nowy endpoint jest domyślnie
+				// niedostępny dla zawieszonego — i nie da się o tym zapomnieć tak, jak dałoby
+				// się zapomnieć o sprawdzeniu w każdej ścieżce zapisu osobno.
+				List<GrantedAuthority> authorities = status.suspended()
+						? List.of(new SimpleGrantedAuthority(SUSPENDED_AUTHORITY))
+						: admin
+								? List.of(new SimpleGrantedAuthority(USER_AUTHORITY),
+										new SimpleGrantedAuthority("ROLE_ADMIN"))
+								: List.of(new SimpleGrantedAuthority(USER_AUTHORITY));
 				SecurityContextHolder.getContext()
 						.setAuthentication(new UsernamePasswordAuthenticationToken(userId, null, authorities));
 				// Sprzątanie MDC należy do RequestIdFilter, który zamyka cały łańcuch — tu
