@@ -2,7 +2,9 @@ package com.songly.identity;
 
 import com.songly.identity.dto.AdminListResponse;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -20,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
  * <i>procedurę operacyjną</i>, nie jako jednorazowy bootstrap.
  */
 @Service
-class AdminRoleService {
+class AdminRoleService implements AdminDirectory {
 
 	private static final Logger log = LoggerFactory.getLogger(AdminRoleService.class);
 
@@ -51,6 +53,17 @@ class AdminRoleService {
 	AdminListResponse admins() {
 		return new AdminListResponse(
 				userRepository.findByAdminTrueOrderByCreatedAtAsc().stream().map(User::getId).toList());
+	}
+
+	/**
+	 * Adresaci powiadomień administracyjnych (ADR 0023) — ta sama lista, tylko bez
+	 * opakowania w DTO, bo konsumentem jest inny moduł, a nie kontroler.
+	 */
+	@Override
+	@Transactional(readOnly = true)
+	public Set<UUID> adminIds() {
+		return userRepository.findByAdminTrueOrderByCreatedAtAsc().stream().map(User::getId)
+				.collect(Collectors.toSet());
 	}
 
 	/** Idempotentne — nadanie uprawnień komuś, kto je ma, nie jest błędem. */

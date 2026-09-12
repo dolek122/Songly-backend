@@ -1,5 +1,6 @@
 package com.songly.identity.dto;
 
+import com.songly.identity.SuspensionAppealStatus;
 import java.time.Instant;
 
 /**
@@ -16,6 +17,12 @@ import java.time.Instant;
  * {@code expiresAt} {@code null} przy {@code suspended=true} znaczy
  * bezterminowo; przy {@code suspended=false} wszystkie pozostałe pola są
  * {@code null}.
+ *
+ * <p>
+ * {@code appealStatus} {@code null} przy trwającym zawieszeniu znaczy „można
+ * się odwołać" (ADR 0023) — klient pokazuje wtedy formularz. Bez treści
+ * odwołania: autor ją zna, a DTO niesie stan sprawy, nie jej akta.
  */
-public record SuspensionResponse(boolean suspended, String reason, Instant suspendedAt, Instant expiresAt) {
+public record SuspensionResponse(boolean suspended, String reason, Instant suspendedAt, Instant expiresAt,
+		SuspensionAppealStatus appealStatus, Instant appealedAt) {
 }

@@ -72,6 +72,13 @@ class AccountSuspensionService {
 		Instant now = Instant.now();
 		boolean wasActive = !target.isSuspendedAt(now);
 		target.suspend(reason, now, durationDays == null ? null : now.plus(Duration.ofDays(durationDays)));
+		if (wasActive) {
+			// Nowa sprawa, więc i świeże prawo do odwołania — także po wcześniejszym
+			// odrzuceniu (ADR 0023). Przy poprawianiu trwającego zawieszenia pola
+			// odwołania zostają nietknięte, bo wyczyszczenie skasowałoby po cichu
+			// złożoną petycję.
+			target.resetAppeal();
+		}
 		log.warn("Zawieszono konto {} (wykonał {}, bezterminowo: {})", targetUserId, requesterId, durationDays == null);
 		meterRegistry.counter(SUSPENSIONS_METRIC, "action", "suspended").increment();
 		if (wasActive) {
@@ -86,14 +93,23 @@ class AccountSuspensionService {
 		if (target.getSuspendedAt() == null) {
 			return;
 		}
-		boolean wasSuspended = target.isSuspendedAt(Instant.now());
+		Instant now = Instant.now();
+		boolean wasSuspended = target.isSuspendedAt(now);
+		boolean acceptsAppeal = wasSuspended && target.hasPendingAppeal();
 		target.liftSuspension();
-		log.warn("Zdjęto zawieszenie z konta {} (wykonał {})", targetUserId, requesterId);
+		log.warn("Zdjęto zawieszenie z konta {} (wykonał {}, uznanie odwołania: {})", targetUserId, requesterId,
+				acceptsAppeal);
 		meterRegistry.counter(SUSPENSIONS_METRIC, "action", "lifted").increment();
 		// Konto z wygasłym zawieszeniem i tak działało, więc nie ma o czym
 		// zawiadamiać — sprzątamy wtedy martwe pola, nie zmieniamy stanu.
-		if (wasSuspended) {
-			eventPublisher.publishEvent(new UserSuspensionLiftedEvent(targetUserId, Instant.now()));
+		if (acceptsAppeal) {
+			// Zdjęcie zawieszenia komuś z wiszącym odwołaniem JEST uznaniem tego
+			// odwołania (ADR 0023) — osobnego endpointu nie ma, bo to jedna decyzja.
+			// Zdarzenie zastępuje wtedy „zawieszenie zdjęte", żeby nie wysłać dwóch
+			// maili o tym samym; ten mówi dodatkowo, dlaczego konto wróciło.
+			eventPublisher.publishEvent(new UserSuspensionAppealAcceptedEvent(targetUserId, now));
+		} else if (wasSuspended) {
+			eventPublisher.publishEvent(new UserSuspensionLiftedEvent(targetUserId, now));
 		}
 	}
 
@@ -107,9 +123,45 @@ class AccountSuspensionService {
 	List<SuspendedAccountResponse> suspendedAccounts() {
 		Instant now = Instant.now();
 		return userRepository.findBySuspendedAtIsNotNullOrderBySuspendedAtDesc().stream()
-				.filter(user -> user.isSuspendedAt(now)).map(user -> new SuspendedAccountResponse(user.getId(),
-						user.getSuspensionReason(), user.getSuspendedAt(), user.getSuspensionExpiresAt()))
+				.filter(user -> user.isSuspendedAt(now))
+				.map(user -> new SuspendedAccountResponse(user.getId(), user.getSuspensionReason(),
+						user.getSuspendedAt(), user.getSuspensionExpiresAt(), user.getSuspensionAppealText(),
+						user.getSuspensionAppealedAt(), user.getSuspensionAppealStatus()))
 				.toList();
+	}
+
+	/**
+	 * Odwołanie od <b>własnego</b> zawieszenia (ADR 0023). Wyłącznie przy
+	 * zawieszeniu aktywnym i tylko raz na zawieszenie — ograniczenie wychodzi ze
+	 * struktury danych, nie z licznika, bo kanał z natury prowadzi od ukaranego do
+	 * karzącego.
+	 */
+	@Transactional
+	void appeal(UUID userId, String text) {
+		Instant now = Instant.now();
+		User user = userRepository.findById(userId).filter(candidate -> candidate.isSuspendedAt(now))
+				.orElseThrow(NoSuspensionToAppealException::new);
+		if (user.hasAppeal()) {
+			throw new SuspensionAppealAlreadySubmittedException();
+		}
+		user.submitAppeal(text, now);
+		eventPublisher.publishEvent(new UserSuspensionAppealSubmittedEvent(userId, now));
+	}
+
+	/**
+	 * Odrzucenie odwołania — zawieszenie zostaje w mocy, a dla tego zawieszenia
+	 * sprawa jest zamknięta. Wymaga odwołania <b>oczekującego</b> przy zawieszeniu
+	 * <b>aktywnym</b>: odwołanie przy zawieszeniu wygasłym jest bezprzedmiotowe.
+	 */
+	@Transactional
+	void rejectAppeal(UUID targetUserId, UUID requesterId) {
+		Instant now = Instant.now();
+		User target = userRepository.findById(targetUserId).filter(user -> user.isSuspendedAt(now))
+				.filter(User::hasPendingAppeal).orElseThrow(SuspensionAppealNotFoundException::new);
+		target.rejectAppeal();
+		log.warn("Odrzucono odwołanie od zawieszenia konta {} (wykonał {})", targetUserId, requesterId);
+		meterRegistry.counter(SUSPENSIONS_METRIC, "action", "appeal-rejected").increment();
+		eventPublisher.publishEvent(new UserSuspensionAppealRejectedEvent(targetUserId, now));
 	}
 
 	/**
@@ -123,7 +175,8 @@ class AccountSuspensionService {
 		Instant now = Instant.now();
 		return userRepository.findById(userId).filter(user -> user.isSuspendedAt(now))
 				.map(user -> new SuspensionResponse(true, user.getSuspensionReason(), user.getSuspendedAt(),
-						user.getSuspensionExpiresAt()))
-				.orElseGet(() -> new SuspensionResponse(false, null, null, null));
+						user.getSuspensionExpiresAt(), user.getSuspensionAppealStatus(),
+						user.getSuspensionAppealedAt()))
+				.orElseGet(() -> new SuspensionResponse(false, null, null, null, null, null));
 	}
 }

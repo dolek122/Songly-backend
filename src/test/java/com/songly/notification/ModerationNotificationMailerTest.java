@@ -16,6 +16,7 @@ import com.songly.common.mail.MailSender;
 import com.songly.community.CommunityDirectory;
 import com.songly.community.CommunityMembership;
 import com.songly.content.PostReportedEvent;
+import com.songly.identity.AdminDirectory;
 import com.songly.identity.UserEmailDirectory;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -61,6 +62,9 @@ class ModerationNotificationMailerTest {
 	@Mock
 	private NotificationMailPreferenceService mailPreferences;
 
+	@Mock
+	private AdminDirectory adminDirectory;
+
 	private ModerationNotificationMailer mailer;
 
 	private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
@@ -71,7 +75,8 @@ class ModerationNotificationMailerTest {
 	@BeforeEach
 	void setUp() {
 		mailer = new ModerationNotificationMailer(mailSender, userEmailDirectory, communityDirectory,
-				communityMembership, redisTemplate, new ModerationMailProperties(), meterRegistry, mailPreferences);
+				communityMembership, redisTemplate, new ModerationMailProperties(), meterRegistry, mailPreferences,
+				adminDirectory);
 	}
 
 	/** Domyślnie okno wolne — wyciszanie sprawdzają osobne testy. */
