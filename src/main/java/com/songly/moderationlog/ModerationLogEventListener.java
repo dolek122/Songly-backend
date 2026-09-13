@@ -11,6 +11,7 @@ import com.songly.community.CommunityMemberBannedEvent;
 import com.songly.community.CommunityMemberRoleChangedEvent;
 import com.songly.content.CommunityPostRemovedEvent;
 import com.songly.content.PostReportDismissedEvent;
+import com.songly.identity.AdminRoleChangedEvent;
 import com.songly.identity.UserSuspendedEvent;
 import com.songly.identity.UserSuspensionAppealAcceptedEvent;
 import com.songly.identity.UserSuspensionAppealRejectedEvent;
@@ -174,5 +175,17 @@ class ModerationLogEventListener {
 	void onSuspensionAppealRejected(UserSuspensionAppealRejectedEvent event) {
 		moderationLogService.record(ModerationAction.SUSPENSION_APPEAL_REJECTED, null, event.userId(), event.actorId(),
 				null, null, event.occurredAt());
+	}
+
+	/**
+	 * Zmiana roli administratora (ADR 0031) — jedyny wpis, w którym decyzja nie
+	 * ogranicza podmiotu, a daje mu władzę nad wszystkimi pozostałymi wpisami tego
+	 * dziennika. Bez społeczności, bo rola jest platformowa.
+	 */
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onAdminRoleChanged(AdminRoleChangedEvent event) {
+		moderationLogService.record(
+				event.granted() ? ModerationAction.PLATFORM_ADMIN_GRANTED : ModerationAction.PLATFORM_ADMIN_REVOKED,
+				null, event.userId(), event.actorId(), null, null, event.occurredAt());
 	}
 }

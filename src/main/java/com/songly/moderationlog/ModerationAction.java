@@ -61,5 +61,20 @@ public enum ModerationAction {
 
 	SUSPENSION_APPEAL_ACCEPTED,
 
-	SUSPENSION_APPEAL_REJECTED
+	SUSPENSION_APPEAL_REJECTED,
+
+	/**
+	 * Nadanie i odebranie roli administratora platformy (ADR 0031) — jedyna decyzja
+	 * w tym dzienniku, która nie ogranicza podmiotu, a go <b>uprawnia</b>.
+	 *
+	 * <p>
+	 * Jest tu, bo dziennik odpowiada na pytanie „kto komu co zrobił i kiedy", a
+	 * nadanie władzy nad wszystkimi sankcjami z tej listy jest najcięższą decyzją,
+	 * jaką da się na tej platformie podjąć. Dotąd zostawiała po sobie wyłącznie
+	 * linijkę {@code WARN} w logach i przyrost licznika — czyli ślad wymagający
+	 * dostępu do maszyny, w odróżnieniu od każdej sankcji wobec zwykłego konta.
+	 */
+	PLATFORM_ADMIN_GRANTED,
+
+	PLATFORM_ADMIN_REVOKED
 }
