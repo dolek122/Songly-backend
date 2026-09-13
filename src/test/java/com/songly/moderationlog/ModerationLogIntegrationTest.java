@@ -86,6 +86,16 @@ class ModerationLogIntegrationTest extends AbstractIntegrationTest {
 				.header("Authorization", "Bearer " + moderator.token())).andExpect(status().isNoContent());
 	}
 
+	private void grantAdmin(TestUser adminUser, TestUser target) throws Exception {
+		mockMvc.perform(put("/api/v1/admin/users/" + target.userId() + "/admin").header("Authorization",
+				"Bearer " + adminUser.token())).andExpect(status().isNoContent());
+	}
+
+	private void revokeAdmin(TestUser adminUser, TestUser target) throws Exception {
+		mockMvc.perform(delete("/api/v1/admin/users/" + target.userId() + "/admin").header("Authorization",
+				"Bearer " + adminUser.token())).andExpect(status().isNoContent());
+	}
+
 	private JsonNode communityLog(TestUser moderator, String communityId) throws Exception {
 		return objectMapper.readTree(mockMvc
 				.perform(get("/api/v1/communities/" + communityId + "/moderation-log").header("Authorization",
@@ -232,6 +242,47 @@ class ModerationLogIntegrationTest extends AbstractIntegrationTest {
 		assertThat(suspension.get("communityId").isNull()).isTrue();
 		assertThat(suspension.get("actorId").asText()).isEqualTo(adminUser.userId());
 		assertThat(suspension.get("expiresAt").isNull()).isFalse();
+	}
+
+	/**
+	 * Sedno ADR 0031: nadanie i odebranie roli administratora trafia do dziennika.
+	 * Dotąd zostawiało po sobie wyłącznie linijkę w logach i przyrost licznika —
+	 * czyli ślad wymagający dostępu do maszyny, w odróżnieniu od każdej sankcji
+	 * wobec zwykłego konta.
+	 */
+	@Test
+	void adminRoleChangesAreRecordedAsPlatformDecisions() throws Exception {
+		TestUser adminUser = admin("modlog-role-admin@songly.io");
+		TestUser promoted = user("modlog-role-promoted@songly.io");
+
+		grantAdmin(adminUser, promoted);
+		revokeAdmin(adminUser, promoted);
+
+		JsonNode log = platformLog(adminUser, promoted);
+		assertThat(actions(log)).containsExactly("PLATFORM_ADMIN_REVOKED", "PLATFORM_ADMIN_GRANTED");
+		JsonNode revocation = log.get(0);
+		// Rola jest platformowa, więc wpis nie należy do żadnej społeczności — tak samo
+		// jak zawieszenie konta (ADR 0022).
+		assertThat(revocation.get("communityId").isNull()).isTrue();
+		assertThat(revocation.get("subjectId").asText()).isEqualTo(promoted.userId());
+		assertThat(revocation.get("actorId").asText()).isEqualTo(adminUser.userId());
+		assertThat(revocation.get("expiresAt").isNull()).isTrue();
+	}
+
+	/**
+	 * Bramka „tylko faktyczna zmiana" siedzi u publikującego zdarzenie (ADR 0021 i
+	 * 0031), więc dziennik dziedziczy ją za darmo: nadanie roli komuś, kto ją ma,
+	 * jest idempotentnym brakiem zmiany i nie ma czego zapisywać.
+	 */
+	@Test
+	void repeatedGrantDoesNotAddASecondEntry() throws Exception {
+		TestUser adminUser = admin("modlog-role-idem-admin@songly.io");
+		TestUser promoted = user("modlog-role-idem-promoted@songly.io");
+
+		grantAdmin(adminUser, promoted);
+		grantAdmin(adminUser, promoted);
+
+		assertThat(actions(platformLog(adminUser, promoted))).containsExactly("PLATFORM_ADMIN_GRANTED");
 	}
 
 	/** Historię społeczności czyta jej moderacja, nie dowolny członek. */

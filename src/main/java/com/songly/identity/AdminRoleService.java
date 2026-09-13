@@ -2,11 +2,13 @@ package com.songly.identity;
 
 import com.songly.identity.dto.AdminListResponse;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,10 +39,13 @@ class AdminRoleService implements AdminDirectory {
 
 	private final UserRepository userRepository;
 	private final MeterRegistry meterRegistry;
+	private final ApplicationEventPublisher eventPublisher;
 
-	AdminRoleService(UserRepository userRepository, MeterRegistry meterRegistry) {
+	AdminRoleService(UserRepository userRepository, MeterRegistry meterRegistry,
+			ApplicationEventPublisher eventPublisher) {
 		this.userRepository = userRepository;
 		this.meterRegistry = meterRegistry;
+		this.eventPublisher = eventPublisher;
 	}
 
 	/**
@@ -78,6 +83,11 @@ class AdminRoleService implements AdminDirectory {
 		// audytowego (Claude.md §13).
 		log.warn("Nadano uprawnienia administratora użytkownikowi {} (wykonał {})", targetUserId, requesterId);
 		meterRegistry.counter(ROLE_CHANGES_METRIC, "action", "granted").increment();
+		// Log i licznik zostają, bo odpowiadają na inne pytania niż dziennik: pierwszy
+		// na „co się dzieje teraz", drugi na „ile tego jest". Dziennik (ADR 0031) jako
+		// jedyny odpowiada na „kto komu dał władzę i kiedy" — i jako jedyny jest
+		// odczytywalny przez API, a nie przez dostęp do maszyny.
+		eventPublisher.publishEvent(new AdminRoleChangedEvent(targetUserId, requesterId, true, Instant.now()));
 	}
 
 	/**
@@ -100,5 +110,6 @@ class AdminRoleService implements AdminDirectory {
 		// czytamy na żywo z bazy przy każdym żądaniu (ADR 0006), a nie z tokenu.
 		log.warn("Odebrano uprawnienia administratora użytkownikowi {} (wykonał {})", targetUserId, requesterId);
 		meterRegistry.counter(ROLE_CHANGES_METRIC, "action", "revoked").increment();
+		eventPublisher.publishEvent(new AdminRoleChangedEvent(targetUserId, requesterId, false, Instant.now()));
 	}
 }
