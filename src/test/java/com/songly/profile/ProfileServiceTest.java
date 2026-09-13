@@ -46,12 +46,15 @@ class ProfileServiceTest {
 	@Mock
 	private com.songly.identity.SuspendedAccounts suspendedAccounts;
 
+	@Mock
+	private GenrePopularityCache genrePopularityCache;
+
 	private ProfileService profileService;
 
 	@BeforeEach
 	void setUp() {
 		profileService = new ProfileService(profileRepository, genreRepository, userGenreRepository, objectStorage,
-				eventPublisher, suspendedAccounts);
+				eventPublisher, suspendedAccounts, genrePopularityCache);
 	}
 
 	@Test
