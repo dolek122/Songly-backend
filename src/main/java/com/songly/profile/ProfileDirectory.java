@@ -35,6 +35,12 @@ public interface ProfileDirectory {
 	 * <p>
 	 * Służy do zważenia dopasowania: wspólny gatunek niszowy mówi o ludziach
 	 * znacznie więcej niż wspólny gatunek, który wybrała połowa serwisu.
+	 *
+	 * <p>
+	 * Liczby pochodzą z cache'a (ADR 0032), więc mogą być o kilka minut spóźnione
+	 * względem bazy. Dla wagi rzadkości to bez znaczenia — jedna osoba więcej przy
+	 * „Popie" nie zmienia niczyjego wyniku — ale konsument nie powinien używać ich
+	 * tam, gdzie potrzebna jest liczba dokładna na teraz.
 	 */
 	Map<UUID, Long> genreUserCounts(Collection<UUID> genreIds);
 

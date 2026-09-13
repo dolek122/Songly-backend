@@ -33,16 +33,19 @@ class ProfileService implements ProfileDirectory {
 	private final ObjectStorage objectStorage;
 	private final ApplicationEventPublisher eventPublisher;
 	private final SuspendedAccounts suspendedAccounts;
+	private final GenrePopularityCache genrePopularityCache;
 
 	ProfileService(ProfileRepository profileRepository, GenreRepository genreRepository,
 			UserGenreRepository userGenreRepository, ObjectStorage objectStorage,
-			ApplicationEventPublisher eventPublisher, SuspendedAccounts suspendedAccounts) {
+			ApplicationEventPublisher eventPublisher, SuspendedAccounts suspendedAccounts,
+			GenrePopularityCache genrePopularityCache) {
 		this.profileRepository = profileRepository;
 		this.genreRepository = genreRepository;
 		this.userGenreRepository = userGenreRepository;
 		this.objectStorage = objectStorage;
 		this.eventPublisher = eventPublisher;
 		this.suspendedAccounts = suspendedAccounts;
+		this.genrePopularityCache = genrePopularityCache;
 	}
 
 	/**
@@ -143,6 +146,11 @@ class ProfileService implements ProfileDirectory {
 		userGenreRepository.deleteByUserId(userId);
 		Instant now = Instant.now();
 		userGenreRepository.saveAll(genreIds.stream().map(genreId -> new UserGenre(userId, genreId, now)).toList());
+		// Popularność gatunków właśnie się zmieniła, więc zapamiętany obraz jest do
+		// wyrzucenia (ADR 0032). Zdarzenie, a nie wołanie cache'a wprost, bo
+		// unieważnienie musi wykonać się PO commicie — patrz
+		// FavoriteGenresChangedListener.
+		eventPublisher.publishEvent(new FavoriteGenresChangedEvent(userId));
 	}
 
 	@Transactional(readOnly = true)
@@ -174,14 +182,43 @@ class ProfileService implements ProfileDirectory {
 		if (genreIds.isEmpty()) {
 			return Map.of();
 		}
-		return userGenreRepository.countUsersByGenreIdIn(genreIds).stream().collect(Collectors
-				.toMap(UserGenreRepository.GenreCount::getGenreId, UserGenreRepository.GenreCount::getUserCount));
+		Map<UUID, Long> counts = popularity().counts();
+		// Zawężenie do pytanych gatunków zostaje, choć obraz mamy cały: kontrakt
+		// interfejsu obiecuje odpowiedź na zadane pytanie, a nie zrzut tabeli.
+		return genreIds.stream().filter(counts::containsKey).collect(Collectors.toMap(genreId -> genreId, counts::get));
 	}
 
 	@Override
 	@Transactional(readOnly = true)
 	public long usersWithAnyGenreCount() {
-		return userGenreRepository.countDistinctUsers();
+		return popularity().totalUsers();
+	}
+
+	/**
+	 * Obraz popularności — z Redisa, a przy chybieniu policzony z bazy i zapisany
+	 * (ADR 0032).
+	 *
+	 * <p>
+	 * Oba pytania z {@code ProfileDirectory} (popularność gatunków i mianownik)
+	 * odczytują ten sam wpis, każde swoim odczytem. Wpis jest niepodzielny, więc
+	 * każde z nich widzi liczby ze sobą spójne; rozjazd wymagałby wygaśnięcia
+	 * klucza dokładnie między dwoma odczytami jednego żądania, a jego skutkiem
+	 * byłaby waga policzona z sąsiedniej epoki — nie błąd. Zlanie tego w jedną
+	 * metodę wymagałoby wyniesienia przez granicę modułu typu z parą liczb, a
+	 * reguła 1 {@code ModuleBoundariesTest} przepuszcza tylko interfejsy i
+	 * zdarzenia (§3) — interfejs w roli pary liczb byłby ceremonią droższą niż
+	 * problem, który rozwiązuje.
+	 */
+	private GenrePopularityCache.Snapshot popularity() {
+		return genrePopularityCache.read().orElseGet(() -> {
+			GenrePopularityCache.Snapshot snapshot = new GenrePopularityCache.Snapshot(
+					userGenreRepository.countUsersByGenre().stream()
+							.collect(Collectors.toMap(UserGenreRepository.GenreCount::getGenreId,
+									UserGenreRepository.GenreCount::getUserCount)),
+					userGenreRepository.countDistinctUsers());
+			genrePopularityCache.write(snapshot);
+			return snapshot;
+		});
 	}
 
 	@Override
@@ -247,6 +284,9 @@ class ProfileService implements ProfileDirectory {
 	@Transactional
 	void deleteAccountData(UUID userId) {
 		userGenreRepository.deleteByUserId(userId);
+		// Skasowane konto zabiera swoje gatunki, więc popularność też się zmienia —
+		// druga i ostatnia ścieżka ruszająca user_genres (ADR 0032).
+		eventPublisher.publishEvent(new FavoriteGenresChangedEvent(userId));
 		profileRepository.findByUserId(userId).ifPresent(profile -> {
 			// Zgłoszenie pliku do skasowania musi wyjść PRZED usunięciem wiersza, bo
 			// potem nie ma już skąd odczytać klucza. Sam plik ginie i tak dopiero po
