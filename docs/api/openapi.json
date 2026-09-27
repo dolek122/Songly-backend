@@ -534,6 +534,10 @@
           "avatarUrl" : {
             "type" : "string"
           },
+          "confidence" : {
+            "format" : "double",
+            "type" : "number"
+          },
           "displayName" : {
             "type" : "string"
           },

@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -27,18 +28,28 @@ import org.springframework.transaction.annotation.Transactional;
  * dwie osoby — a to drugie mówi o ludziach nieporównywalnie więcej. Skutkiem
  * było to, że wszyscy z mainstreamowym gustem wyglądali na identycznie
  * dopasowanych.
+ *
+ * <p>
+ * Wynik jest przy tym <b>przygaszany ilością danych</b> (ADR 0033): sam
+ * współczynnik mierzy proporcję pokrycia, a nie to, ile o kimś wiemy, więc dwie
+ * osoby z jednym wspólnym gatunkiem dostawały 1.0 — wynik doskonały z jednego
+ * punktu danych, wyżej niż siedem wspólnych gatunków na dziesięć.
  */
 @Service
+@EnableConfigurationProperties(MatchingProperties.class)
 class MatchingService {
 
 	private final ProfileDirectory profileDirectory;
 	private final SocialGraph socialGraph;
 	private final SuspendedAccounts suspendedAccounts;
+	private final MatchingProperties properties;
 
-	MatchingService(ProfileDirectory profileDirectory, SocialGraph socialGraph, SuspendedAccounts suspendedAccounts) {
+	MatchingService(ProfileDirectory profileDirectory, SocialGraph socialGraph, SuspendedAccounts suspendedAccounts,
+			MatchingProperties properties) {
 		this.profileDirectory = profileDirectory;
 		this.socialGraph = socialGraph;
 		this.suspendedAccounts = suspendedAccounts;
+		this.properties = properties;
 	}
 
 	@Transactional(readOnly = true)
@@ -108,14 +119,29 @@ class MatchingService {
 	}
 
 	/**
-	 * Ważony Jaccard: suma wag części wspólnej przez sumę wag złączenia. Wynik
-	 * zostaje w przedziale (0, 1] jak przy surowym Jaccardzie, więc kontrakt API
-	 * się nie zmienia — zmienia się wyłącznie kolejność, i to jest cały cel.
+	 * Ważony Jaccard przygaszony ilością danych (ADR 0029 + 0033): suma wag części
+	 * wspólnej przez sumę wag złączenia <b>powiększoną o stałą</b>.
 	 *
 	 * <p>
 	 * Mianownik zostaje złączeniem, nie liczbą wspólnych gatunków: człowiek, który
 	 * wybrał wszystko, ma być słabym dopasowaniem do każdego, bo jego zbiór nie
 	 * niesie informacji o guście.
+	 *
+	 * <p>
+	 * <b>Dlaczego stała w mianowniku, a nie osobny mnożnik.</b> Pewność to „ile
+	 * łącznie te dwie osoby o sobie powiedziały", czyli waga złączenia w stosunku
+	 * do tej wagi powiększonej o stałą. Przemnożenie wyniku przez taką pewność
+	 * skraca się do jednego dodania w mianowniku, więc cała zmiana to
+	 * {@code + prior} — klasyczne wygładzanie, bez drugiego parametru i bez drugiej
+	 * gałęzi w kodzie. Skutek: przy ubogich profilach stała dominuje (jeden wspólny
+	 * gatunek nie robi z nikogo bliźniaka), przy bogatych znika w tle.
+	 *
+	 * <p>
+	 * <b>Pewność liczy złączenie, nie część wspólną</b> — i to jest sedno. Gdyby
+	 * liczyła część wspólną, „mam dziesięć gatunków, ty dziesięć, wspólny jeden"
+	 * wyszłoby jako mało danych, a to jest przypadek, w którym wiemy dużo i
+	 * odpowiedź brzmi „nie pasujecie". Nieufność należy się małym zbiorom, nie
+	 * słabym wynikom.
 	 */
 	private MatchResponse toMatch(UUID candidateId, Set<UUID> candidateGenres, Set<UUID> myGenres,
 			Map<UUID, Double> weights, Map<UUID, String> names, Map<UUID, String> avatars) {
@@ -123,8 +149,11 @@ class MatchingService {
 		shared.retainAll(myGenres);
 		Set<UUID> union = new HashSet<>(candidateGenres);
 		union.addAll(myGenres);
-		double score = weightOf(shared, weights) / weightOf(union, weights);
-		return new MatchResponse(candidateId, names.get(candidateId), avatars.get(candidateId), score,
+		double unionWeight = weightOf(union, weights);
+		double damped = unionWeight + properties.getConfidencePrior();
+		double score = weightOf(shared, weights) / damped;
+		double confidence = unionWeight / damped;
+		return new MatchResponse(candidateId, names.get(candidateId), avatars.get(candidateId), score, confidence,
 				shared.stream().sorted(Comparator.comparing(UUID::toString)).toList());
 	}
 

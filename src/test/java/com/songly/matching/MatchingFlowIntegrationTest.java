@@ -84,16 +84,25 @@ class MatchingFlowIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	private double scoreOf(JsonNode matches, TestUser candidate) {
+		return fieldOf(matches, candidate, "score");
+	}
+
+	private double confidenceOf(JsonNode matches, TestUser candidate) {
+		return fieldOf(matches, candidate, "confidence");
+	}
+
+	private double fieldOf(JsonNode matches, TestUser candidate, String field) {
 		for (JsonNode match : matches) {
 			if (match.get("userId").asText().equals(candidate.userId())) {
-				return match.get("score").asDouble();
+				return match.get(field).asDouble();
 			}
 		}
 		throw new AssertionError("brak dopasowania do " + candidate.userId());
 	}
 
 	/**
-	 * Kształt odpowiedzi: kto dzieli jakie gatunki i że wynik zostaje w (0, 1].
+	 * Kształt odpowiedzi: kto dzieli jakie gatunki i że wynik zostaje w (0, 1) — od
+	 * ADR 0033 jedynki nie da się już osiągnąć.
 	 *
 	 * <p>
 	 * <b>Czego ten test celowo nie asertuje:</b> że kandydat z większą liczbą
@@ -120,8 +129,8 @@ class MatchingFlowIntegrationTest extends AbstractIntegrationTest {
 						hasItem(contains(GENRE_KPOP))));
 
 		JsonNode matches = matches(ada);
-		assertThat(scoreOf(matches, bono)).isGreaterThan(0.0).isLessThanOrEqualTo(1.0);
-		assertThat(scoreOf(matches, carol)).isGreaterThan(0.0).isLessThanOrEqualTo(1.0);
+		assertThat(scoreOf(matches, bono)).isGreaterThan(0.0).isLessThan(1.0);
+		assertThat(scoreOf(matches, carol)).isGreaterThan(0.0).isLessThan(1.0);
 	}
 
 	/**
@@ -149,6 +158,45 @@ class MatchingFlowIntegrationTest extends AbstractIntegrationTest {
 
 		List<String> ranking = matchedUserIds(viewer);
 		assertThat(ranking.indexOf(nicheTwin.userId())).isLessThan(ranking.indexOf(mainstreamTwin.userId()));
+	}
+
+	/**
+	 * Sedno ADR 0033 przez całe API: dwie pary o <b>identycznym</b> guście, więc
+	 * obie z pełnym pokryciem — a jednak para, która powiedziała o sobie więcej,
+	 * dostaje wyższy wynik. Przed tą zmianą obie dostawały 1.0, bo proporcja
+	 * pokrycia nie wie, ile danych za nią stoi.
+	 *
+	 * <p>
+	 * Asercja jest odporna na stan współdzielonej bazy: złączenie bogatej pary jest
+	 * nadzbiorem złączenia ubogiej, a wagi są dodatnie, więc nierówność zachodzi
+	 * niezależnie od popularności gatunków.
+	 */
+	@Test
+	void matches_scoreGrowsWithHowMuchBothProfilesTell() throws Exception {
+		TestUser poorViewer = registerUser("conf-poor-viewer@songly.io");
+		TestUser poorTwin = registerUser("conf-poor-twin@songly.io");
+		TestUser richViewer = registerUser("conf-rich-viewer@songly.io");
+		TestUser richTwin = registerUser("conf-rich-twin@songly.io");
+
+		setGenres(poorViewer, List.of(GENRE_REGGAE));
+		setGenres(poorTwin, List.of(GENRE_REGGAE));
+		List<String> everything = List.of(GENRE_REGGAE, GENRE_LATIN, GENRE_KPOP, GENRE_FOLK, GENRE_PUNK);
+		setGenres(richViewer, everything);
+		setGenres(richTwin, everything);
+
+		double poorScore = scoreOf(matches(poorViewer), poorTwin);
+		double richScore = scoreOf(matches(richViewer), richTwin);
+
+		assertThat(richScore).isGreaterThan(poorScore);
+		// Nikt nie dostaje już 1.0 i to jest zamierzone: o niczyim guście nie wiemy
+		// wszystkiego.
+		assertThat(richScore).isLessThan(1.0);
+
+		// Pewność jedzie w odpowiedzi obok wyniku, żeby klient mógł nie pokazywać
+		// procentu, którego nie ma czym poprzeć.
+		double poorConfidence = confidenceOf(matches(poorViewer), poorTwin);
+		assertThat(poorConfidence).isGreaterThan(0.0).isLessThan(1.0);
+		assertThat(confidenceOf(matches(richViewer), richTwin)).isGreaterThan(poorConfidence);
 	}
 
 	@Test
