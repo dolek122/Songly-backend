@@ -49,7 +49,8 @@ class RateLimitingFilterTest {
 		properties.setProtectedPaths(protectedPaths);
 		// Wzorce parsują się w konstruktorze, więc filtr musi powstać po ustawieniu
 		// propercji — inaczej test sprawdzałby domyślną listę.
-		return new RateLimitingFilter(redisTemplate, properties, new ObjectMapper(), meterRegistry);
+		return new RateLimitingFilter(new FixedWindowCounter(redisTemplate), properties, new ObjectMapper(),
+				meterRegistry);
 	}
 
 	private MockHttpServletResponse call(RateLimitingFilter filter, String uri) throws ServletException, IOException {

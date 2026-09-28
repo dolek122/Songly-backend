@@ -20,8 +20,9 @@ class RateLimitProperties {
 	 * Domyślnie wszystkie ścieżki wystawione publicznie w {@code SecurityConfig}:
 	 * dwie ścieżki wejściowe (rejestracja, logowanie), dwie operujące na refresh
 	 * tokenie, dwie ścieżki resetu hasła i publiczny callback OAuth. Endpointy za
-	 * JWT zostają poza listą — te chroni już konieczność posiadania ważnego tokenu,
-	 * a ich sensowne limitowanie wymagałoby licznika per użytkownik, nie per IP.
+	 * JWT zostają poza listą — te limituje per użytkownik
+	 * {@link UserRateLimitingFilter} (ADR 0034), bo licznik per IP nie wie, kto
+	 * pyta.
 	 *
 	 * <p>
 	 * Przy resecie hasła limit per IP to tylko połowa ochrony: sam nie powstrzymuje

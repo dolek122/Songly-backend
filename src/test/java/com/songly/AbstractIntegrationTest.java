@@ -56,9 +56,14 @@ import org.testcontainers.utility.DockerImageName;
  *
  * Właściwości dziedziczą się do podklas i są takie same dla wszystkich, więc
  * nie dokładają ani jednego kontekstu.
+ *
+ * Limit zapisów per użytkownik (ADR 0034) jest wyłączony tutaj, a nie w każdej
+ * klasie osobno jak limit per IP: testy przepływów robią jednym kontem serie
+ * zapisów, a limit trafiony w połowie scenariusza dawałby 429 bez związku z
+ * tematem testu. Włącza go wyłącznie UserRateLimitingIntegrationTest.
  */
 @TestPropertySource(properties = {"spring.datasource.hikari.maximum-pool-size=4",
-		"spring.datasource.hikari.minimum-idle=0"})
+		"spring.datasource.hikari.minimum-idle=0", "songly.security.user-rate-limit.enabled=false"})
 public abstract class AbstractIntegrationTest {
 
 	private static final Pattern TOKEN_IN_LINK = Pattern.compile("token=([A-Za-z0-9_-]+)");
