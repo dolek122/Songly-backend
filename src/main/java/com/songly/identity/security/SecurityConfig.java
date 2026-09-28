@@ -1,6 +1,7 @@
 package com.songly.identity.security;
 
 import com.songly.common.web.RateLimitingFilter;
+import com.songly.common.web.UserRateLimitingFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -18,13 +19,16 @@ class SecurityConfig {
 
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
 	private final RateLimitingFilter rateLimitingFilter;
+	private final UserRateLimitingFilter userRateLimitingFilter;
 	private final RestAuthenticationEntryPoint authenticationEntryPoint;
 	private final RestAccessDeniedHandler accessDeniedHandler;
 
 	SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, RateLimitingFilter rateLimitingFilter,
-			RestAuthenticationEntryPoint authenticationEntryPoint, RestAccessDeniedHandler accessDeniedHandler) {
+			UserRateLimitingFilter userRateLimitingFilter, RestAuthenticationEntryPoint authenticationEntryPoint,
+			RestAccessDeniedHandler accessDeniedHandler) {
 		this.jwtAuthenticationFilter = jwtAuthenticationFilter;
 		this.rateLimitingFilter = rateLimitingFilter;
+		this.userRateLimitingFilter = userRateLimitingFilter;
 		this.authenticationEntryPoint = authenticationEntryPoint;
 		this.accessDeniedHandler = accessDeniedHandler;
 	}
@@ -75,7 +79,10 @@ class SecurityConfig {
 						// zawieszonego, zamiast wymagać dopisania sprawdzenia w kodzie.
 						.anyRequest().hasAuthority(JwtAuthenticationFilter.USER_AUTHORITY))
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-				.addFilterBefore(rateLimitingFilter, JwtAuthenticationFilter.class);
+				.addFilterBefore(rateLimitingFilter, JwtAuthenticationFilter.class)
+				// Za filtrem JWT, bo liczy per użytkownik, a przed autoryzacją — odrzucone
+				// żądanie nie dotyka kontrolera (ADR 0034).
+				.addFilterAfter(userRateLimitingFilter, JwtAuthenticationFilter.class);
 		return http.build();
 	}
 

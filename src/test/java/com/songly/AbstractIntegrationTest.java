@@ -56,9 +56,14 @@ import org.testcontainers.utility.DockerImageName;
  *
  * Właściwości dziedziczą się do podklas i są takie same dla wszystkich, więc
  * nie dokładają ani jednego kontekstu.
+ *
+ * Limit zapisów per użytkownik (ADR 0034) jest wyłączony tutaj, a nie w każdej
+ * klasie osobno jak limit per IP: testy przepływów robią jednym kontem serie
+ * zapisów, a limit trafiony w połowie scenariusza dawałby 429 bez związku z
+ * tematem testu. Włącza go wyłącznie UserRateLimitingIntegrationTest.
  */
 @TestPropertySource(properties = {"spring.datasource.hikari.maximum-pool-size=4",
-		"spring.datasource.hikari.minimum-idle=0"})
+		"spring.datasource.hikari.minimum-idle=0", "songly.security.user-rate-limit.enabled=false"})
 public abstract class AbstractIntegrationTest {
 
 	private static final Pattern TOKEN_IN_LINK = Pattern.compile("token=([A-Za-z0-9_-]+)");
@@ -83,20 +88,21 @@ public abstract class AbstractIntegrationTest {
 	 * publicznym adresem.
 	 *
 	 * <p>
-	 * Obraz z <b>quay.io</b>, nie z Docker Huba, i to nie jest kwestia gustu: MinIO
-	 * wycofało {@code minio/minio} z Docker Huba, który odpowiada teraz „pull
-	 * access denied ... repository does not exist" na anonimowe pobranie — również
-	 * dla {@code :latest}. Quay to oficjalny rejestr MinIO i ten sam release. Nie
-	 * wracać na Docker Huba bez sprawdzenia, że obraz da się tam pobrać bez
-	 * logowania: lokalnie awaria jest niewidoczna, bo obraz siedzi w cache'u
-	 * Dockera, i czerwienieje dopiero CI na czystym runnerze.
+	 * Obraz <b>Chainguard</b>, nie oficjalny, i to nie jest kwestia gustu: MinIO
+	 * wycofało {@code minio/minio} z Docker Huba („pull access denied"), a potem
+	 * zamknęło anonimowe pobieranie także z quay.io (401 Unauthorized). Chainguard
+	 * buduje ten sam serwer MinIO, ale w darmowym planie publikuje wyłącznie
+	 * {@code :latest} — wersja nie jest przypięta. Nie wracać do rejestrów MinIO
+	 * bez sprawdzenia, że obraz da się pobrać bez logowania: lokalnie awaria jest
+	 * niewidoczna, bo obraz siedzi w cache'u Dockera, i czerwienieje dopiero CI na
+	 * czystym runnerze.
 	 *
 	 * <p>
 	 * {@code asCompatibleSubstituteFor} jest konieczne, bo {@code MinIOContainer}
 	 * sprawdza nazwę obrazu i odrzuca każdą inną niż {@code minio/minio}.
 	 */
-	static final MinIOContainer minio = new MinIOContainer(DockerImageName
-			.parse("quay.io/minio/minio:RELEASE.2024-11-07T00-52-20Z").asCompatibleSubstituteFor("minio/minio"))
+	static final MinIOContainer minio = new MinIOContainer(
+			DockerImageName.parse("cgr.dev/chainguard/minio:latest").asCompatibleSubstituteFor("minio/minio"))
 			.withUserName(STORAGE_USER).withPassword(STORAGE_PASSWORD);
 
 	static {
