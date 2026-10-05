@@ -5,6 +5,7 @@ import com.songly.profile.ProfileDirectory;
 import com.songly.social.SocialGraph;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -32,12 +33,25 @@ class NotificationService {
 	 * REQUIRES_NEW celowo: wywoływane z {@code AFTER_COMMIT} listenerów, gdzie
 	 * transakcja źródłowa już się zakończyła (ten sam wzorzec co
 	 * {@code ProfileService.createDefaultProfile}). Własna aktywność (np. lajk
-	 * własnego posta) nie generuje powiadomienia.
+	 * własnego posta) nie generuje powiadomienia, a cofnięty i przywrócony stan nie
+	 * generuje drugiego (ADR 0035).
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	void record(UUID recipientId, UUID actorId, NotificationType type, UUID resourceId, Instant occurredAt) {
 		if (recipientId.equals(actorId)) {
 			return;
+		}
+		if (NotificationType.ONCE_PER_RESOURCE.contains(type) && notificationRepository
+				.existsByUserIdAndTypeAndActorIdAndResourceId(recipientId, type, actorId, resourceId)) {
+			return;
+		}
+		if (NotificationType.COLLAPSED_WHILE_UNREAD.contains(type)) {
+			Optional<Notification> unread = notificationRepository
+					.findFirstByUserIdAndTypeAndActorIdAndReadAtIsNull(recipientId, type, actorId);
+			if (unread.isPresent()) {
+				unread.get().refresh(resourceId, occurredAt);
+				return;
+			}
 		}
 		notificationRepository
 				.save(new Notification(UUID.randomUUID(), recipientId, type, actorId, resourceId, occurredAt));

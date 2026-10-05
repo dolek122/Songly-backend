@@ -57,6 +57,56 @@ class NotificationServiceTest {
 		verify(notificationRepository, never()).save(any());
 	}
 
+	/** Pętla unlike/like (ADR 0035): przywrócony stan to nie nowa wiadomość. */
+	@Test
+	void record_skipsRepeatedStateNotification_forSameActorAndResource() {
+		UUID postId = UUID.randomUUID();
+		when(notificationRepository.existsByUserIdAndTypeAndActorIdAndResourceId(recipientId,
+				NotificationType.POST_LIKED, actorId, postId)).thenReturn(true);
+
+		notificationService.record(recipientId, actorId, NotificationType.POST_LIKED, postId, Instant.now());
+
+		verify(notificationRepository, never()).save(any());
+	}
+
+	/** Każdy komentarz to nowa treść — nie podlega deduplikacji. */
+	@Test
+	void record_neverDeduplicatesComments() {
+		notificationService.record(recipientId, actorId, NotificationType.POST_COMMENTED, UUID.randomUUID(),
+				Instant.now());
+
+		verify(notificationRepository, never()).existsByUserIdAndTypeAndActorIdAndResourceId(any(), any(), any(),
+				any());
+		verify(notificationRepository).save(any(Notification.class));
+	}
+
+	@Test
+	void record_collapsesFriendRequestIntoUnreadOne_pointingAtNewestRequest() {
+		Notification unread = new Notification(UUID.randomUUID(), recipientId, NotificationType.FRIEND_REQUEST_RECEIVED,
+				actorId, UUID.randomUUID(), Instant.parse("2026-01-01T00:00:00Z"));
+		when(notificationRepository.findFirstByUserIdAndTypeAndActorIdAndReadAtIsNull(recipientId,
+				NotificationType.FRIEND_REQUEST_RECEIVED, actorId)).thenReturn(Optional.of(unread));
+		UUID newRequestId = UUID.randomUUID();
+		Instant now = Instant.parse("2026-02-01T00:00:00Z");
+
+		notificationService.record(recipientId, actorId, NotificationType.FRIEND_REQUEST_RECEIVED, newRequestId, now);
+
+		verify(notificationRepository, never()).save(any());
+		assertThat(unread.getResourceId()).isEqualTo(newRequestId);
+		assertThat(unread.getCreatedAt()).isEqualTo(now);
+	}
+
+	@Test
+	void record_savesNewFriendRequestNotification_whenPreviousWasRead() {
+		when(notificationRepository.findFirstByUserIdAndTypeAndActorIdAndReadAtIsNull(recipientId,
+				NotificationType.FRIEND_REQUEST_RECEIVED, actorId)).thenReturn(Optional.empty());
+
+		notificationService.record(recipientId, actorId, NotificationType.FRIEND_REQUEST_RECEIVED, UUID.randomUUID(),
+				Instant.now());
+
+		verify(notificationRepository).save(any(Notification.class));
+	}
+
 	@Test
 	void markRead_setsReadAt() {
 		Notification notification = new Notification(UUID.randomUUID(), recipientId, NotificationType.POST_LIKED,

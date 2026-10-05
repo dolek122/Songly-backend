@@ -52,6 +52,15 @@ class Notification {
 		this.createdAt = createdAt;
 	}
 
+	/**
+	 * Zwinięcie kolejnego powiadomienia w to istniejące (ADR 0035): wskazuje
+	 * najnowszy zasób i wraca na górę skrzynki jako jedno.
+	 */
+	void refresh(UUID resourceId, Instant occurredAt) {
+		this.resourceId = resourceId;
+		this.createdAt = occurredAt;
+	}
+
 	void markRead(Instant readAt) {
 		if (this.readAt == null) {
 			this.readAt = readAt;
