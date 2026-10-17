@@ -266,6 +266,7 @@ Jedno repo (monorepo) na start — łatwiej ogarnąć jako jedna osoba/mały zes
 ## 13. Infrastruktura i środowiska
 
 - Lokalnie: `docker-compose` z Postgres + Redis, żeby środowisko dev odpalało się jedną komendą
+- **Profil `local`** (`spring-boot:run -Dspring-boot.run.profiles=local`) do ręcznego przeklikania aplikacji z mobilką na emulatorze. Zakłada dwa konta testowe (`LocalDevAccountsSeeder`): `admin@songly.local` (administrator) i `user@songly.local`, oba z hasłem `Songly123!`. Konta powstają drogą rejestracji (`UserRegisteredEvent`), więc mają profile jak każde inne. Restart ich nie resetuje. Pierwszy admin z założenia powstaje poza API (ADR 0021), dlatego bez wpisu w dzienniku moderacji. **Wyłącznie ten profil, bo hasła leżą w repo:** na wspólnym środowisku byłby to publicznie znany klucz do administracji. Profil ustawia też publiczny URL zdjęć na `10.0.2.2` (host widziany z emulatora); z domyślnym `localhost` emulator nie wyświetliłby żadnego awatara ani zdjęcia.
 - Środowiska: `dev` (lokalnie) → `staging` → `prod`, sekrety w zmiennych środowiskowych / vault, nigdy w repo
 - Na start (koszt ma znaczenie dla startupu): Railway / Render / Fly.io — łatwy deployment, managed Postgres, płacisz za realne użycie. Migracja do AWS/GCP ma sens dopiero przy realnym ruchu i zespole DevOps.
 - Observability od początku: structured logging (JSON), Micrometer + Prometheus/Grafana do metryk — dużo łatwiej dodać to na starcie niż domontowywać do rozrośniętego systemu.
