@@ -2,6 +2,7 @@ package com.songly.notification;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -47,6 +48,12 @@ interface NotificationRepository extends JpaRepository<Notification, UUID> {
 			""")
 	long countVisibleUnread(@Param("userId") UUID userId, @Param("excludedActorIds") Collection<UUID> excludedActorIds,
 			@Param("alwaysVisibleTypes") Collection<NotificationType> alwaysVisibleTypes);
+
+	boolean existsByUserIdAndTypeAndActorIdAndResourceId(UUID userId, NotificationType type, UUID actorId,
+			UUID resourceId);
+
+	Optional<Notification> findFirstByUserIdAndTypeAndActorIdAndReadAtIsNull(UUID userId, NotificationType type,
+			UUID actorId);
 
 	void deleteByUserIdOrActorId(UUID userId, UUID actorId);
 }

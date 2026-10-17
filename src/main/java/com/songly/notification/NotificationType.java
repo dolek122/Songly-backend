@@ -90,4 +90,38 @@ public enum NotificationType {
 	static final Set<NotificationType> MODERATION = Set.of(COMMUNITY_BANNED, COMMUNITY_POST_REMOVED,
 			COMMUNITY_POST_REPORTED, POST_REPORT_DISMISSED, BAN_APPEAL_SUBMITTED, BAN_APPEAL_ACCEPTED,
 			BAN_APPEAL_REJECTED, BAN_ESCALATION_ACCEPTED, BAN_ESCALATION_REJECTED);
+
+	/**
+	 * Powiadomienia o <b>stanie</b>, który aktor może cofnąć i przywrócić (ADR
+	 * 0035): lajk, udostępnienie, członkostwo. Powstają raz na trójkę (adresat,
+	 * aktor, zasób), niezależnie od liczby cykli cofnij/przywróć.
+	 *
+	 * <p>
+	 * Bez tego para {@code DELETE}/{@code PUT} w pętli była generatorem powiadomień
+	 * w cudzej skrzynce — każde przywrócenie stanu jest dla modułu content nowym
+	 * zdarzeniem, bo z jego punktu widzenia nim jest. Dla adresata drugi lajk tej
+	 * samej osoby pod tym samym postem nie niesie żadnej nowej informacji, a wie to
+	 * tylko skrzynka, która pamięta, co już pokazała. Dlatego reguła siedzi tutaj,
+	 * a nie u publikującego zdarzenie.
+	 *
+	 * <p>
+	 * Komentarzy tu nie ma: każdy komentarz to nowa treść, nie przywrócony stan.
+	 */
+	static final Set<NotificationType> ONCE_PER_RESOURCE = Set.of(POST_LIKED, POST_SHARED, COMMUNITY_MEMBER_JOINED);
+
+	/**
+	 * Powiadomienia zwijane do jednego, <b>dopóki adresat go nie przeczytał</b>
+	 * (ADR 0035). Kolejne odświeża istniejące (nowy zasób, nowa data) zamiast
+	 * dokładać drugie.
+	 *
+	 * <p>
+	 * Zaproszenie nie może iść regułą {@link #ONCE_PER_RESOURCE}: każde wysłanie to
+	 * nowy wiersz z nowym identyfikatorem, więc „raz na zasób" nie łapałoby pętli
+	 * wyślij/anuluj. „Raz na parę na zawsze" byłoby z kolei za mocne — były
+	 * znajomy, który po roku zaprasza ponownie, to prawdziwa wiadomość. Zwijanie do
+	 * przeczytania daje jedno i drugie: pętla dokłada najwyżej jedno powiadomienie
+	 * na każde zajrzenie ofiary do skrzynki, a powiadomienie zawsze wskazuje
+	 * zaproszenie, które faktycznie czeka.
+	 */
+	static final Set<NotificationType> COLLAPSED_WHILE_UNREAD = Set.of(FRIEND_REQUEST_RECEIVED);
 }

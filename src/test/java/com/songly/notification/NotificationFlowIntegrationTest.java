@@ -1,5 +1,7 @@
 package com.songly.notification;
 
+import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -161,6 +163,106 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 		mockMvc.perform(get("/api/v1/notifications").header("Authorization", "Bearer " + author.accessToken()))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.content[0].type").value("POST_SHARED"))
 				.andExpect(jsonPath("$.content[0].actorId").value(sharer.userId()));
+	}
+
+	/**
+	 * ADR 0035: pętla cofnij/przywróć na lajku, udostępnieniu i członkostwie
+	 * zostawia w skrzynce adresata po jednym powiadomieniu — także gdy adresat
+	 * zdążył je przeczytać.
+	 */
+	@Test
+	void undoRedoLoops_leaveOneNotificationPerActorAndResource() throws Exception {
+		TestUser author = registerUser("notif-loop-author@songly.io");
+		TestUser looper = registerUser("notif-loop-looper@songly.io");
+
+		MvcResult postResult = mockMvc
+				.perform(post("/api/v1/posts").header("Authorization", "Bearer " + author.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"content":"pętla"}"""))
+				.andExpect(status().isCreated()).andReturn();
+		String postId = objectMapper.readTree(postResult.getResponse().getContentAsString()).get("id").asText();
+		MvcResult communityResult = mockMvc
+				.perform(post("/api/v1/communities").header("Authorization", "Bearer " + author.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"name":"Pętla","description":"dedup"}"""))
+				.andExpect(status().isCreated()).andReturn();
+		String communityId = objectMapper.readTree(communityResult.getResponse().getContentAsString()).get("id")
+				.asText();
+
+		for (int i = 0; i < 3; i++) {
+			mockMvc.perform(
+					put("/api/v1/posts/" + postId + "/likes").header("Authorization", "Bearer " + looper.accessToken()))
+					.andExpect(status().isNoContent());
+			mockMvc.perform(delete("/api/v1/posts/" + postId + "/likes").header("Authorization",
+					"Bearer " + looper.accessToken())).andExpect(status().isNoContent());
+			mockMvc.perform(put("/api/v1/posts/" + postId + "/shares").header("Authorization",
+					"Bearer " + looper.accessToken())).andExpect(status().isNoContent());
+			mockMvc.perform(delete("/api/v1/posts/" + postId + "/shares").header("Authorization",
+					"Bearer " + looper.accessToken())).andExpect(status().isNoContent());
+			mockMvc.perform(put("/api/v1/communities/" + communityId + "/membership").header("Authorization",
+					"Bearer " + looper.accessToken())).andExpect(status().isNoContent());
+			mockMvc.perform(delete("/api/v1/communities/" + communityId + "/membership").header("Authorization",
+					"Bearer " + looper.accessToken())).andExpect(status().isNoContent());
+			// przeczytanie nie otwiera furtki na kolejne powiadomienie
+			mockMvc.perform(
+					post("/api/v1/notifications/read-all").header("Authorization", "Bearer " + author.accessToken()))
+					.andExpect(status().isNoContent());
+		}
+
+		mockMvc.perform(get("/api/v1/notifications").header("Authorization", "Bearer " + author.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.page.totalElements").value(3))
+				.andExpect(jsonPath("$.content[?(@.type == 'POST_LIKED')]", hasSize(1)))
+				.andExpect(jsonPath("$.content[?(@.type == 'POST_SHARED')]", hasSize(1)))
+				.andExpect(jsonPath("$.content[?(@.type == 'COMMUNITY_MEMBER_JOINED')]", hasSize(1)));
+	}
+
+	/**
+	 * Zaproszenia zwijają się do jednego tylko do przeczytania (ADR 0035): pętla
+	 * wyślij/anuluj daje jedno nieprzeczytane wskazujące ostatnie zaproszenie, a
+	 * nowe zaproszenie po przeczytaniu jest nową wiadomością.
+	 */
+	@Test
+	void friendRequestLoop_collapsesWhileUnread_andPointsAtPendingRequest() throws Exception {
+		TestUser addressee = registerUser("notif-req-addressee@songly.io");
+		TestUser looper = registerUser("notif-req-looper@songly.io");
+
+		String lastRequestId = null;
+		for (int i = 0; i < 3; i++) {
+			if (lastRequestId != null) {
+				mockMvc.perform(delete("/api/v1/friends/requests/" + lastRequestId).header("Authorization",
+						"Bearer " + looper.accessToken())).andExpect(status().isNoContent());
+			}
+			lastRequestId = sendFriendRequest(looper, addressee);
+		}
+
+		mockMvc.perform(get("/api/v1/notifications").header("Authorization", "Bearer " + addressee.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.page.totalElements").value(1))
+				.andExpect(jsonPath("$.content[0].type").value("FRIEND_REQUEST_RECEIVED"))
+				.andExpect(jsonPath("$.content[0].resourceId").value(lastRequestId))
+				.andExpect(jsonPath("$.content[0].readAt").doesNotExist());
+
+		mockMvc.perform(
+				post("/api/v1/notifications/read-all").header("Authorization", "Bearer " + addressee.accessToken()))
+				.andExpect(status().isNoContent());
+		mockMvc.perform(delete("/api/v1/friends/requests/" + lastRequestId).header("Authorization",
+				"Bearer " + looper.accessToken())).andExpect(status().isNoContent());
+		String resentRequestId = sendFriendRequest(looper, addressee);
+
+		mockMvc.perform(
+				get("/api/v1/notifications/unread-count").header("Authorization", "Bearer " + addressee.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.count").value(1));
+		mockMvc.perform(get("/api/v1/notifications").header("Authorization", "Bearer " + addressee.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.page.totalElements").value(2))
+				.andExpect(jsonPath("$.content[0].resourceId").value(resentRequestId));
+	}
+
+	private String sendFriendRequest(TestUser from, TestUser to) throws Exception {
+		MvcResult result = mockMvc
+				.perform(post("/api/v1/friends/requests").header("Authorization", "Bearer " + from.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"addresseeId":"%s"}""".formatted(to.userId())))
+				.andExpect(status().isCreated()).andReturn();
+		return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
 	}
 
 	@Test
