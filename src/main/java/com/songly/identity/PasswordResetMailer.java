@@ -65,6 +65,9 @@ class PasswordResetMailer {
 
 				%s
 
+				Jeśli link nie otwiera się po kliknięciu, skopiuj go i wklej w aplikacji
+				Songly, na ekranie resetu hasła.
+
 				Link jest jednorazowy i wygasa za %s. Zresetowanie hasła wyloguje Cię
 				ze wszystkich urządzeń.
 

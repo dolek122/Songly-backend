@@ -10,7 +10,7 @@ class PasswordResetProperties {
 
 	private Duration resendInterval = Duration.ofMinutes(1);
 
-	private String resetUrl = "http://localhost:3000/reset-password?token={token}";
+	private String resetUrl = "songly://reset-password?token={token}";
 
 	/**
 	 * Znacznie krócej niż refresh token (30 dni), bo to zupełnie inny byt: link

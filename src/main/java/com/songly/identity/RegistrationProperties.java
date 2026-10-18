@@ -10,7 +10,7 @@ class RegistrationProperties {
 
 	private Duration resendInterval = Duration.ofMinutes(1);
 
-	private String verificationUrl = "http://localhost:3000/verify-email?token={token}";
+	private String verificationUrl = "songly://verify-email?token={token}";
 
 	/**
 	 * Dłużej niż token resetu hasła (30 min) i celowo. Reset robi się w reakcji na

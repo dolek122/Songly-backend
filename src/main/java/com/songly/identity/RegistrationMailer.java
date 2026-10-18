@@ -48,6 +48,9 @@ class RegistrationMailer {
 
 				%s
 
+				Jeśli link nie otwiera się po kliknięciu, skopiuj go i wklej w aplikacji
+				Songly, na ekranie potwierdzania adresu.
+
 				Link wygasa po %d h. Do czasu potwierdzenia konto nie istnieje — jeśli
 				to nie Ty, nie musisz robić nic, a my nie zapiszemy o Tobie niczego
 				poza tym jednym zgłoszeniem, które samo wygaśnie.
