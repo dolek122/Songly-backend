@@ -88,6 +88,15 @@ class NowPlayingService {
 		musicProvider.connect(UUID.fromString(userId), authorizationCode);
 	}
 
+	/**
+	 * Provider wrócił bez kodu (odmowa zgody albo jego błąd). State zużywamy od
+	 * razu, żeby nie dało się go jeszcze raz podstawić do callbacku przez resztę
+	 * TTL.
+	 */
+	void abandonConnect(String state) {
+		redisTemplate.delete(STATE_KEY_PREFIX + state);
+	}
+
 	@Transactional
 	void disconnect(UUID userId) {
 		linkRepository.deleteByUserIdAndProvider(userId, musicProvider.name());

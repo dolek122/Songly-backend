@@ -58,6 +58,10 @@ services:
         sync: false
       - key: SPOTIFY_REDIRECT_URI
         sync: false
+      # Powrót z OAuth do aplikacji (ADR 0038). Domyślnie songly://now-playing/spotify —
+      # pozostaw puste, chyba że celowo odsyłasz gdzie indziej.
+      - key: SPOTIFY_CONNECT_RESULT_URL
+        sync: false
       # Kanał e-mail (ADR 0008). Bez MAIL_PROVIDER=smtp instancja startuje z
       # domyślnym "log", czyli wypisuje token resetu hasła do logów zamiast go
       # wysłać — na produkcji to nie jest brak funkcji, tylko dziura: każdy z
