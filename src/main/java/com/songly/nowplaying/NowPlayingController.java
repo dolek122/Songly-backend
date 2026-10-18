@@ -7,13 +7,17 @@ import com.songly.nowplaying.dto.NowPlayingSettingsResponse;
 import com.songly.nowplaying.dto.NowPlayingStatusResponse;
 import com.songly.nowplaying.dto.UpdateNowPlayingSettingsRequest;
 import com.songly.common.web.ApiError;
+import com.songly.common.web.ApiException;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
+import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -26,17 +30,27 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.util.UriComponentsBuilder;
 
 @RestController
 @RequestMapping("/api/v1/now-playing")
 class NowPlayingController {
 
+	/**
+	 * Kod z {@link SpotifyApiException} — provider wrócił z błędem bez kodu
+	 * autoryzacyjnego.
+	 */
+	private static final String MUSIC_PROVIDER_ERROR = "MUSIC_PROVIDER_ERROR";
+
 	private final NowPlayingService nowPlayingService;
 	private final NowPlayingStreamHub streamHub;
+	private final NowPlayingProperties properties;
 
-	NowPlayingController(NowPlayingService nowPlayingService, NowPlayingStreamHub streamHub) {
+	NowPlayingController(NowPlayingService nowPlayingService, NowPlayingStreamHub streamHub,
+			NowPlayingProperties properties) {
 		this.nowPlayingService = nowPlayingService;
 		this.streamHub = streamHub;
+		this.properties = properties;
 	}
 
 	@PostMapping("/spotify/connect")
@@ -48,18 +62,39 @@ class NowPlayingController {
 	/**
 	 * Przeglądarka wraca tu z redirectu Spotify bez JWT — endpoint jest publiczny,
 	 * a użytkownika identyfikuje jednorazowy state z Redis.
+	 *
+	 * <p>
+	 * Każdy wynik, także błąd, kończy się przekierowaniem do aplikacji (ADR 0038):
+	 * po drugiej stronie stoi przeglądarka, a nie klient API, więc JSON z błędem
+	 * byłby dla użytkownika ślepą uliczką, a 204 — pustą kartą. Jedyny wyjątek to
+	 * brak {@code state}: wtedy nie jest to powrót od providera.
 	 */
 	// springdoc nie dokłada adnotowanych odpowiedzi do wywnioskowanych, tylko je
 	// nimi zastępuje — więc gdy opisujemy błędy, sukces trzeba wypisać razem z
 	// nimi.
 	@GetMapping("/spotify/callback")
-	@ApiResponse(responseCode = "204", description = "Konto połączone z serwisem muzycznym", content = @Content)
-	@ApiResponse(responseCode = "400", description = "Nieprawidłowy lub zużyty `state` (`INVALID_OAUTH_STATE`) "
-			+ "albo kod autoryzacyjny (`INVALID_AUTHORIZATION_CODE`)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiError.class)))
-	@ApiResponse(responseCode = "502", description = "Serwis muzyczny nie odpowiedział poprawnie (`MUSIC_PROVIDER_ERROR`)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiError.class)))
-	ResponseEntity<Void> callback(@RequestParam String code, @RequestParam String state) {
-		nowPlayingService.completeConnect(state, code);
-		return ResponseEntity.noContent().build();
+	@ApiResponse(responseCode = "302", description = "Przekierowanie do aplikacji z wynikiem w parametrze `result`: "
+			+ "`connected`, `denied` (użytkownik odmówił zgody) albo `error` z kodem błędu w `code` "
+			+ "(`INVALID_OAUTH_STATE`, `INVALID_AUTHORIZATION_CODE`, `MUSIC_PROVIDER_ERROR`)", content = @Content)
+	@ApiResponse(responseCode = "400", description = "Brak parametru `state` (`MISSING_PARAMETER`)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiError.class)))
+	ResponseEntity<Void> callback(@RequestParam String state, @RequestParam(required = false) String code,
+			@RequestParam(required = false) String error) {
+		if (code == null) {
+			nowPlayingService.abandonConnect(state);
+			return "access_denied".equals(error) ? backToApp("denied", null) : backToApp("error", MUSIC_PROVIDER_ERROR);
+		}
+		try {
+			nowPlayingService.completeConnect(state, code);
+		} catch (ApiException e) {
+			return backToApp("error", e.getCode());
+		}
+		return backToApp("connected", null);
+	}
+
+	private ResponseEntity<Void> backToApp(String result, String errorCode) {
+		URI location = UriComponentsBuilder.fromUriString(properties.getConnectResultUrl()).queryParam("result", result)
+				.queryParamIfPresent("code", Optional.ofNullable(errorCode)).build().toUri();
+		return ResponseEntity.status(HttpStatus.FOUND).location(location).build();
 	}
 
 	@DeleteMapping("/spotify")

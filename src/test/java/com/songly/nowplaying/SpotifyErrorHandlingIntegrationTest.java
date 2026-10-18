@@ -3,6 +3,7 @@ package com.songly.nowplaying;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -143,7 +144,8 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 		String state = UriComponentsBuilder.fromUriString(authorizeUrl).build().getQueryParams().getFirst("state");
 
 		mockMvc.perform(get("/api/v1/now-playing/spotify/callback").param("code", "auth-code").param("state", state))
-				.andExpect(status().isNoContent());
+				.andExpect(status().isFound())
+				.andExpect(header().string("Location", "songly://now-playing/spotify?result=connected"));
 		assertThat(linkRepository.findByUserIdAndProvider(userId, SpotifyProvider.NAME)).isPresent();
 		return new ConnectedUser(accessToken, userId);
 	}
@@ -191,6 +193,7 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 				{"error":"invalid_grant","error_description":"Invalid authorization code"}""");
 
 		mockMvc.perform(get("/api/v1/now-playing/spotify/callback").param("code", "stale").param("state", state))
-				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_AUTHORIZATION_CODE"));
+				.andExpect(status().isFound()).andExpect(header().string("Location",
+						"songly://now-playing/spotify?result=error&code=INVALID_AUTHORIZATION_CODE"));
 	}
 }

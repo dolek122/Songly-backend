@@ -11,6 +11,7 @@ class NowPlayingProperties {
 	private Duration oauthStateTtl = Duration.ofMinutes(10);
 	private Duration manualStatusTtl = Duration.ofHours(3);
 	private Duration announcedTtl = Duration.ofHours(6);
+	private String connectResultUrl = "songly://now-playing/spotify";
 	private final Spotify spotify = new Spotify();
 	private final Stream stream = new Stream();
 	private final Poll poll = new Poll();
@@ -59,6 +60,19 @@ class NowPlayingProperties {
 
 	void setAnnouncedTtl(Duration announcedTtl) {
 		this.announcedTtl = announcedTtl;
+	}
+
+	/**
+	 * Dokąd callback odsyła przeglądarkę po zakończeniu OAuth (ADR 0038). Wynik
+	 * doklejamy jako {@code result} (i {@code code} przy błędzie), więc adres nie
+	 * może mieć własnego parametru o tej nazwie.
+	 */
+	String getConnectResultUrl() {
+		return connectResultUrl;
+	}
+
+	void setConnectResultUrl(String connectResultUrl) {
+		this.connectResultUrl = connectResultUrl;
 	}
 
 	Spotify getSpotify() {
