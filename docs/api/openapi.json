@@ -3349,22 +3349,29 @@
         "operationId" : "callback",
         "parameters" : [ {
           "in" : "query",
-          "name" : "code",
+          "name" : "state",
           "required" : true,
           "schema" : {
             "type" : "string"
           }
         }, {
           "in" : "query",
-          "name" : "state",
-          "required" : true,
+          "name" : "code",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "error",
+          "required" : false,
           "schema" : {
             "type" : "string"
           }
         } ],
         "responses" : {
-          "204" : {
-            "description" : "Konto połączone z serwisem muzycznym"
+          "302" : {
+            "description" : "Przekierowanie do aplikacji z wynikiem w parametrze `result`: `connected`, `denied` (użytkownik odmówił zgody) albo `error` z kodem błędu w `code` (`INVALID_OAUTH_STATE`, `INVALID_AUTHORIZATION_CODE`, `MUSIC_PROVIDER_ERROR`)"
           },
           "400" : {
             "content" : {
@@ -3374,17 +3381,7 @@
                 }
               }
             },
-            "description" : "Nieprawidłowy lub zużyty `state` (`INVALID_OAUTH_STATE`) albo kod autoryzacyjny (`INVALID_AUTHORIZATION_CODE`)"
-          },
-          "502" : {
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ApiError"
-                }
-              }
-            },
-            "description" : "Serwis muzyczny nie odpowiedział poprawnie (`MUSIC_PROVIDER_ERROR`)"
+            "description" : "Brak parametru `state` (`MISSING_PARAMETER`)"
           }
         },
         "tags" : [ "now-playing-controller" ]

@@ -22,6 +22,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.util.UriComponentsBuilder;
 import tools.jackson.databind.ObjectMapper;
 
 // Poll wyłączony: testowy strumień SSE zostaje w rejestrze do timeoutu, więc
@@ -88,11 +89,51 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 				.contains("scope=user-read-currently-playing");
 	}
 
+	private String beginConnect(String accessToken) throws Exception {
+		MvcResult connect = mockMvc
+				.perform(post("/api/v1/now-playing/spotify/connect").header("Authorization", "Bearer " + accessToken))
+				.andExpect(status().isOk()).andReturn();
+		String authorizeUrl = objectMapper.readTree(connect.getResponse().getContentAsString()).get("authorizeUrl")
+				.asText();
+		return UriComponentsBuilder.fromUriString(authorizeUrl).build().getQueryParams().getFirst("state");
+	}
+
+	/**
+	 * Po drugiej stronie callbacku stoi przeglądarka, nie klient API — błąd ma
+	 * wrócić do aplikacji, a nie zostawić użytkownika na stronie z JSON-em.
+	 */
 	@Test
-	void callback_returnsBadRequest_whenStateUnknown() throws Exception {
+	void callback_redirectsToAppWithError_whenStateUnknown() throws Exception {
 		mockMvc.perform(
 				get("/api/v1/now-playing/spotify/callback").param("code", "any-code").param("state", "unknown-state"))
-				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_OAUTH_STATE"));
+				.andExpect(status().isFound()).andExpect(header().string("Location",
+						"songly://now-playing/spotify?result=error&code=INVALID_OAUTH_STATE"));
+	}
+
+	@Test
+	void callback_redirectsAsDenied_andConsumesState_whenUserRefusesConsent() throws Exception {
+		String state = beginConnect(registerAndGetAccessToken("spotify-denied@songly.io"));
+
+		mockMvc.perform(
+				get("/api/v1/now-playing/spotify/callback").param("error", "access_denied").param("state", state))
+				.andExpect(status().isFound())
+				.andExpect(header().string("Location", "songly://now-playing/spotify?result=denied"));
+
+		// Odmowa zużywa state — podstawienie go potem z kodem nie może już
+		// dokończyć połączenia.
+		mockMvc.perform(get("/api/v1/now-playing/spotify/callback").param("code", "late-code").param("state", state))
+				.andExpect(header().string("Location",
+						"songly://now-playing/spotify?result=error&code=INVALID_OAUTH_STATE"));
+	}
+
+	@Test
+	void callback_redirectsAsProviderError_whenProviderReturnsOtherError() throws Exception {
+		String state = beginConnect(registerAndGetAccessToken("spotify-provider-error@songly.io"));
+
+		mockMvc.perform(
+				get("/api/v1/now-playing/spotify/callback").param("error", "server_error").param("state", state))
+				.andExpect(status().isFound()).andExpect(header().string("Location",
+						"songly://now-playing/spotify?result=error&code=MUSIC_PROVIDER_ERROR"));
 	}
 
 	@Test
