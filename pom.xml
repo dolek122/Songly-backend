@@ -50,6 +50,17 @@
         </dependency>
 
         <!--
+            Wyłącznie po token OAuth konta serwisowego dla FCM HTTP v1 (ADR 0040).
+            Celowo nie firebase-admin: ten ciągnie gRPC i Guavę dla jednego żądania
+            POST, które RestClient wysyła sam.
+        -->
+        <dependency>
+            <groupId>com.google.auth</groupId>
+            <artifactId>google-auth-library-oauth2-http</artifactId>
+            <version>1.52.0</version>
+        </dependency>
+
+        <!--
             Klient S3. Domyślny transport (Netty, asynchroniczny) jest tu zbędny —
             wgrywamy pojedyncze pliki synchronicznie, więc lekki url-connection-client
             oszczędza kilkanaście megabajtów zależności i całą warstwę Nettyego.

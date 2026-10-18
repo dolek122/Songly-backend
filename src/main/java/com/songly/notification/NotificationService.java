@@ -9,6 +9,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -21,12 +22,14 @@ class NotificationService {
 	private final NotificationRepository notificationRepository;
 	private final ProfileDirectory profileDirectory;
 	private final SocialGraph socialGraph;
+	private final ApplicationEventPublisher eventPublisher;
 
 	NotificationService(NotificationRepository notificationRepository, ProfileDirectory profileDirectory,
-			SocialGraph socialGraph) {
+			SocialGraph socialGraph, ApplicationEventPublisher eventPublisher) {
 		this.notificationRepository = notificationRepository;
 		this.profileDirectory = profileDirectory;
 		this.socialGraph = socialGraph;
+		this.eventPublisher = eventPublisher;
 	}
 
 	/**
@@ -53,8 +56,11 @@ class NotificationService {
 				return;
 			}
 		}
-		notificationRepository
-				.save(new Notification(UUID.randomUUID(), recipientId, type, actorId, resourceId, occurredAt));
+		UUID id = UUID.randomUUID();
+		notificationRepository.save(new Notification(id, recipientId, type, actorId, resourceId, occurredAt));
+		// Push dopiero po commicie tej (REQUIRES_NEW) transakcji — powiadomienie,
+		// które się nie zapisało, nie może zadzwonić komuś w kieszeni (ADR 0040).
+		eventPublisher.publishEvent(new NotificationCreatedEvent(id, recipientId, actorId, type, resourceId));
 	}
 
 	/**

@@ -135,6 +135,7 @@ class AuthService {
 		if (session.isRevoked()) {
 			refreshOutcome("reuse").increment();
 			int revoked = sessionRepository.revokeAllForUser(session.getUserId(), now);
+			eventPublisher.publishEvent(new UserSessionsRevokedEvent(session.getUserId()));
 			log.warn("Ponowne użycie refresh tokenu, konto: {} — odwołane sesje: {}", session.getUserId(), revoked);
 			throw new RefreshTokenReuseDetectedException();
 		}
@@ -190,6 +191,7 @@ class AuthService {
 		}
 		user.changePassword(passwordEncoder.encode(newPassword));
 		int revoked = sessionRepository.revokeAllForUser(userId, Instant.now());
+		eventPublisher.publishEvent(new UserSessionsRevokedEvent(userId));
 		// Oczekujący link resetujący traci ważność razem ze starym hasłem. Zwykle
 		// jest tam dlatego, że ktoś obcy zamówił reset — zostawienie go żywego przez
 		// pół godziny po tym, jak właściciel zareagował zmianą hasła, znaczyłoby, że

@@ -137,6 +137,7 @@ class PasswordResetService {
 
 		user.changePassword(passwordEncoder.encode(newPassword));
 		int revoked = sessionRepository.revokeAllForUser(userId, Instant.now());
+		eventPublisher.publishEvent(new UserSessionsRevokedEvent(userId));
 		tokenRepository.deleteByUserId(userId);
 
 		resetOutcome("success").increment();
