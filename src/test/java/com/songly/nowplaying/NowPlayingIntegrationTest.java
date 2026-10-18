@@ -95,12 +95,16 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_OAUTH_STATE"));
 	}
 
+	/**
+	 * Stan każdego nowego konta — to „nic nie gra", nie błąd. 404 zasłaniało w
+	 * kliencie cały ekran, razem z drogami wyjścia z tego stanu.
+	 */
 	@Test
-	void myStatus_returnsNotFound_whenProviderNotConnected() throws Exception {
+	void myStatus_returnsNoContent_whenProviderNotConnected() throws Exception {
 		String accessToken = registerAndGetAccessToken("spotify-status@songly.io");
 
 		mockMvc.perform(get("/api/v1/now-playing/me").header("Authorization", "Bearer " + accessToken))
-				.andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PROVIDER_NOT_CONNECTED"));
+				.andExpect(status().isNoContent());
 	}
 
 	@Test
@@ -131,7 +135,7 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isNoContent());
 
 		mockMvc.perform(get("/api/v1/now-playing/me").header("Authorization", "Bearer " + accessToken))
-				.andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("PROVIDER_NOT_CONNECTED"));
+				.andExpect(status().isNoContent());
 	}
 
 	@Test
