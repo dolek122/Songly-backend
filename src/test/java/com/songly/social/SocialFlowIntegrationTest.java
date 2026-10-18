@@ -151,6 +151,34 @@ class SocialFlowIntegrationTest extends AbstractIntegrationTest {
 						{"addresseeId":"%s"}""".formatted(ada.userId()))).andExpect(status().isCreated());
 	}
 
+	/**
+	 * Stan blokady widzi tylko blokujący. Zablokowany dostaje „nie blokujesz” —
+	 * czyli prawdę o własnej decyzji — a nie informację, że ktoś zablokował jego
+	 * (ADR 0039).
+	 */
+	@Test
+	void blockStatus_isVisibleOnlyInBlockersDirection() throws Exception {
+		TestUser ada = registerUser("social-status-ada@songly.io");
+		TestUser bono = registerUser("social-status-bono@songly.io");
+
+		mockMvc.perform(get("/api/v1/blocks/" + bono.userId()).header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.blocked").value(false));
+
+		mockMvc.perform(put("/api/v1/blocks/" + bono.userId()).header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/api/v1/blocks/" + bono.userId()).header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.blocked").value(true));
+		mockMvc.perform(get("/api/v1/blocks/" + ada.userId()).header("Authorization", "Bearer " + bono.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.blocked").value(false));
+
+		mockMvc.perform(
+				delete("/api/v1/blocks/" + bono.userId()).header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isNoContent());
+		mockMvc.perform(get("/api/v1/blocks/" + bono.userId()).header("Authorization", "Bearer " + ada.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.blocked").value(false));
+	}
+
 	@Test
 	void friendRequest_canBeCancelledByRequester_notByAddressee() throws Exception {
 		TestUser ada = registerUser("social-cancel-ada@songly.io");

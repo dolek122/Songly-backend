@@ -1,5 +1,6 @@
 package com.songly.social;
 
+import com.songly.social.dto.BlockStatusResponse;
 import com.songly.social.dto.BlockedUserResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import java.util.UUID;
@@ -30,6 +31,15 @@ class BlockController {
 	ResponseEntity<Void> blockUser(Authentication authentication, @PathVariable UUID userId) {
 		socialGraphService.blockUser(currentUserId(authentication), userId);
 		return ResponseEntity.noContent().build();
+	}
+
+	/**
+	 * Stan blokady dla ekranu cudzego profilu (ADR 0039). Osobno od profilu, bo
+	 * {@code profile} nie może zależeć od {@code social} — powstałby cykl.
+	 */
+	@GetMapping("/{userId}")
+	BlockStatusResponse blockStatus(Authentication authentication, @PathVariable UUID userId) {
+		return new BlockStatusResponse(socialGraphService.isBlocking(currentUserId(authentication), userId));
 	}
 
 	@DeleteMapping("/{userId}")
