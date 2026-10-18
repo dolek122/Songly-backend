@@ -6,6 +6,7 @@ import com.songly.common.storage.ObjectStorage;
 import com.songly.identity.SuspendedAccounts;
 import com.songly.profile.dto.GenreResponse;
 import com.songly.profile.dto.ProfileResponse;
+import com.songly.profile.dto.ProfileSummaryResponse;
 import com.songly.profile.dto.PublicProfileResponse;
 import com.songly.profile.dto.UpdateProfileRequest;
 import com.songly.profile.dto.UserSearchResponse;
@@ -26,6 +27,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class ProfileService implements ProfileDirectory {
+
+	/** Limit id w jednym zapytaniu administracji o nazwy (ADR 0036). */
+	static final int MAX_SUMMARY_IDS = 100;
 
 	private final ProfileRepository profileRepository;
 	private final GenreRepository genreRepository;
@@ -158,6 +162,28 @@ class ProfileService implements ProfileDirectory {
 		List<UUID> genreIds = userGenreRepository.findByUserId(userId).stream().map(UserGenre::getGenreId).toList();
 		return genreRepository.findAllById(genreIds).stream()
 				.map(genre -> new GenreResponse(genre.getId(), genre.getName())).toList();
+	}
+
+	/**
+	 * Nazwy i awatary dla administracji (ADR 0036) — <b>bez</b> filtra zawieszeń z
+	 * ADR 0026, bo to właśnie o zawieszonych administracja decyduje. Ukrywanie
+	 * treści zawieszonych chroni innych użytkowników; administratorowi zasłaniałoby
+	 * tylko to, kogo dotyczy jego własna decyzja.
+	 *
+	 * <p>
+	 * Nieznane id po prostu nie występują w wyniku (konto usunięte to normalny
+	 * przypadek w historii moderacji), w kolejności pytania nie ma znaczenia.
+	 */
+	@Transactional(readOnly = true)
+	List<ProfileSummaryResponse> profileSummaries(Set<UUID> userIds) {
+		if (userIds.size() > MAX_SUMMARY_IDS) {
+			throw new TooManyUserIdsException(MAX_SUMMARY_IDS);
+		}
+		Set<UUID> suspended = suspendedAccounts.suspendedUserIds();
+		return profileRepository
+				.findByUserIdIn(userIds).stream().map(profile -> new ProfileSummaryResponse(profile.getUserId(),
+						profile.getDisplayName(), avatarUrl(profile), suspended.contains(profile.getUserId())))
+				.toList();
 	}
 
 	@Override
