@@ -168,6 +168,15 @@ class SocialGraphService implements SocialGraph {
 		blockRepository.deleteByBlockerIdOrBlockedId(userId, userId);
 	}
 
+	/**
+	 * Bez sprawdzania, czy użytkownik istnieje: dla nieistniejącego odpowiedź „nie
+	 * blokujesz" jest prawdziwa i nie mówi niczego, czego nie powie profil.
+	 */
+	@Transactional(readOnly = true)
+	boolean isBlocking(UUID blockerId, UUID blockedId) {
+		return blockRepository.existsById(new BlockId(blockerId, blockedId));
+	}
+
 	@Transactional(readOnly = true)
 	Page<BlockedUserResponse> listBlockedUsers(UUID blockerId, Pageable pageable) {
 		Page<Block> page = blockRepository.findByBlockerIdOrderByCreatedAtDesc(blockerId, pageable);

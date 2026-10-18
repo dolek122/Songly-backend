@@ -130,6 +130,14 @@
         },
         "type" : "object"
       },
+      "BlockStatusResponse" : {
+        "properties" : {
+          "blocked" : {
+            "type" : "boolean"
+          }
+        },
+        "type" : "object"
+      },
       "BlockedUserResponse" : {
         "properties" : {
           "blockedAt" : {
@@ -2035,6 +2043,34 @@
         } ],
         "responses" : {
           "200" : {
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "block-controller" ]
+      },
+      "get" : {
+        "operationId" : "blockStatus",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "userId",
+          "required" : true,
+          "schema" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/BlockStatusResponse"
+                }
+              }
+            },
             "description" : "OK"
           }
         },
