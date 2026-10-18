@@ -1128,6 +1128,21 @@
         "required" : [ "refreshToken" ],
         "type" : "object"
       },
+      "RegisterPushDeviceRequest" : {
+        "properties" : {
+          "platform" : {
+            "enum" : [ "ANDROID", "IOS" ],
+            "type" : "string"
+          },
+          "token" : {
+            "maxLength" : 512,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "platform", "token" ],
+        "type" : "object"
+      },
       "RegisterRequest" : {
         "properties" : {
           "email" : {
@@ -1142,6 +1157,17 @@
           }
         },
         "required" : [ "email", "password" ],
+        "type" : "object"
+      },
+      "RemovePushDeviceRequest" : {
+        "properties" : {
+          "token" : {
+            "maxLength" : 512,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "token" ],
         "type" : "object"
       },
       "ReportPostRequest" : {
@@ -3145,6 +3171,54 @@
             "application/json" : {
               "schema" : {
                 "$ref" : "#/components/schemas/UpdateMailPreferencesRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "notification-controller" ]
+      }
+    },
+    "/api/v1/notifications/push-devices" : {
+      "put" : {
+        "operationId" : "registerPushDevice",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RegisterPushDeviceRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "notification-controller" ]
+      }
+    },
+    "/api/v1/notifications/push-devices/removal" : {
+      "post" : {
+        "operationId" : "removePushDevice",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RemovePushDeviceRequest"
               }
             }
           },

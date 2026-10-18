@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.songly.RecordingMailSenderConfig.RecordingMailSender;
+import com.songly.RecordingPushSenderConfig.RecordingPushSender;
 import java.net.URI;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -44,7 +45,7 @@ import org.testcontainers.utility.DockerImageName;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(RecordingMailSenderConfig.class)
+@Import({RecordingMailSenderConfig.class, RecordingPushSenderConfig.class})
 /*
  * Mała pula połączeń jest tu warunkiem przejścia całego przebiegu, nie
  * optymalizacją. Każda kombinacja @TestPropertySource to osobny kontekst
@@ -147,6 +148,9 @@ public abstract class AbstractIntegrationTest {
 
 	@Autowired
 	protected RecordingMailSender mails;
+
+	@Autowired
+	protected RecordingPushSender pushes;
 
 	/**
 	 * Zakłada konto i od razu potwierdza adres, zwracając odpowiedź weryfikacji —

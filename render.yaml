@@ -80,6 +80,13 @@ services:
         sync: false
       - key: MAIL_FROM
         sync: false
+      # Kanał push (ADR 0040). Bez PUSH_PROVIDER=fcm pushe są tylko logowane.
+      # FCM_CREDENTIALS_JSON to cała treść klucza konta serwisowego Firebase
+      # (JSON) — "fcm" bez niej celowo wywala start.
+      - key: PUSH_PROVIDER
+        sync: false
+      - key: FCM_CREDENTIALS_JSON
+        sync: false
       # Link prowadzi do aplikacji klienckiej (formularz nowego hasła), nie do
       # backendu, który nie ma żadnego UI. Domyślnie songly://… (ADR 0037) —
       # pozostaw puste, chyba że celowo kierujesz linki gdzie indziej.

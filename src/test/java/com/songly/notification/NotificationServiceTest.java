@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class NotificationServiceTest {
@@ -32,6 +33,9 @@ class NotificationServiceTest {
 	@Mock
 	private SocialGraph socialGraph;
 
+	@Mock
+	private ApplicationEventPublisher eventPublisher;
+
 	private NotificationService notificationService;
 
 	private final UUID recipientId = UUID.randomUUID();
@@ -39,7 +43,8 @@ class NotificationServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		notificationService = new NotificationService(notificationRepository, profileDirectory, socialGraph);
+		notificationService = new NotificationService(notificationRepository, profileDirectory, socialGraph,
+				eventPublisher);
 	}
 
 	@Test

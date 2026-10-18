@@ -128,6 +128,13 @@ class AccountDeletionFlowIntegrationTest extends AbstractIntegrationTest {
 						.contentType(MediaType.APPLICATION_JSON).content("""
 								{"decisionsAboutMe":false,"moderationQueue":false}"""))
 				.andExpect(status().isNoContent());
+		// notification: urzadzenie push (ADR 0040) - trzecia tabela modulu z FK do
+		// users
+		mockMvc.perform(
+				put("/api/v1/notifications/push-devices").header("Authorization", "Bearer " + leaving.accessToken())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"token":"leaving-user-device","platform":"ANDROID"}"""))
+				.andExpect(status().isNoContent());
 
 		// moderacja: ban NALOZONY przez leaving (przezywa go, traci tylko autora) oraz
 		// zgloszenie ZLOZONE przez leaving (znika razem z nim). Oba maja FK do users

@@ -2,6 +2,8 @@ package com.songly.notification;
 
 import com.songly.notification.dto.MailPreferencesResponse;
 import com.songly.notification.dto.NotificationResponse;
+import com.songly.notification.dto.RegisterPushDeviceRequest;
+import com.songly.notification.dto.RemovePushDeviceRequest;
 import com.songly.notification.dto.UnreadCountResponse;
 import com.songly.notification.dto.UpdateMailPreferencesRequest;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -27,11 +29,13 @@ class NotificationController {
 
 	private final NotificationService notificationService;
 	private final NotificationMailPreferenceService mailPreferenceService;
+	private final PushDeviceService pushDeviceService;
 
 	NotificationController(NotificationService notificationService,
-			NotificationMailPreferenceService mailPreferenceService) {
+			NotificationMailPreferenceService mailPreferenceService, PushDeviceService pushDeviceService) {
 		this.notificationService = notificationService;
 		this.mailPreferenceService = mailPreferenceService;
+		this.pushDeviceService = pushDeviceService;
 	}
 
 	@GetMapping
@@ -71,6 +75,30 @@ class NotificationController {
 			@Valid @RequestBody UpdateMailPreferencesRequest request) {
 		mailPreferenceService.update(currentUserId(authentication), request.decisionsAboutMe(),
 				request.moderationQueue());
+		return ResponseEntity.noContent().build();
+	}
+
+	/**
+	 * Rejestracja urządzenia push (ADR 0040). Idempotentna — klient woła ją przy
+	 * każdym starcie i przy każdej wymianie tokenu przez FCM.
+	 */
+	@PutMapping("/push-devices")
+	ResponseEntity<Void> registerPushDevice(Authentication authentication,
+			@Valid @RequestBody RegisterPushDeviceRequest request) {
+		pushDeviceService.register(currentUserId(authentication), request.token(), request.platform());
+		return ResponseEntity.noContent().build();
+	}
+
+	/**
+	 * Wyrejestrowanie przed wylogowaniem. {@code POST .../removal}, nie
+	 * {@code DELETE} — token jedzie w ciele (patrz
+	 * {@link RemovePushDeviceRequest}), a {@code DELETE} z ciałem bywa gubiony
+	 * przez proxy. Cudzy albo nieznany token też daje 204.
+	 */
+	@PostMapping("/push-devices/removal")
+	ResponseEntity<Void> removePushDevice(Authentication authentication,
+			@Valid @RequestBody RemovePushDeviceRequest request) {
+		pushDeviceService.unregister(currentUserId(authentication), request.token());
 		return ResponseEntity.noContent().build();
 	}
 
