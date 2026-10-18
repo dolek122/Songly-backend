@@ -77,7 +77,8 @@ services:
       - key: MAIL_FROM
         sync: false
       # Link prowadzi do aplikacji klienckiej (formularz nowego hasła), nie do
-      # backendu, który nie ma żadnego UI.
+      # backendu, który nie ma żadnego UI. Domyślnie songly://… (ADR 0037) —
+      # pozostaw puste, chyba że celowo kierujesz linki gdzie indziej.
       - key: PASSWORD_RESET_URL
         sync: false
       - key: EMAIL_VERIFICATION_URL
