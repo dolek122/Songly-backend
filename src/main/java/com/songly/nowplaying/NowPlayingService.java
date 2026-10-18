@@ -319,6 +319,14 @@ class NowPlayingService {
 		return Optional.empty();
 	}
 
+	/**
+	 * Brak podłączonego serwisu to „nic nie gra" (204), a nie błąd. Tak wygląda
+	 * każde nowe konto, a 404 {@code PROVIDER_NOT_CONNECTED}, które tu wcześniej
+	 * wychodziło, nie było opisane w OpenAPI — klient mobilny brał je za awarię i
+	 * zasłaniał ekran, łącznie z formularzem ręcznego statusu, czyli jedyną drogą
+	 * wyjścia z tego stanu. Sprawdzamy to przed providerem i bez cache'a: wpis „nic
+	 * nie gra" chowałby świeżo podłączone Spotify na cały TTL.
+	 */
 	Optional<NowPlayingStatusResponse> getStatus(UUID userId) {
 		String manual = redisTemplate.opsForValue().get(MANUAL_KEY_PREFIX + userId);
 		if (manual != null) {
@@ -329,6 +337,9 @@ class NowPlayingService {
 			return CACHE_NOTHING_PLAYING.equals(cached)
 					? Optional.empty()
 					: Optional.of(objectMapper.readValue(cached, NowPlayingStatusResponse.class));
+		}
+		if (!linkRepository.existsByUserIdAndProvider(userId, musicProvider.name())) {
+			return Optional.empty();
 		}
 		return fetchAndCache(userId);
 	}

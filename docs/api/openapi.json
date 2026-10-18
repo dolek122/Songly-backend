@@ -3258,7 +3258,7 @@
             "description" : "Aktualny status"
           },
           "204" : {
-            "description" : "Nic aktualnie nie gra"
+            "description" : "Nic aktualnie nie gra — także gdy nie ma podłączonego serwisu muzycznego ani ręcznego statusu (stan każdego nowego konta)"
           },
           "409" : {
             "content" : {

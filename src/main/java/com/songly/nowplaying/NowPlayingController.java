@@ -111,7 +111,8 @@ class NowPlayingController {
 	@GetMapping("/me")
 	@SecurityRequirement(name = "bearerAuth")
 	@ApiResponse(responseCode = "200", description = "Aktualny status", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = NowPlayingStatusResponse.class)))
-	@ApiResponse(responseCode = "204", description = "Nic aktualnie nie gra", content = @Content)
+	@ApiResponse(responseCode = "204", description = "Nic aktualnie nie gra — także gdy nie ma podłączonego "
+			+ "serwisu muzycznego ani ręcznego statusu (stan każdego nowego konta)", content = @Content)
 	@ApiResponse(responseCode = "409", description = "Utracono dostęp do serwisu muzycznego — połączenie zostało "
 			+ "usunięte, trzeba przejść OAuth ponownie (`PROVIDER_REAUTHORIZATION_REQUIRED`)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiError.class)))
 	@ApiResponse(responseCode = "502", description = "Serwis muzyczny nie odpowiedział poprawnie (`MUSIC_PROVIDER_ERROR`)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiError.class)))
