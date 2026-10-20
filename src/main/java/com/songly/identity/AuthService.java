@@ -47,6 +47,13 @@ class AuthService {
 	private final ApplicationEventPublisher eventPublisher;
 	private final MeterRegistry meterRegistry;
 
+	/**
+	 * Skrót, z którym porównujemy hasło, gdy konta nie ma (ADR 0041). Liczony raz
+	 * przy starcie tym samym enkoderem co prawdziwe hasła, więc ma ten sam koszt
+	 * bcrypta.
+	 */
+	private final String unknownAccountHash;
+
 	AuthService(UserRepository userRepository, SessionRepository sessionRepository,
 			PasswordResetTokenRepository passwordResetTokenRepository, PasswordEncoder passwordEncoder,
 			TokenIssuer tokenIssuer, ApplicationEventPublisher eventPublisher, MeterRegistry meterRegistry) {
@@ -57,6 +64,7 @@ class AuthService {
 		this.tokenIssuer = tokenIssuer;
 		this.eventPublisher = eventPublisher;
 		this.meterRegistry = meterRegistry;
+		this.unknownAccountHash = passwordEncoder.encode(SecureTokens.generate());
 	}
 
 	/**
@@ -70,11 +78,18 @@ class AuthService {
 	 * opisywało. Logi krążą po systemach, do których RODO stosuje się tak samo jak
 	 * do bazy (Claude.md §9), a do zbadania ataku wystarczy licznik i identyfikator
 	 * żądania.
+	 *
+	 * <p>
+	 * <b>Przy nieznanym koncie też liczymy bcrypt</b> (ADR 0041). Ten sam kod 401
+	 * dla obu porażek nie wystarcza, jeśli jedna kosztuje zapytanie, a druga
+	 * dodatkowo bcrypt: czas odpowiedzi sam mówiłby, czy pod adresem jest konto.
+	 * Rejestracja broni się przed tym tak samo (ADR 0009).
 	 */
 	@Transactional
 	AuthTokensResponse login(LoginRequest request) {
 		User user = userRepository.findByEmail(request.email()).orElse(null);
 		if (user == null) {
+			passwordEncoder.matches(request.password(), unknownAccountHash);
 			auditFailedLogin("nieznane konto", null);
 			throw new InvalidCredentialsException();
 		}

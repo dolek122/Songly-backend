@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -98,6 +99,28 @@ class GlobalExceptionHandler {
 	ResponseEntity<ApiError> handleNoResourceFound(NoResourceFoundException ex, HttpServletRequest request) {
 		return ResponseEntity.status(HttpStatus.NOT_FOUND)
 				.body(toApiError("NOT_FOUND", "Nie znaleziono zasobu: " + request.getRequestURI(), request));
+	}
+
+	/**
+	 * Zapis odrzucony przez ograniczenie w bazie: klucz główny, unikalność albo
+	 * klucz obcy. Najczęściej to wyścig — podwójne stuknięcie w „lubię" wysyła dwa
+	 * żądania, oba sprawdzają „jeszcze nie polubione", a drugi INSERT trafia w
+	 * klucz główny. Bywa też odwołaniem do czegoś, co właśnie zniknęło (ban na
+	 * konto usunięte chwilę wcześniej).
+	 *
+	 * <p>
+	 * 409, nie 500: żądanie koliduje ze stanem danych, a serwer działa. Bez tego
+	 * każdy taki wyścig wyglądał w monitoringu jak awaria i dawał klientowi
+	 * „spróbuj później" zamiast „odśwież". Stack trace zostaje w logu, bo ten sam
+	 * objaw daje brakujący listener kasowania konta (Claude.md §9) — to ma być
+	 * widać. Komunikat bez szczegółów: nazwa ograniczenia mówi o schemacie bazy.
+	 */
+	@ExceptionHandler(DataIntegrityViolationException.class)
+	ResponseEntity<ApiError> handleDataIntegrityViolation(DataIntegrityViolationException ex,
+			HttpServletRequest request) {
+		log.warn("Zapis odrzucony przez ograniczenie w bazie: {} {}", request.getMethod(), request.getRequestURI(), ex);
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(toApiError("CONFLICT",
+				"Żądanie koliduje z bieżącym stanem danych — odśwież i spróbuj ponownie", request));
 	}
 
 	/**

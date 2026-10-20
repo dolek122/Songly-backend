@@ -2,6 +2,8 @@ package com.songly.matching;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.songly.identity.SuspendedAccounts;
@@ -129,12 +131,41 @@ class MatchingServiceTest {
 		when(suspendedAccounts.suspendedUserIds()).thenReturn(Set.of());
 		allGenresEquallyPopular();
 		when(profileDirectory.favoriteGenreIdsByUser(Set.of(other))).thenReturn(Map.of(other, Set.of(g1, g2)));
-		when(profileDirectory.displayNames(anyCollection())).thenReturn(Map.of(other, "Bono"));
 
 		Page<MatchResponse> page = matchingService.matches(me, PageRequest.of(1, 5));
 
 		assertThat(page.getTotalElements()).isEqualTo(1);
 		assertThat(page.getContent()).isEmpty();
+		// Nazwy i awatary tylko dla strony, którą zwracamy — pusta strona nie pyta o
+		// nic, choć kandydat jest.
+		verify(profileDirectory, never()).displayNames(anyCollection());
+		verify(profileDirectory, never()).avatarUrls(anyCollection());
+	}
+
+	/**
+	 * Kandydatów bywa tysiące (każdy, kto wskazał „Pop"), a strona ma ich
+	 * dwadzieścia. Nazwy i awatary są potrzebne tylko tym dwudziestu.
+	 */
+	@Test
+	void matches_looksUpNamesOnlyForTheReturnedPage() {
+		UUID best = UUID.randomUUID();
+		UUID worse = UUID.randomUUID();
+		when(profileDirectory.favoriteGenreIdsByUser(Set.of(me))).thenReturn(Map.of(me, Set.of(g1, g2)));
+		when(profileDirectory.userIdsWithAnyGenre(anyCollection())).thenReturn(Set.of(best, worse));
+		when(socialGraph.friendIds(me)).thenReturn(Set.of());
+		when(socialGraph.blockedEitherWayIds(me)).thenReturn(Set.of());
+		when(suspendedAccounts.suspendedUserIds()).thenReturn(Set.of());
+		allGenresEquallyPopular();
+		when(profileDirectory.favoriteGenreIdsByUser(Set.of(best, worse)))
+				.thenReturn(Map.of(best, Set.of(g1, g2), worse, Set.of(g1)));
+		when(profileDirectory.displayNames(Set.of(best))).thenReturn(Map.of(best, "Bono"));
+
+		Page<MatchResponse> page = matchingService.matches(me, PageRequest.of(0, 1));
+
+		assertThat(page.getTotalElements()).isEqualTo(2);
+		assertThat(page.getContent()).extracting(MatchResponse::userId).containsExactly(best);
+		assertThat(page.getContent().get(0).displayName()).isEqualTo("Bono");
+		verify(profileDirectory).avatarUrls(Set.of(best));
 	}
 
 	@Test

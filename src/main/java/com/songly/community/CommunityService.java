@@ -288,11 +288,6 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 	}
 
 	/**
-	 * Odrzucenie odwołania — ban zostaje w mocy, a dla tego bana sprawa jest
-	 * zamknięta. Wymaga odwołania <b>oczekującego</b> przy banie <b>aktywnym</b>:
-	 * odwołanie przy banie wygasłym jest bezprzedmiotowe i nie ma na co odpowiadać.
-	 */
-	/**
 	 * Przekazanie odrzuconego odwołania do <b>drugiej instancji</b> (ADR 0028) —
 	 * administracji platformy. Wyłącznie ze stanu „odwołanie odrzucone": eskalacja
 	 * przed orzeczeniem pierwszej instancji omijałaby moderację społeczności, a to
@@ -373,6 +368,11 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 				.publishEvent(new CommunityBanAppealEscalationRejectedEvent(communityId, targetUserId, adminId, now));
 	}
 
+	/**
+	 * Odrzucenie odwołania — ban zostaje w mocy, a dla tego bana sprawa jest
+	 * zamknięta. Wymaga odwołania <b>oczekującego</b> przy banie <b>aktywnym</b>:
+	 * odwołanie przy banie wygasłym jest bezprzedmiotowe i nie ma na co odpowiadać.
+	 */
 	@Transactional
 	void rejectBanAppeal(UUID communityId, UUID requesterId, UUID targetUserId) {
 		requireCommunity(communityId);

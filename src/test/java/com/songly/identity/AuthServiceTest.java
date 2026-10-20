@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -101,6 +102,23 @@ class AuthServiceTest {
 
 		assertThat(loginAttempts("failure")).isEqualTo(1);
 		assertThat(loginAttempts("success")).isZero();
+	}
+
+	/**
+	 * Nieznane konto kosztuje tyle samo co błędne hasło (ADR 0041) — bez bcrypta w
+	 * tej gałęzi czas odpowiedzi zdradzałby, czy pod adresem jest konto.
+	 */
+	@Test
+	void login_spendsBcrypt_evenWhenUserNotFound() {
+		PasswordEncoder spyEncoder = spy(new BCryptPasswordEncoder());
+		AuthService service = new AuthService(userRepository, sessionRepository, passwordResetTokenRepository,
+				spyEncoder, tokenIssuer, eventPublisher, meterRegistry);
+		when(userRepository.findByEmail("missing@songly.io")).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.login(new LoginRequest("missing@songly.io", "password123")))
+				.isInstanceOf(InvalidCredentialsException.class);
+
+		verify(spyEncoder).matches(eq("password123"), anyString());
 	}
 
 	@Test

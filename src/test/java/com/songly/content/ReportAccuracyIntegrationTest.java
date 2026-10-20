@@ -268,4 +268,34 @@ class ReportAccuracyIntegrationTest extends AbstractIntegrationTest {
 		JsonNode entry = queue(owner, communityId).get(0);
 		assertThat(entry.get("reporterUpheldCount").asInt()).isZero();
 	}
+
+	/**
+	 * Jedno zgłoszenie to jedna decyzja. Powtórzone odrzucenie (podwójne
+	 * kliknięcie, dwóch moderatorów naraz) zapisywało dotąd kolejną karę w
+	 * przydziale, więc jedno zgłoszenie wystarczało, żeby zbić komuś limit do
+	 * podłogi.
+	 */
+	@Test
+	void dismissingTheSameReportTwiceRecordsOneDecision() throws Exception {
+		TestUser owner = user("accuracy-twice-owner@songly.io");
+		TestUser author = user("accuracy-twice-author@songly.io");
+		TestUser reporter = user("accuracy-twice-reporter@songly.io");
+		String communityId = createCommunity(owner, "Accuracy-dwukrotnie");
+		join(author, communityId);
+		report(reporter, createPost(author, communityId, "post sporny"));
+		String reportId = queue(owner, communityId).get(0).get("id").asText();
+
+		for (int attempt = 0; attempt < 3; attempt++) {
+			mockMvc.perform(post("/api/v1/communities/" + communityId + "/post-reports/" + reportId + "/dismissal")
+					.header("Authorization", "Bearer " + owner.token())).andExpect(status().isNoContent());
+		}
+
+		UUID reporterId = UUID.fromString(reporter.userId());
+		assertThat(jdbcTemplate.queryForObject(
+				"SELECT count(*) FROM reporter_decisions WHERE user_id = ? AND outcome = 'DISMISSED'", Long.class,
+				reporterId)).isEqualTo(1L);
+		assertThat(jdbcTemplate.queryForObject(
+				"SELECT count(*) FROM notifications WHERE user_id = ? AND type = 'POST_REPORT_DISMISSED'", Long.class,
+				reporterId)).isEqualTo(1L);
+	}
 }

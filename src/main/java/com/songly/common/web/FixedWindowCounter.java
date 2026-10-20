@@ -47,12 +47,23 @@ class FixedWindowCounter {
 	 * Ile realnie zostało do końca okna — klient nie musi zgadywać ani dobijać się
 	 * co sekundę. Gdy TTL jest niedostępny, podajemy pełne okno: lepiej kazać
 	 * czekać za długo niż za krótko.
+	 *
+	 * <p>
+	 * Klucz <b>bez TTL</b> ({@code -1}) dostaje go tutaj. {@code INCR} i
+	 * {@code EXPIRE} to dwa osobne polecenia, więc zerwane połączenie albo restart
+	 * między nimi zostawiał licznik, który nigdy nie wygasa — i ten adres albo
+	 * użytkownik był odcięty na zawsze. Naprawa przy odrzuceniu kosztuje jedno
+	 * polecenie i tylko wtedy, gdy ktoś i tak dostaje 429.
 	 */
 	long retryAfterSeconds(String key, Duration window) {
 		try {
 			Long ttl = redisTemplate.getExpire(key, TimeUnit.SECONDS);
 			if (ttl != null && ttl > 0) {
 				return ttl;
+			}
+			if (ttl != null && ttl == -1L) {
+				log.warn("Licznik limitu bez TTL — przywracam okno {}", window);
+				redisTemplate.expire(key, window);
 			}
 		} catch (RuntimeException ex) {
 			log.warn("Nie udało się odczytać TTL okna limitu: {}", ex.toString());

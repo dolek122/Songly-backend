@@ -126,8 +126,17 @@ class ProfileService implements ProfileDirectory {
 		}
 		Set<UUID> excluded = new HashSet<>(suspendedAccounts.suspendedUserIds());
 		excluded.add(requesterId);
-		return profileRepository.searchByDisplayName(trimmed, excluded, pageable).map(
+		return profileRepository.searchByDisplayName(escapeLike(trimmed), excluded, pageable).map(
 				profile -> new UserSearchResponse(profile.getUserId(), profile.getDisplayName(), avatarUrl(profile)));
+	}
+
+	/**
+	 * {@code %} i {@code _} z zapytania mają znaczyć siebie, a nie wzorzec LIKE.
+	 * Bez tego „%" dopasowywało każdego, czyli zwracało całą listę użytkowników
+	 * stronami — dokładnie to, czego pusty query świadomie nie robi.
+	 */
+	private static String escapeLike(String query) {
+		return query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
 	}
 
 	@Transactional

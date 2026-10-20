@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.songly.AbstractIntegrationTest;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -91,6 +92,22 @@ class CommunityModerationIntegrationTest extends AbstractIntegrationTest {
 						.contentType(MediaType.APPLICATION_JSON).content("""
 								{"reason":"SPAM","details":"reklama"}"""))
 				.andExpect(status().is(expectedStatus));
+	}
+
+	/**
+	 * Ban na konto, którego nie ma (usunięte chwilę wcześniej, zły identyfikator),
+	 * trafia w klucz obcy do {@code users}. To konflikt ze stanem danych, a nie
+	 * awaria serwera — wcześniej wracało jako 500 ze stack tracem.
+	 */
+	@Test
+	void banningNonexistentUser_isAConflictNotAServerError() throws Exception {
+		TestUser owner = user("moderation-ghost-owner@songly.io");
+		String communityId = createCommunity(owner, "Moderacja-duch");
+
+		mockMvc.perform(put("/api/v1/communities/" + communityId + "/bans/" + UUID.randomUUID())
+				.header("Authorization", "Bearer " + owner.token()).contentType(MediaType.APPLICATION_JSON).content("""
+						{"reason":"spam"}""")).andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("CONFLICT"));
 	}
 
 	/**

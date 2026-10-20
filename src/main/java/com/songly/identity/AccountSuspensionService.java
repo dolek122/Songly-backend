@@ -167,12 +167,6 @@ class AccountSuspensionService implements SuspendedAccounts {
 	}
 
 	/**
-	 * Własny stan zawieszenia. Konto aktywne dostaje {@code suspended=false} z
-	 * pustymi polami, a nie 404 — klient pyta o ten endpoint po każdym
-	 * {@code ACCOUNT_SUSPENDED} i nie powinien musieć rozróżniać „nie jesteś
-	 * zawieszony" od „nie ma takiego zasobu".
-	 */
-	/**
 	 * Konta, których treści trzeba ukryć (ADR 0026). Wygasłe zawieszenia nie
 	 * wchodzą — treści wracają same, bez niczyjej akcji, dokładnie jak konto (ADR
 	 * 0014).
@@ -183,6 +177,12 @@ class AccountSuspensionService implements SuspendedAccounts {
 		return Set.copyOf(userRepository.findSuspendedIds(Instant.now()));
 	}
 
+	/**
+	 * Własny stan zawieszenia. Konto aktywne dostaje {@code suspended=false} z
+	 * pustymi polami, a nie 404 — klient pyta o ten endpoint po każdym
+	 * {@code ACCOUNT_SUSPENDED} i nie powinien musieć rozróżniać „nie jesteś
+	 * zawieszony" od „nie ma takiego zasobu".
+	 */
 	@Transactional(readOnly = true)
 	SuspensionResponse ownSuspension(UUID userId) {
 		Instant now = Instant.now();

@@ -26,10 +26,15 @@ interface ProfileRepository extends JpaRepository<Profile, UUID> {
 	 * Jedno {@code not in} zamiast dwóch warunków, bo wołający i tak musi zbudować
 	 * ten zbiór — a przy rozdzieleniu łatwo dopisać filtr w jednym miejscu i
 	 * zapomnieć o drugim.
+	 *
+	 * <p>
+	 * {@code displayName} musi przyjść już z escapowanymi {@code \}, {@code %} i
+	 * {@code _} — patrz {@code ProfileService#searchUsers}.
 	 */
 	@Query("""
 			select p from Profile p
-			where lower(p.displayName) like lower(concat('%', :displayName, '%')) and p.userId not in :excludedUserIds
+			where lower(p.displayName) like lower(concat('%', :displayName, '%')) escape '\\'
+			and p.userId not in :excludedUserIds
 			""")
 	Page<Profile> searchByDisplayName(@Param("displayName") String displayName,
 			@Param("excludedUserIds") Collection<UUID> excludedUserIds, Pageable pageable);

@@ -120,6 +120,27 @@ class PostImageIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	/**
+	 * Własny prefiks to za mało: {@code ..} za nim prowadzi do cudzego pliku, bo
+	 * klient HTTP rozwija takie segmenty w adresie, zanim wyśle żądanie. Klucz musi
+	 * mieć dokładnie kształt wydawany przy wgraniu.
+	 */
+	@Test
+	void ownPrefixWithTraversal_isRejected() throws Exception {
+		String owner = accessToken("post-image-trav-owner@songly.io");
+		String thief = accessToken("post-image-trav-thief@songly.io");
+		String foreignKey = uploadImage(owner).get("key").asText();
+		String thiefId = objectMapper
+				.readTree(mockMvc.perform(get("/api/v1/profiles/me").header("Authorization", "Bearer " + thief))
+						.andExpect(status().isOk()).andReturn().getResponse().getContentAsString())
+				.get("userId").asText();
+
+		mockMvc.perform(post("/api/v1/posts").header("Authorization", "Bearer " + thief)
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"content":"nie moje","imageKey":"posts/%s/../../%s"}""".formatted(thiefId, foreignKey)))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("UNKNOWN_POST_IMAGE"));
+	}
+
+	/**
 	 * Usunięcie posta kasuje jego zdjęcie. Bez tego każdy skasowany post
 	 * zostawiałby plik, którego nic już nie wskazuje i po którym nie ma śladu w
 	 * bazie — czyli nie da się go później odnaleźć nawet ręcznie.
