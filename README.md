@@ -176,7 +176,10 @@ Zmienne oznaczone w `render.yaml` jako `sync: false` (sekrety, Spotify, SMTP,
 Firebase, magazyn plików) ustawiasz ręcznie w panelu Rendera. Kilka ustawień
 celowo nie startuje bez kompletu danych, żeby awaria nie była cicha:
 - `MAIL_PROVIDER=smtp` bez `SPRING_MAIL_HOST`,
-- `PUSH_PROVIDER=fcm` bez `FCM_CREDENTIALS_JSON`.
+- `PUSH_PROVIDER=fcm` bez `FCM_CREDENTIALS_JSON`,
+- `PRODUCTION_SECRETS_REQUIRED=true` (ustawione w `render.yaml`) bez prawdziwych
+  `JWT_SECRET` i `NOW_PLAYING_TOKEN_KEY` — wartości domyślne z repo są publiczne
+  (ADR 0044).
 
 ### Strona usuwania konta (Google Play)
 

@@ -1,9 +1,11 @@
 package com.songly.identity;
 
+import com.songly.common.config.DevSecrets;
 import java.time.Instant;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.ApplicationEventPublisher;
@@ -47,8 +49,19 @@ class LocalDevAccountsSeeder implements ApplicationRunner {
 	private final PasswordEncoder passwordEncoder;
 	private final ApplicationEventPublisher eventPublisher;
 
+	/**
+	 * Profil {@code local} na środowisku, które wymaga prawdziwych sekretów, to
+	 * publicznie znane hasło administratora — więc start się nie udaje, zamiast
+	 * polegać wyłącznie na ostrzeżeniu w README.
+	 */
 	LocalDevAccountsSeeder(UserRepository userRepository, PasswordEncoder passwordEncoder,
-			ApplicationEventPublisher eventPublisher) {
+			ApplicationEventPublisher eventPublisher,
+			@Value("${" + DevSecrets.PRODUCTION_REQUIRED_PROPERTY + ":false}") boolean productionSecretsRequired) {
+		if (productionSecretsRequired) {
+			throw new IllegalStateException("Profil local zakłada konta z hasłami z repozytorium, a to środowisko "
+					+ "wymaga prawdziwych sekretów (" + DevSecrets.PRODUCTION_REQUIRED_PROPERTY + "=true). Wyłącz "
+					+ "profil local.");
+		}
 		this.userRepository = userRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.eventPublisher = eventPublisher;

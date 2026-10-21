@@ -1,6 +1,7 @@
 package com.songly.identity;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -43,7 +44,7 @@ class LocalDevAccountsSeederTest {
 
 	@BeforeEach
 	void setUp() {
-		seeder = new LocalDevAccountsSeeder(userRepository, passwordEncoder, eventPublisher);
+		seeder = new LocalDevAccountsSeeder(userRepository, passwordEncoder, eventPublisher, false);
 	}
 
 	@Test
@@ -87,5 +88,15 @@ class LocalDevAccountsSeederTest {
 
 		assertThat(profile).isNotNull();
 		assertThat(profile.value()).containsExactly("local");
+	}
+
+	/**
+	 * Druga zapora obok {@code @Profile}: profil local włączony przez pomyłkę na
+	 * środowisku z prawdziwymi sekretami nie może założyć admina ze znanym hasłem.
+	 */
+	@Test
+	void refusesToStart_whereProductionSecretsAreRequired() {
+		assertThatThrownBy(() -> new LocalDevAccountsSeeder(userRepository, passwordEncoder, eventPublisher, true))
+				.isInstanceOf(IllegalStateException.class).hasMessageContaining("Wyłącz profil local");
 	}
 }

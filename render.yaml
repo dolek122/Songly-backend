@@ -48,6 +48,11 @@ services:
       # jeden adres dla wszystkich klientów i odcinał ich wspólnym limitem.
       - key: FORWARD_HEADERS_STRATEGY
         value: framework
+      # Bez prawdziwych JWT_SECRET i NOW_PLAYING_TOKEN_KEY aplikacja nie wstanie:
+      # wartości domyślne z application.properties są publiczne (leżą w repo), a z
+      # nimi każdy podpisałby token admina i odszyfrował tokeny Spotify.
+      - key: PRODUCTION_SECRETS_REQUIRED
+        value: "true"
       - key: JWT_SECRET
         sync: false
       - key: NOW_PLAYING_TOKEN_KEY

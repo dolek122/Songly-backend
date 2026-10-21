@@ -1,5 +1,7 @@
 package com.songly.nowplaying;
 
+import com.songly.common.config.DevSecrets;
+
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -9,6 +11,7 @@ import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /** AES-256-GCM: losowy 12-bajtowy IV doklejany przed szyfrogramem. */
@@ -21,12 +24,20 @@ class TokenEncryptor {
 	private final SecretKey key;
 	private final SecureRandom secureRandom = new SecureRandom();
 
-	TokenEncryptor(NowPlayingProperties properties) {
+	/**
+	 * Klucz deweloperski z repo odpada tam, gdzie wymagane są prawdziwe sekrety: z
+	 * nim każdy, kto ma zrzut bazy, odszyfrowałby tokeny Spotify wszystkich
+	 * użytkowników (Claude.md §9).
+	 */
+	TokenEncryptor(NowPlayingProperties properties,
+			@Value("${" + DevSecrets.PRODUCTION_REQUIRED_PROPERTY + ":false}") boolean productionSecretsRequired) {
 		byte[] keyBytes = Base64.getDecoder().decode(properties.getTokenEncryptionKey());
 		if (keyBytes.length != 32) {
 			throw new IllegalStateException(
 					"songly.now-playing.token-encryption-key musi być 32 bajtami w Base64 (AES-256)");
 		}
+		DevSecrets.rejectDevValue(productionSecretsRequired, new String(keyBytes, StandardCharsets.UTF_8),
+				"NOW_PLAYING_TOKEN_KEY");
 		this.key = new SecretKeySpec(keyBytes, "AES");
 	}
 

@@ -37,7 +37,7 @@ class SpotifyProviderTest {
 				Base64.getEncoder().encodeToString("dev-only-token-encryption-key-32".getBytes()));
 		properties.getSpotify().setClientId("client-id");
 		properties.getSpotify().setRedirectUri("http://localhost/callback");
-		tokenEncryptor = new TokenEncryptor(properties);
+		tokenEncryptor = new TokenEncryptor(properties, false);
 		spotifyProvider = new SpotifyProvider(spotifyClient, linkRepository, tokenEncryptor, properties);
 	}
 
