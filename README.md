@@ -178,6 +178,14 @@ celowo nie startuje bez kompletu danych, żeby awaria nie była cicha:
 - `MAIL_PROVIDER=smtp` bez `SPRING_MAIL_HOST`,
 - `PUSH_PROVIDER=fcm` bez `FCM_CREDENTIALS_JSON`.
 
+### Strona usuwania konta (Google Play)
+
+Google Play wymaga strony WWW, na której można poprosić o usunięcie konta bez
+aplikacji. Serwuje ją backend: https://songly-backend-q7zm.onrender.com/account-deletion
+(ADR 0043). Ten adres wpisujesz w formularzu „Bezpieczeństwo danych”. Link
+w mailu potwierdzającym bierze się z `ACCOUNT_DELETION_CONFIRM_URL` (ustawionego
+w `render.yaml`). Po zmianie domeny zmień oba miejsca.
+
 ## Dokumentacja
 
 - [`CLAUDE.md`](CLAUDE.md) — blueprint architektury: moduły, bezpieczeństwo,

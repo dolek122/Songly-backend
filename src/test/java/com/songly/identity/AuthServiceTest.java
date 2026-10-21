@@ -46,6 +46,9 @@ class AuthServiceTest {
 	@Mock
 	private ApplicationEventPublisher eventPublisher;
 
+	@Mock
+	private AccountDeletionTokenRepository accountDeletionTokenRepository;
+
 	private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
 	/** Prawdziwy rejestr, nie mock — pozwala sprawdzić, ile faktycznie zliczył. */
@@ -56,7 +59,16 @@ class AuthServiceTest {
 	@BeforeEach
 	void setUp() {
 		authService = new AuthService(userRepository, sessionRepository, passwordResetTokenRepository, passwordEncoder,
-				tokenIssuer, eventPublisher, meterRegistry);
+				tokenIssuer, eventPublisher, meterRegistry, eraser());
+	}
+
+	/**
+	 * Prawdziwy, na tych samych mockach — kasowanie jest częścią kontraktu
+	 * deleteAccount.
+	 */
+	private AccountEraser eraser() {
+		return new AccountEraser(userRepository, sessionRepository, passwordResetTokenRepository,
+				accountDeletionTokenRepository, eventPublisher);
 	}
 
 	private double loginAttempts(String outcome) {
@@ -112,7 +124,7 @@ class AuthServiceTest {
 	void login_spendsBcrypt_evenWhenUserNotFound() {
 		PasswordEncoder spyEncoder = spy(new BCryptPasswordEncoder());
 		AuthService service = new AuthService(userRepository, sessionRepository, passwordResetTokenRepository,
-				spyEncoder, tokenIssuer, eventPublisher, meterRegistry);
+				spyEncoder, tokenIssuer, eventPublisher, meterRegistry, eraser());
 		when(userRepository.findByEmail("missing@songly.io")).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> service.login(new LoginRequest("missing@songly.io", "password123")))
@@ -245,6 +257,7 @@ class AuthServiceTest {
 
 		verify(eventPublisher).publishEvent(new UserAccountDeletionRequestedEvent(userId));
 		verify(sessionRepository).deleteByUserId(userId);
+		verify(accountDeletionTokenRepository).deleteByUserId(userId);
 		verify(userRepository).delete(user);
 	}
 
