@@ -1,7 +1,7 @@
 package com.songly.profile;
 
 import com.songly.common.media.ImageType;
-import com.songly.common.media.UnsupportedImageException;
+import com.songly.common.media.SanitizedImage;
 import com.songly.common.storage.ObjectStorage;
 import com.songly.identity.SuspendedAccounts;
 import com.songly.profile.dto.GenreResponse;
@@ -282,7 +282,8 @@ class ProfileService implements ProfileDirectory {
 	 * {@link ImageType}). Rozszerzenie w kluczu bierze się z rozpoznanego typu, a
 	 * nie z nazwy, którą przysłał przeglądarka: inaczej dałoby się zapisać plik
 	 * jako {@code .html} i zdobyć adres, spod którego serwujemy cudzy HTML na
-	 * własnej domenie.
+	 * własnej domenie. Do magazynu trafia plik bez metadanych, w tym bez GPS-u
+	 * ({@link SanitizedImage}, ADR 0047).
 	 *
 	 * <p>
 	 * Losowy człon w kluczu, zamiast stałego {@code avatars/{userId}}, bo pod
@@ -296,11 +297,11 @@ class ProfileService implements ProfileDirectory {
 	 */
 	@Transactional
 	ProfileResponse uploadAvatar(UUID userId, byte[] content) {
-		ImageType type = ImageType.detect(content).orElseThrow(UnsupportedImageException::new);
+		SanitizedImage image = SanitizedImage.from(content);
 		Profile profile = profileRepository.findByUserId(userId).orElseThrow(ProfileNotFoundException::new);
 
-		String key = "avatars/%s/%s.%s".formatted(userId, UUID.randomUUID(), type.extension());
-		objectStorage.put(key, content, type.contentType());
+		String key = "avatars/%s/%s.%s".formatted(userId, UUID.randomUUID(), image.type().extension());
+		objectStorage.put(key, image.content(), image.type().contentType());
 		replaceAvatarKey(profile, key);
 		return toResponse(profile);
 	}

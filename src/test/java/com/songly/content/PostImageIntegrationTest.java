@@ -9,11 +9,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.songly.AbstractIntegrationTest;
+import com.songly.TestImages;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -37,7 +41,7 @@ class PostImageIntegrationTest extends AbstractIntegrationTest {
 	private ObjectMapper objectMapper;
 
 	private static byte[] pngBytes() {
-		return new byte[]{(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 'z', 'd', 'j'};
+		return TestImages.png();
 	}
 
 	private String accessToken(String email) throws Exception {
@@ -46,9 +50,13 @@ class PostImageIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	private JsonNode uploadImage(String token) throws Exception {
+		return uploadImage(token, pngBytes());
+	}
+
+	private JsonNode uploadImage(String token, byte[] content) throws Exception {
 		return objectMapper.readTree(mockMvc
 				.perform(multipart("/api/v1/posts/image")
-						.file(new MockMultipartFile("file", "zdjecie.png", MediaType.IMAGE_PNG_VALUE, pngBytes()))
+						.file(new MockMultipartFile("file", "zdjecie.png", MediaType.IMAGE_PNG_VALUE, content))
 						.header("Authorization", "Bearer " + token))
 				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
 	}
@@ -82,6 +90,21 @@ class PostImageIntegrationTest extends AbstractIntegrationTest {
 		assertThat(fetchAnonymously(imageUrl).body()).isEqualTo(pngBytes());
 		mockMvc.perform(get("/api/v1/posts/" + created.get("id").asText()).header("Authorization", "Bearer " + token))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.imageUrl").value(imageUrl));
+	}
+
+	/**
+	 * Zdjęcie w poście jest publiczne, a EXIF z aparatu mówi, gdzie je zrobiono
+	 * (ADR 0047). Sprawdzamy plik w magazynie, nie odpowiedź API.
+	 */
+	@Test
+	void uploadedImage_isStoredWithoutCameraMetadata() throws Exception {
+		String token = accessToken("post-image-exif@songly.io");
+
+		String url = uploadImage(token, TestImages.jpegWithExif(6)).get("url").asText();
+
+		byte[] stored = fetchAnonymously(url).body();
+		assertThat(new String(stored, StandardCharsets.ISO_8859_1)).doesNotContain(TestImages.SECRET);
+		assertThat(ImageIO.read(new ByteArrayInputStream(stored)).getWidth()).isEqualTo(2);
 	}
 
 	@Test

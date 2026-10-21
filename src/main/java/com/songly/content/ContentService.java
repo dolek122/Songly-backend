@@ -1,7 +1,7 @@
 package com.songly.content;
 
 import com.songly.common.media.ImageType;
-import com.songly.common.media.UnsupportedImageException;
+import com.songly.common.media.SanitizedImage;
 import com.songly.common.storage.ObjectStorage;
 import com.songly.community.CommunityMembership;
 import com.songly.identity.SuspendedAccounts;
@@ -109,12 +109,16 @@ class ContentService {
 	 * sprawdzić, że dołączane zdjęcie należy do autora posta. Bez tego wystarczyłby
 	 * cudzy klucz w {@code imageKey}, żeby przypiąć do swojego posta czyjeś zdjęcie
 	 * — a przy usunięciu tego posta skasować właścicielowi plik.
+	 *
+	 * <p>
+	 * Do magazynu trafia plik bez metadanych, w tym bez GPS-u
+	 * ({@link SanitizedImage}, ADR 0047).
 	 */
 	@Transactional(readOnly = true)
 	PostImageResponse uploadPostImage(UUID authorId, byte[] content) {
-		ImageType type = ImageType.detect(content).orElseThrow(UnsupportedImageException::new);
-		String key = "%s%s/%s.%s".formatted(POST_IMAGE_PREFIX, authorId, UUID.randomUUID(), type.extension());
-		objectStorage.put(key, content, type.contentType());
+		SanitizedImage image = SanitizedImage.from(content);
+		String key = "%s%s/%s.%s".formatted(POST_IMAGE_PREFIX, authorId, UUID.randomUUID(), image.type().extension());
+		objectStorage.put(key, image.content(), image.type().contentType());
 		return new PostImageResponse(key, objectStorage.publicUrl(key));
 	}
 

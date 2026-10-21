@@ -9,11 +9,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.songly.AbstractIntegrationTest;
+import com.songly.TestImages;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -48,15 +52,15 @@ class AvatarUploadIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	/**
-	 * Najmniejszy poprawny PNG: sam nagłówek wystarczy, bo rozpoznajemy format po
-	 * magicznych bajtach i celowo nie dekodujemy obrazu (patrz {@code ImageType}).
+	 * Prawdziwy, minimalny PNG. Sam nagłówek przestał wystarczać, kiedy backend
+	 * zaczął czytać strukturę pliku, żeby usunąć metadane (ADR 0047).
 	 */
 	private static byte[] pngBytes() {
-		return new byte[]{(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 'd', 'a', 'n', 'e'};
+		return TestImages.png();
 	}
 
 	private static byte[] jpegBytes() {
-		return new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 'd', 'a', 'n', 'e'};
+		return TestImages.jpeg();
 	}
 
 	private MvcResult uploadAvatar(String token, byte[] content, String filename, String declaredType,
@@ -92,6 +96,23 @@ class AvatarUploadIntegrationTest extends AbstractIntegrationTest {
 		assertThat(fetched.statusCode()).isEqualTo(200);
 		assertThat(fetched.body()).isEqualTo(pngBytes());
 		assertThat(fetched.headers().firstValue("content-type")).contains(MediaType.IMAGE_PNG_VALUE);
+	}
+
+	/**
+	 * Avatar jest publiczny, a zdjęcie z aparatu niesie w EXIF-ie miejsce, w którym
+	 * je zrobiono (ADR 0047). Sprawdzamy plik, który naprawdę leży w magazynie, a
+	 * nie to, co zwróciło API.
+	 */
+	@Test
+	void uploadedAvatar_isStoredWithoutCameraMetadata() throws Exception {
+		String token = accessToken("avatar-exif@songly.io");
+
+		String url = avatarUrlOf(
+				uploadAvatar(token, TestImages.jpegWithExif(6), "z-aparatu.jpg", MediaType.IMAGE_JPEG_VALUE, 200));
+
+		byte[] stored = fetchAnonymously(url).body();
+		assertThat(new String(stored, StandardCharsets.ISO_8859_1)).doesNotContain(TestImages.SECRET);
+		assertThat(ImageIO.read(new ByteArrayInputStream(stored)).getWidth()).isEqualTo(2);
 	}
 
 	/**
