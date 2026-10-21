@@ -60,6 +60,9 @@ class ContentServiceTest {
 	private ObjectStorage objectStorage;
 
 	@Mock
+	private PostImageUploads postImageUploads;
+
+	@Mock
 	private ApplicationEventPublisher eventPublisher;
 
 	private ContentService contentService;
@@ -76,7 +79,7 @@ class ContentServiceTest {
 	void setUp() {
 		contentService = new ContentService(postRepository, likeRepository, commentRepository, shareRepository,
 				reportRepository, profileDirectory, socialGraph, communityMembership, objectStorage, eventPublisher,
-				new ReportProperties(), meterRegistry, suspendedAccounts, decisionRepository);
+				new ReportProperties(), meterRegistry, suspendedAccounts, decisionRepository, postImageUploads);
 	}
 
 	@Test

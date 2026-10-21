@@ -37,9 +37,11 @@ import org.springframework.web.multipart.MultipartFile;
 class PostController {
 
 	private final ContentService contentService;
+	private final PostImageUploads postImageUploads;
 
-	PostController(ContentService contentService) {
+	PostController(ContentService contentService, PostImageUploads postImageUploads) {
 		this.contentService = contentService;
+		this.postImageUploads = postImageUploads;
 	}
 
 	@PostMapping
@@ -61,7 +63,7 @@ class PostController {
 		if (file.isEmpty()) {
 			throw new EmptyUploadException();
 		}
-		return contentService.uploadPostImage(currentUserId(authentication), file.getBytes());
+		return postImageUploads.upload(currentUserId(authentication), file.getBytes());
 	}
 
 	@GetMapping

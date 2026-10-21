@@ -1,19 +1,15 @@
 package com.songly.content;
 
-import com.songly.common.media.ImageType;
-import com.songly.common.media.SanitizedImage;
 import com.songly.common.storage.ObjectStorage;
 import com.songly.community.CommunityMembership;
 import com.songly.identity.SuspendedAccounts;
 import com.songly.content.dto.CommentResponse;
-import com.songly.content.dto.PostImageResponse;
 import com.songly.content.dto.PostReportResponse;
 import com.songly.content.dto.PostResponse;
 import com.songly.profile.ProfileDirectory;
 import com.songly.social.SocialGraph;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -21,7 +17,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationEventPublisher;
@@ -48,22 +43,7 @@ class ContentService {
 	private final MeterRegistry meterRegistry;
 	private final SuspendedAccounts suspendedAccounts;
 	private final ReporterDecisionRepository decisionRepository;
-
-	/**
-	 * Prefiks kluczy zdjęć postów. Stała, bo ten sam ciąg musi być użyty przy
-	 * budowaniu klucza i przy sprawdzaniu własności — rozjazd między nimi
-	 * otworzyłby dokładnie tę dziurę, którą sprawdzenie ma zamykać.
-	 */
-	private static final String POST_IMAGE_PREFIX = "posts/";
-
-	/**
-	 * Nazwa pliku za prefiksem właściciela — dokładnie to, co składa
-	 * {@link #uploadPostImage}: losowy UUID i rozszerzenie rozpoznanego typu.
-	 */
-	private static final Pattern POST_IMAGE_FILE_NAME = Pattern
-			.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(?:"
-					+ Arrays.stream(ImageType.values()).map(ImageType::extension).collect(Collectors.joining("|"))
-					+ ")");
+	private final PostImageUploads postImageUploads;
 
 	/**
 	 * W Prometheusie: {@code songly_moderation_report_rejected_total{reason="..."}}
@@ -79,7 +59,8 @@ class ContentService {
 			ShareRepository shareRepository, PostReportRepository reportRepository, ProfileDirectory profileDirectory,
 			SocialGraph socialGraph, CommunityMembership communityMembership, ObjectStorage objectStorage,
 			ApplicationEventPublisher eventPublisher, ReportProperties reportProperties, MeterRegistry meterRegistry,
-			SuspendedAccounts suspendedAccounts, ReporterDecisionRepository decisionRepository) {
+			SuspendedAccounts suspendedAccounts, ReporterDecisionRepository decisionRepository,
+			PostImageUploads postImageUploads) {
 		this.postRepository = postRepository;
 		this.likeRepository = likeRepository;
 		this.commentRepository = commentRepository;
@@ -94,56 +75,12 @@ class ContentService {
 		this.meterRegistry = meterRegistry;
 		this.suspendedAccounts = suspendedAccounts;
 		this.decisionRepository = decisionRepository;
+		this.postImageUploads = postImageUploads;
 	}
 
 	@Transactional
 	PostResponse createPost(UUID authorId, String content, String imageKey) {
 		return createPost(authorId, content, imageKey, null);
-	}
-
-	/**
-	 * Wgrywa zdjęcie i zwraca jego klucz, jeszcze przed opublikowaniem posta.
-	 *
-	 * <p>
-	 * Klucz zawiera identyfikator wgrywającego, bo to jedyne, co pozwala później
-	 * sprawdzić, że dołączane zdjęcie należy do autora posta. Bez tego wystarczyłby
-	 * cudzy klucz w {@code imageKey}, żeby przypiąć do swojego posta czyjeś zdjęcie
-	 * — a przy usunięciu tego posta skasować właścicielowi plik.
-	 *
-	 * <p>
-	 * Do magazynu trafia plik bez metadanych, w tym bez GPS-u
-	 * ({@link SanitizedImage}, ADR 0047).
-	 */
-	@Transactional(readOnly = true)
-	PostImageResponse uploadPostImage(UUID authorId, byte[] content) {
-		SanitizedImage image = SanitizedImage.from(content);
-		String key = "%s%s/%s.%s".formatted(POST_IMAGE_PREFIX, authorId, UUID.randomUUID(), image.type().extension());
-		objectStorage.put(key, image.content(), image.type().contentType());
-		return new PostImageResponse(key, objectStorage.publicUrl(key));
-	}
-
-	/**
-	 * Zdjęcie musi pochodzić z wgrania zrobionego przez tego samego użytkownika.
-	 * Sprawdzenie jest kształtem klucza, a nie osobną tabelą wgrań: klucz i tak
-	 * musi być unikalny i i tak zawiera właściciela, więc dodatkowy wiersz
-	 * przechowywałby informację, którą już mamy.
-	 *
-	 * <p>
-	 * <b>Cały kształt, nie sam prefiks.</b> Klucz
-	 * {@code posts/{ja}/../../posts/{ktoś}/x.png} zaczyna się od własnego prefiksu,
-	 * a klient HTTP rozwija {@code ..} w adresie publicznym, zanim wyśle żądanie —
-	 * czyli pokazałby cudze zdjęcie pod naszym nazwiskiem.
-	 */
-	private String validatedImageKey(UUID authorId, String imageKey) {
-		if (imageKey == null || imageKey.isBlank()) {
-			return null;
-		}
-		String ownPrefix = POST_IMAGE_PREFIX + authorId + "/";
-		if (!imageKey.startsWith(ownPrefix)
-				|| !POST_IMAGE_FILE_NAME.matcher(imageKey.substring(ownPrefix.length())).matches()) {
-			throw new UnknownPostImageException();
-		}
-		return imageKey;
 	}
 
 	/**
@@ -162,7 +99,7 @@ class ContentService {
 			}
 		}
 		Post post = new Post(UUID.randomUUID(), authorId, content, Instant.now(), communityId,
-				validatedImageKey(authorId, imageKey));
+				postImageUploads.claim(authorId, imageKey));
 		postRepository.save(post);
 		String displayName = profileDirectory.displayNames(Set.of(authorId)).get(authorId);
 		String avatarUrl = profileDirectory.avatarUrls(Set.of(authorId)).get(authorId);
@@ -638,6 +575,7 @@ class ContentService {
 		// więc trzymanie jej nie chroniłoby przed niczym (ADR 0027).
 		decisionRepository.deleteByUserId(userId);
 		reportRepository.clearReviewer(userId);
+		postImageUploads.deleteAllOf(userId);
 		reportOrphanedImages(postRepository.findImageKeysByAuthorId(userId));
 		postRepository.deleteByAuthorId(userId);
 	}

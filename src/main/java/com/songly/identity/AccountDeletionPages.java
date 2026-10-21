@@ -56,8 +56,8 @@ final class AccountDeletionPages {
 				<ul>
 				  <li>konto i dane logowania,</li>
 				  <li>profil, zdjęcie profilowe i ulubione gatunki,</li>
-				  <li>posty ze zdjęciami (razem z komentarzami innych osób pod nimi), komentarze,
-				  polubienia i udostępnienia,</li>
+				  <li>posty ze zdjęciami (razem z komentarzami innych osób pod nimi), zdjęcia wgrane,
+				  ale nieopublikowane, komentarze, polubienia i udostępnienia,</li>
 				  <li>znajomych, zaproszenia i blokady,</li>
 				  <li>członkostwa w społecznościach; społeczności, których jesteś właścicielem,
 				  usuwamy w całości, razem z postami innych osób,</li>
