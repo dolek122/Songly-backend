@@ -13,6 +13,7 @@ import com.songly.profile.ProfileDirectory;
 import com.songly.social.SocialGraph;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -20,6 +21,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationEventPublisher;
@@ -53,6 +55,15 @@ class ContentService {
 	 * otworzyłby dokładnie tę dziurę, którą sprawdzenie ma zamykać.
 	 */
 	private static final String POST_IMAGE_PREFIX = "posts/";
+
+	/**
+	 * Nazwa pliku za prefiksem właściciela — dokładnie to, co składa
+	 * {@link #uploadPostImage}: losowy UUID i rozszerzenie rozpoznanego typu.
+	 */
+	private static final Pattern POST_IMAGE_FILE_NAME = Pattern
+			.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(?:"
+					+ Arrays.stream(ImageType.values()).map(ImageType::extension).collect(Collectors.joining("|"))
+					+ ")");
 
 	/**
 	 * W Prometheusie: {@code songly_moderation_report_rejected_total{reason="..."}}
@@ -109,15 +120,23 @@ class ContentService {
 
 	/**
 	 * Zdjęcie musi pochodzić z wgrania zrobionego przez tego samego użytkownika.
-	 * Sprawdzenie jest prefiksem klucza, a nie osobną tabelą wgrań: klucz i tak
+	 * Sprawdzenie jest kształtem klucza, a nie osobną tabelą wgrań: klucz i tak
 	 * musi być unikalny i i tak zawiera właściciela, więc dodatkowy wiersz
 	 * przechowywałby informację, którą już mamy.
+	 *
+	 * <p>
+	 * <b>Cały kształt, nie sam prefiks.</b> Klucz
+	 * {@code posts/{ja}/../../posts/{ktoś}/x.png} zaczyna się od własnego prefiksu,
+	 * a klient HTTP rozwija {@code ..} w adresie publicznym, zanim wyśle żądanie —
+	 * czyli pokazałby cudze zdjęcie pod naszym nazwiskiem.
 	 */
 	private String validatedImageKey(UUID authorId, String imageKey) {
 		if (imageKey == null || imageKey.isBlank()) {
 			return null;
 		}
-		if (!imageKey.startsWith(POST_IMAGE_PREFIX + authorId + "/")) {
+		String ownPrefix = POST_IMAGE_PREFIX + authorId + "/";
+		if (!imageKey.startsWith(ownPrefix)
+				|| !POST_IMAGE_FILE_NAME.matcher(imageKey.substring(ownPrefix.length())).matches()) {
 			throw new UnknownPostImageException();
 		}
 		return imageKey;
@@ -419,6 +438,14 @@ class ContentService {
 		// brak uprawnień: 403 potwierdzałoby, że taki identyfikator istnieje.
 		if (!communityId.equals(post.getCommunityId())) {
 			throw new ReportNotFoundException();
+		}
+		// Idempotentne, jak reszta decyzji moderacyjnych: drugie kliknięcie albo
+		// drugi moderator nie dokłada decyzji. Bez tego każde powtórzenie zapisywało
+		// kolejne odrzucenie, czyli kolejną karę w przydziale zgłaszającego (ADR
+		// 0025), a do tego drugie powiadomienie i drugi wpis w dzienniku. Jedno
+		// zgłoszenie wystarczało, żeby zbić komuś przydział do podłogi.
+		if (report.getStatus() != ReportStatus.PENDING) {
+			return;
 		}
 		Instant now = Instant.now();
 		report.dismiss(requesterId, now);

@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -72,20 +73,42 @@ class MatchingService {
 		}
 		Map<UUID, Set<UUID>> genresByCandidate = profileDirectory.favoriteGenreIdsByUser(candidateIds);
 		Map<UUID, Double> weights = genreWeights(genresByCandidate, myGenres);
-		Map<UUID, String> names = profileDirectory.displayNames(candidateIds);
-		Map<UUID, String> avatars = profileDirectory.avatarUrls(candidateIds);
-		List<MatchResponse> ranked = genresByCandidate.entrySet().stream()
-				.map(entry -> toMatch(entry.getKey(), entry.getValue(), myGenres, weights, names, avatars))
-				.sorted(Comparator.comparingDouble(MatchResponse::score).reversed()
-						.thenComparing(match -> match.userId().toString()))
+		List<ScoredCandidate> ranked = genresByCandidate.entrySet().stream()
+				.map(entry -> score(entry.getKey(), entry.getValue(), myGenres, weights))
+				.sorted(Comparator.comparingDouble(ScoredCandidate::score).reversed()
+						.thenComparing(candidate -> candidate.userId().toString()))
 				.toList();
 		int total = ranked.size();
-		if (pageable.isUnpaged()) {
-			return new PageImpl<>(ranked, pageable, total);
+		List<ScoredCandidate> slice = ranked;
+		if (pageable.isPaged()) {
+			int from = (int) Math.min(pageable.getOffset(), total);
+			int to = Math.min(from + pageable.getPageSize(), total);
+			slice = ranked.subList(from, to);
 		}
-		int from = (int) Math.min(pageable.getOffset(), total);
-		int to = Math.min(from + pageable.getPageSize(), total);
-		return new PageImpl<>(ranked.subList(from, to), pageable, total);
+		return new PageImpl<>(withProfiles(slice), pageable, total);
+	}
+
+	/**
+	 * Nazwy i awatary dobieramy <b>po</b> wycięciu strony. Kandydatów jest tylu,
+	 * ilu ludzi wskazało którykolwiek z moich gatunków — przy „Popie" połowa
+	 * serwisu — a pokazujemy ich dwudziestu. Pytanie o profile wszystkich robiło
+	 * dwa zapytania z tysiącami identyfikatorów w {@code IN} na każde żądanie.
+	 */
+	private List<MatchResponse> withProfiles(List<ScoredCandidate> slice) {
+		if (slice.isEmpty()) {
+			return List.of();
+		}
+		Set<UUID> userIds = slice.stream().map(ScoredCandidate::userId).collect(Collectors.toSet());
+		Map<UUID, String> names = profileDirectory.displayNames(userIds);
+		Map<UUID, String> avatars = profileDirectory.avatarUrls(userIds);
+		return slice.stream()
+				.map(candidate -> new MatchResponse(candidate.userId(), names.get(candidate.userId()),
+						avatars.get(candidate.userId()), candidate.score(), candidate.confidence(),
+						candidate.sharedGenreIds()))
+				.toList();
+	}
+
+	private record ScoredCandidate(UUID userId, double score, double confidence, List<UUID> sharedGenreIds) {
 	}
 
 	/**
@@ -112,7 +135,7 @@ class MatchingService {
 		genresByCandidate.values().forEach(relevantGenres::addAll);
 		Map<UUID, Long> counts = profileDirectory.genreUserCounts(relevantGenres);
 		long totalUsers = Math.max(1, profileDirectory.usersWithAnyGenreCount());
-		return relevantGenres.stream().collect(java.util.stream.Collectors.toMap(genreId -> genreId, genreId -> {
+		return relevantGenres.stream().collect(Collectors.toMap(genreId -> genreId, genreId -> {
 			long pickedBy = Math.max(1, counts.getOrDefault(genreId, 1L));
 			return Math.log(1.0 + (double) totalUsers / pickedBy);
 		}));
@@ -143,8 +166,8 @@ class MatchingService {
 	 * odpowiedź brzmi „nie pasujecie". Nieufność należy się małym zbiorom, nie
 	 * słabym wynikom.
 	 */
-	private MatchResponse toMatch(UUID candidateId, Set<UUID> candidateGenres, Set<UUID> myGenres,
-			Map<UUID, Double> weights, Map<UUID, String> names, Map<UUID, String> avatars) {
+	private ScoredCandidate score(UUID candidateId, Set<UUID> candidateGenres, Set<UUID> myGenres,
+			Map<UUID, Double> weights) {
 		Set<UUID> shared = new HashSet<>(candidateGenres);
 		shared.retainAll(myGenres);
 		Set<UUID> union = new HashSet<>(candidateGenres);
@@ -153,7 +176,7 @@ class MatchingService {
 		double damped = unionWeight + properties.getConfidencePrior();
 		double score = weightOf(shared, weights) / damped;
 		double confidence = unionWeight / damped;
-		return new MatchResponse(candidateId, names.get(candidateId), avatars.get(candidateId), score, confidence,
+		return new ScoredCandidate(candidateId, score, confidence,
 				shared.stream().sorted(Comparator.comparing(UUID::toString)).toList());
 	}
 

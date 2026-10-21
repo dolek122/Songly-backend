@@ -3,6 +3,7 @@ package com.songly.common.web;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -38,5 +39,24 @@ class GlobalExceptionHandlerTest {
 		assertThat(response.getBody()).isNotNull();
 		assertThat(response.getBody().code()).isEqualTo("FILE_TOO_LARGE");
 		assertThat(response.getBody().path()).isEqualTo("/api/v1/profiles/me/avatar");
+	}
+
+	/**
+	 * Wyścig dwóch identycznych zapisów kończy się naruszeniem klucza w bazie. To
+	 * konflikt ze stanem danych, nie awaria — i nie może wypuścić do klienta nazwy
+	 * ograniczenia ze schematu.
+	 */
+	@Test
+	void dataIntegrityViolation_mapsToConflictWithoutSchemaDetails() {
+		MockHttpServletRequest request = new MockHttpServletRequest("PUT", "/api/v1/posts/1/likes");
+
+		ResponseEntity<ApiError> response = handler.handleDataIntegrityViolation(
+				new DataIntegrityViolationException("duplicate key value violates unique constraint \"likes_pkey\""),
+				request);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+		assertThat(response.getBody()).isNotNull();
+		assertThat(response.getBody().code()).isEqualTo("CONFLICT");
+		assertThat(response.getBody().message()).doesNotContain("likes_pkey");
 	}
 }

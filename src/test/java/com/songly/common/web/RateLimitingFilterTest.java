@@ -145,5 +145,8 @@ class RateLimitingFilterTest {
 		MockHttpServletResponse response = call(filter, "/api/v1/auth/login");
 
 		assertThat(response.getHeader(HttpHeaders.RETRY_AFTER)).isEqualTo("120");
+		// -1 to licznik bez TTL (INCR przeszło, EXPIRE nie) — bez naprawy ten adres
+		// byłby odcięty na zawsze.
+		verify(redisTemplate).expire("rate-limit:/api/v1/auth/login:10.0.0.1", Duration.ofMinutes(2));
 	}
 }

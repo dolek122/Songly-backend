@@ -1,15 +1,20 @@
 package com.songly.profile;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.songly.AbstractIntegrationTest;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -59,6 +64,29 @@ class UserSearchIntegrationTest extends AbstractIntegrationTest {
 
 		mockMvc.perform(get("/api/v1/profiles/search").header("Authorization", "Bearer " + token).param("query", "   "))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(0));
+	}
+
+	/**
+	 * {@code %} i {@code _} to zwykłe znaki, nie wzorce LIKE. Bez escapowania
+	 * zapytanie „%" zwracało wszystkich użytkowników po kolei, czyli obchodziło
+	 * regułę „pusty query nie wysypuje wszystkich" jednym znakiem.
+	 */
+	@Test
+	void search_treatsLikeWildcardsAsLiterals() throws Exception {
+		String searcherToken = registerAndGetAccessToken("searchable-wildcard-searcher@songly.io");
+		String fanToken = registerAndGetAccessToken("searchable-wildcard-fan@songly.io");
+		mockMvc.perform(put("/api/v1/profiles/me").header("Authorization", "Bearer " + fanToken)
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"displayName":"Fan na 100%_procent"}""")).andExpect(status().isOk());
+
+		for (String query : List.of("%", "_", "%_")) {
+			JsonNode content = objectMapper.readTree(mockMvc
+					.perform(get("/api/v1/profiles/search").header("Authorization", "Bearer " + searcherToken)
+							.param("query", query))
+					.andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("content");
+			assertThat(content).as("wyniki dla \"%s\"", query).isNotEmpty();
+			content.forEach(hit -> assertThat(hit.get("displayName").asText()).contains(query));
+		}
 	}
 
 	@Test
