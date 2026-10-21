@@ -58,15 +58,16 @@ class ProfileServiceTest {
 	}
 
 	@Test
-	void createDefaultProfile_createsProfileWithEmailLocalPartAsDisplayName_whenNoneExists() {
+	void createDefaultProfile_createsProfileWithNeutralDisplayName_whenNoneExists() {
 		UUID userId = UUID.randomUUID();
 		when(profileRepository.existsByUserId(userId)).thenReturn(false);
 
-		profileService.createDefaultProfile(userId, "ada@songly.io");
+		profileService.createDefaultProfile(userId);
 
 		ArgumentCaptor<Profile> captor = ArgumentCaptor.forClass(Profile.class);
 		verify(profileRepository).save(captor.capture());
-		assertThat(captor.getValue().getDisplayName()).isEqualTo("ada");
+		// Nie część adresu e-mail (ADR 0046) — ta była publiczna i wyszukiwalna.
+		assertThat(captor.getValue().getDisplayName()).matches("Użytkownik \\d{6}");
 		assertThat(captor.getValue().getUserId()).isEqualTo(userId);
 	}
 
@@ -75,7 +76,7 @@ class ProfileServiceTest {
 		UUID userId = UUID.randomUUID();
 		when(profileRepository.existsByUserId(userId)).thenReturn(true);
 
-		profileService.createDefaultProfile(userId, "ada@songly.io");
+		profileService.createDefaultProfile(userId);
 
 		verify(profileRepository, never()).save(any());
 	}

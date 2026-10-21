@@ -2,6 +2,7 @@ package com.songly;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.songly.RecordingMailSenderConfig.RecordingMailSender;
@@ -27,6 +28,7 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
+import tools.jackson.databind.ObjectMapper;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
@@ -147,6 +149,9 @@ public abstract class AbstractIntegrationTest {
 	private MockMvc sharedMockMvc;
 
 	@Autowired
+	private ObjectMapper objectMapper;
+
+	@Autowired
 	protected RecordingMailSender mails;
 
 	@Autowired
@@ -175,10 +180,33 @@ public abstract class AbstractIntegrationTest {
 		mails.clearFor(email);
 		sharedMockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
 				{"email":"%s","password":"%s"}""".formatted(email, password))).andExpect(status().isAccepted());
-		return sharedMockMvc
+		MvcResult verified = sharedMockMvc
 				.perform(post("/api/v1/auth/register/verify").contentType(MediaType.APPLICATION_JSON).content("""
 						{"token":"%s"}""".formatted(verificationTokenFor(email)))).andExpect(status().isOk())
 				.andReturn();
+		nameAfterEmail(verified, email);
+		return verified;
+	}
+
+	/**
+	 * Nadaje kontu nazwę wyświetlaną równą części adresu przed „@” — jawnie, jak
+	 * zrobiłby to użytkownik w aplikacji.
+	 *
+	 * <p>
+	 * Domyślna nazwa to od ADR 0046 losowe „Użytkownik 123456” (wcześniej była to
+	 * właśnie część adresu, co wystawiało ją publicznie). Testy potrzebują nazw
+	 * przewidywalnych i czytelnych — szukają po nich i porównują je — więc nadajemy
+	 * je tutaj, zamiast polegać na dawnym zachowaniu. Samą domyślną nazwę sprawdza
+	 * {@code DefaultDisplayNameIntegrationTest}, który tego pomocnika nie używa.
+	 */
+	private void nameAfterEmail(MvcResult verified, String email) throws Exception {
+		String accessToken = objectMapper.readTree(verified.getResponse().getContentAsString()).get("accessToken")
+				.asText();
+		sharedMockMvc
+				.perform(put("/api/v1/profiles/me").header("Authorization", "Bearer " + accessToken)
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"displayName":"%s"}""".formatted(email.substring(0, email.indexOf('@')))))
+				.andExpect(status().isOk());
 	}
 
 	/** Token istnieje w postaci jawnej wyłącznie w wysłanej wiadomości. */

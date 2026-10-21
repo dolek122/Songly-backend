@@ -82,7 +82,7 @@ class LocalDevAccountsSeeder implements ApplicationRunner {
 		User user = new User(UUID.randomUUID(), email, passwordEncoder.encode(PASSWORD), now);
 		user.changeAdmin(admin);
 		userRepository.save(user);
-		eventPublisher.publishEvent(new UserRegisteredEvent(user.getId(), user.getEmail(), now));
+		eventPublisher.publishEvent(new UserRegisteredEvent(user.getId(), now));
 		log.warn("Profil local: założono konto testowe {} (admin={})", user.getId(), admin);
 	}
 }

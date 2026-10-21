@@ -21,6 +21,6 @@ class UserRegisteredEventListener {
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onUserRegistered(UserRegisteredEvent event) {
-		profileService.createDefaultProfile(event.userId(), event.email());
+		profileService.createDefaultProfile(event.userId());
 	}
 }

@@ -9,7 +9,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -63,8 +62,8 @@ class LocalDevAccountsSeederTest {
 		// Bez zdarzenia konto nie miałoby profilu, czyli 404 na /profiles/me.
 		ArgumentCaptor<UserRegisteredEvent> events = ArgumentCaptor.forClass(UserRegisteredEvent.class);
 		verify(eventPublisher, times(2)).publishEvent(events.capture());
-		assertThat(events.getAllValues()).extracting(UserRegisteredEvent::email).containsExactlyInAnyOrderElementsOf(
-				List.of(LocalDevAccountsSeeder.ADMIN_EMAIL, LocalDevAccountsSeeder.USER_EMAIL));
+		assertThat(events.getAllValues()).extracting(UserRegisteredEvent::userId)
+				.containsExactlyInAnyOrderElementsOf(saved.getAllValues().stream().map(User::getId).toList());
 	}
 
 	/** Restart nie może resetować haseł ani tego, co ktoś zdążył przeklikać. */

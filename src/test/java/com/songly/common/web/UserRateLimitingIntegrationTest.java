@@ -131,7 +131,9 @@ class UserRateLimitingIntegrationTest extends AbstractIntegrationTest {
 	void writeBudget_coversEndpointsNotListedAnywhere() throws Exception {
 		String user = accessToken("user-limit-writer-4@songly.io");
 
-		for (int i = 0; i < 6; i++) {
+		// Budżet to 6, ale jeden zapis zużył już pomocnik rejestracji: nadaje kontu
+		// nazwę wyświetlaną przez PUT /profiles/me (AbstractIntegrationTest).
+		for (int i = 0; i < 5; i++) {
 			mockMvc.perform(post("/api/v1/notifications/read-all").header("Authorization", "Bearer " + user))
 					.andExpect(status().isNoContent());
 		}
