@@ -10,6 +10,7 @@ import com.songly.community.CommunityBanAppealSubmittedEvent;
 import com.songly.community.CommunityDirectory;
 import com.songly.community.CommunityMemberBannedEvent;
 import com.songly.community.CommunityMembership;
+import com.songly.content.CommunityCommentRemovedEvent;
 import com.songly.content.CommunityPostRemovedEvent;
 import com.songly.content.PostReportDismissedEvent;
 import com.songly.content.PostReportedEvent;
@@ -244,6 +245,24 @@ class ModerationNotificationMailer {
 						Cześć!
 
 						Moderacja społeczności „%s” w Songly usunęła Twój post.
+
+						Szczegóły znajdziesz w aplikacji, w skrzynce powiadomień.
+
+						Zespół Songly""".formatted(community));
+	}
+
+	/**
+	 * Ta sama kategoria i ten sam kształt co przy usuniętym poście — bez treści
+	 * komentarza, której i tak już nie ma, i bez wskazania moderatora.
+	 */
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onCommunityCommentRemoved(CommunityCommentRemovedEvent event) {
+		String community = communityName(event.communityId());
+		sendTo(Set.of(event.commentAuthorId()), event.moderatorId(), MailCategory.DECISION_ABOUT_ME,
+				"Songly — Twój komentarz w społeczności „%s” został usunięty".formatted(community), """
+						Cześć!
+
+						Moderacja społeczności „%s” w Songly usunęła Twój komentarz.
 
 						Szczegóły znajdziesz w aplikacji, w skrzynce powiadomień.
 

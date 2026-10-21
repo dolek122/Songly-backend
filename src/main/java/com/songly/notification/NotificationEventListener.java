@@ -9,6 +9,7 @@ import com.songly.community.CommunityMemberBannedEvent;
 import com.songly.community.CommunityMemberJoinedEvent;
 import com.songly.community.CommunityMemberRoleChangedEvent;
 import com.songly.community.CommunityMembership;
+import com.songly.content.CommunityCommentRemovedEvent;
 import com.songly.content.CommunityPostRemovedEvent;
 import com.songly.content.PostCommentedEvent;
 import com.songly.content.PostLikedEvent;
@@ -87,6 +88,17 @@ class NotificationEventListener {
 	void onCommunityPostRemoved(CommunityPostRemovedEvent event) {
 		notificationService.record(event.postAuthorId(), event.moderatorId(), NotificationType.COMMUNITY_POST_REMOVED,
 				event.communityId(), event.occurredAt());
+	}
+
+	/**
+	 * Bez tego komentarz znikałby bez słowa — dla autora wyglądałoby to jak błąd
+	 * aplikacji, a od decyzji, o której się nie wie, nie da się wyciągnąć wniosków
+	 * (ADR 0012).
+	 */
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onCommunityCommentRemoved(CommunityCommentRemovedEvent event) {
+		notificationService.record(event.commentAuthorId(), event.moderatorId(),
+				NotificationType.COMMUNITY_COMMENT_REMOVED, event.postId(), event.occurredAt());
 	}
 
 	/**

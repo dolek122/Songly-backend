@@ -161,7 +161,7 @@ class RegistrationService {
 
 		registrationOutcome("verified").increment();
 		log.info("Potwierdzono adres e-mail, założono konto {}", user.getId());
-		eventPublisher.publishEvent(new UserRegisteredEvent(user.getId(), user.getEmail(), Instant.now()));
+		eventPublisher.publishEvent(new UserRegisteredEvent(user.getId(), Instant.now()));
 		return tokenIssuer.issueFor(user);
 	}
 

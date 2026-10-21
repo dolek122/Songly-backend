@@ -9,6 +9,7 @@ import com.songly.community.CommunityBanAppealSubmittedEvent;
 import com.songly.community.CommunityBanLiftedEvent;
 import com.songly.community.CommunityMemberBannedEvent;
 import com.songly.community.CommunityMemberRoleChangedEvent;
+import com.songly.content.CommunityCommentRemovedEvent;
 import com.songly.content.CommunityPostRemovedEvent;
 import com.songly.content.PostReportDismissedEvent;
 import com.songly.identity.AdminRoleChangedEvent;
@@ -75,6 +76,12 @@ class ModerationLogEventListener {
 				event.moderatorId(), null, event.reporterIds().size(), event.occurredAt());
 		event.reporterIds().forEach(reporterId -> moderationLogService.record(ModerationAction.POST_REPORT_UPHELD,
 				event.communityId(), reporterId, event.moderatorId(), null, null, event.occurredAt()));
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onCommunityCommentRemoved(CommunityCommentRemovedEvent event) {
+		moderationLogService.record(ModerationAction.COMMUNITY_COMMENT_REMOVED, event.communityId(),
+				event.commentAuthorId(), event.moderatorId(), null, null, event.occurredAt());
 	}
 
 	/**

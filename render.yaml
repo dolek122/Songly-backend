@@ -48,6 +48,11 @@ services:
       # jeden adres dla wszystkich klientów i odcinał ich wspólnym limitem.
       - key: FORWARD_HEADERS_STRATEGY
         value: framework
+      # Bez prawdziwych JWT_SECRET i NOW_PLAYING_TOKEN_KEY aplikacja nie wstanie:
+      # wartości domyślne z application.properties są publiczne (leżą w repo), a z
+      # nimi każdy podpisałby token admina i odszyfrował tokeny Spotify.
+      - key: PRODUCTION_SECRETS_REQUIRED
+        value: "true"
       - key: JWT_SECRET
         sync: false
       - key: NOW_PLAYING_TOKEN_KEY
@@ -94,6 +99,12 @@ services:
         sync: false
       - key: EMAIL_VERIFICATION_URL
         sync: false
+      # Link z maila do potwierdzenia usunięcia konta (ADR 0043). Musi wskazywać
+      # TEN backend po HTTPS — strona /account-deletion jest dla ludzi bez
+      # aplikacji, więc songly:// tu nie zadziała. Przy innej domenie (prod)
+      # zmień adres razem z wpisem w formularzu Google Play.
+      - key: ACCOUNT_DELETION_CONFIRM_URL
+        value: https://songly-backend-q7zm.onrender.com/account-deletion/confirm?token={token}
       # Magazyn plików (ADR 0010) — Cloudflare R2 albo S3. Bez tego aplikacja
       # wystartuje, ale każdy upload skończy się 502 STORAGE_ERROR.
       - key: STORAGE_ENDPOINT

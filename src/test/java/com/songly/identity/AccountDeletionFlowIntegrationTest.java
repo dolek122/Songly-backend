@@ -2,15 +2,18 @@ package com.songly.identity;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.songly.AbstractIntegrationTest;
+import com.songly.TestImages;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -153,6 +156,12 @@ class AccountDeletionFlowIntegrationTest extends AbstractIntegrationTest {
 				.header("Authorization", "Bearer " + leaving.accessToken()).contentType(MediaType.APPLICATION_JSON)
 				.content("""
 						{"reason":"SPAM"}""")).andExpect(status().isAccepted());
+
+		// content: zdjecie wgrane, ale nieprzypiete do posta (ADR 0048) - wiersz w
+		// rejestrze wgran ma FK do users
+		mockMvc.perform(multipart("/api/v1/posts/image")
+				.file(new MockMultipartFile("file", "porzucone.png", MediaType.IMAGE_PNG_VALUE, TestImages.png()))
+				.header("Authorization", "Bearer " + leaving.accessToken())).andExpect(status().isOk());
 
 		// identity: niewykorzystany token resetu hasla ma FK do users bez CASCADE,
 		// wiec konto z oczekujacym linkiem nie dalo by sie usunac, gdyby deleteAccount

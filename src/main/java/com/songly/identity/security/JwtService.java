@@ -1,5 +1,6 @@
 package com.songly.identity.security;
 
+import com.songly.common.config.DevSecrets;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
@@ -11,6 +12,7 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
 import javax.crypto.SecretKey;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 
@@ -19,14 +21,22 @@ import org.springframework.stereotype.Service;
 public class JwtService {
 
 	private final JwtProperties properties;
+	private final boolean productionSecretsRequired;
 	private SecretKey key;
 
-	JwtService(JwtProperties properties) {
+	JwtService(JwtProperties properties,
+			@Value("${" + DevSecrets.PRODUCTION_REQUIRED_PROPERTY + ":false}") boolean productionSecretsRequired) {
 		this.properties = properties;
+		this.productionSecretsRequired = productionSecretsRequired;
 	}
 
+	/**
+	 * Sekret deweloperski z repo odpada tam, gdzie wymagane są prawdziwe sekrety: z
+	 * nim każdy podpisałby token dowolnego konta, także administratora.
+	 */
 	@PostConstruct
 	void init() {
+		DevSecrets.rejectDevValue(productionSecretsRequired, properties.getSecret(), "JWT_SECRET");
 		this.key = Keys.hmacShaKeyFor(properties.getSecret().getBytes(StandardCharsets.UTF_8));
 	}
 

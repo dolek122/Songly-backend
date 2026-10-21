@@ -46,6 +46,7 @@ class AuthService {
 	private final TokenIssuer tokenIssuer;
 	private final ApplicationEventPublisher eventPublisher;
 	private final MeterRegistry meterRegistry;
+	private final AccountEraser accountEraser;
 
 	/**
 	 * Skrót, z którym porównujemy hasło, gdy konta nie ma (ADR 0041). Liczony raz
@@ -56,7 +57,8 @@ class AuthService {
 
 	AuthService(UserRepository userRepository, SessionRepository sessionRepository,
 			PasswordResetTokenRepository passwordResetTokenRepository, PasswordEncoder passwordEncoder,
-			TokenIssuer tokenIssuer, ApplicationEventPublisher eventPublisher, MeterRegistry meterRegistry) {
+			TokenIssuer tokenIssuer, ApplicationEventPublisher eventPublisher, MeterRegistry meterRegistry,
+			AccountEraser accountEraser) {
 		this.userRepository = userRepository;
 		this.sessionRepository = sessionRepository;
 		this.passwordResetTokenRepository = passwordResetTokenRepository;
@@ -64,6 +66,7 @@ class AuthService {
 		this.tokenIssuer = tokenIssuer;
 		this.eventPublisher = eventPublisher;
 		this.meterRegistry = meterRegistry;
+		this.accountEraser = accountEraser;
 		this.unknownAccountHash = passwordEncoder.encode(SecureTokens.generate());
 	}
 
@@ -217,10 +220,9 @@ class AuthService {
 
 	/**
 	 * Wymaga ponownego podania hasła — sam ważny access token nie wystarcza na
-	 * akcję nieodwracalną (Claude.md §9, RODO — prawo do usunięcia konta). Event
-	 * leci PRZED usunięciem wiersza {@code users}: pozostałe moduły mają FK do
-	 * {@code users} bez CASCADE, więc muszą posprzątać swoje dane w tej samej
-	 * transakcji, zanim to konto w ogóle da się usunąć.
+	 * akcję nieodwracalną (Claude.md §9, RODO — prawo do usunięcia konta). Samo
+	 * kasowanie robi {@link AccountEraser}, wspólny z drogą przez link z maila (ADR
+	 * 0043).
 	 */
 	@Transactional
 	void deleteAccount(UUID userId, String password) {
@@ -232,14 +234,7 @@ class AuthService {
 		// będzie odpowiedzieć na pytanie "co się stało z tym kontem", to jest jedyny
 		// ślad, jaki po niej zostaje.
 		log.warn("Usuwanie konta {} na żądanie użytkownika (RODO)", userId);
-		eventPublisher.publishEvent(new UserAccountDeletionRequestedEvent(userId));
-		sessionRepository.deleteByUserId(userId);
-		// Tokeny resetu mają FK do users bez CASCADE, dokładnie jak sesje — konto z
-		// niewykorzystanym linkiem resetującym nie dałoby się usunąć. To nie leci
-		// przez zdarzenie, bo ta tabela należy do tego samego modułu; zdarzenie
-		// istnieje po to, żeby nie sięgać do cudzych (Claude.md §9).
-		passwordResetTokenRepository.deleteByUserId(userId);
-		userRepository.delete(user);
+		accountEraser.erase(user);
 	}
 
 }

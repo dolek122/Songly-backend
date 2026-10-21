@@ -1,7 +1,7 @@
 package com.songly.profile;
 
 import com.songly.common.media.ImageType;
-import com.songly.common.media.UnsupportedImageException;
+import com.songly.common.media.SanitizedImage;
 import com.songly.common.storage.ObjectStorage;
 import com.songly.identity.SuspendedAccounts;
 import com.songly.profile.dto.GenreResponse;
@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
@@ -30,6 +31,12 @@ class ProfileService implements ProfileDirectory {
 
 	/** Limit id w jednym zapytaniu administracji o nazwy (ADR 0036). */
 	static final int MAX_SUMMARY_IDS = 100;
+
+	/**
+	 * Przedrostek domyślnej nazwy wyświetlanej — patrz
+	 * {@link #defaultDisplayName()}.
+	 */
+	static final String DEFAULT_DISPLAY_NAME_PREFIX = "Użytkownik";
 
 	private final ProfileRepository profileRepository;
 	private final GenreRepository genreRepository;
@@ -59,12 +66,12 @@ class ProfileService implements ProfileDirectory {
 	 * by się nie zacommitował.
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	void createDefaultProfile(UUID userId, String email) {
+	void createDefaultProfile(UUID userId) {
 		if (profileRepository.existsByUserId(userId)) {
 			return;
 		}
 		Instant now = Instant.now();
-		profileRepository.save(new Profile(UUID.randomUUID(), userId, defaultDisplayName(email), null, null, now, now));
+		profileRepository.save(new Profile(UUID.randomUUID(), userId, defaultDisplayName(), null, null, now, now));
 	}
 
 	@Transactional(readOnly = true)
@@ -275,7 +282,8 @@ class ProfileService implements ProfileDirectory {
 	 * {@link ImageType}). Rozszerzenie w kluczu bierze się z rozpoznanego typu, a
 	 * nie z nazwy, którą przysłał przeglądarka: inaczej dałoby się zapisać plik
 	 * jako {@code .html} i zdobyć adres, spod którego serwujemy cudzy HTML na
-	 * własnej domenie.
+	 * własnej domenie. Do magazynu trafia plik bez metadanych, w tym bez GPS-u
+	 * ({@link SanitizedImage}, ADR 0047).
 	 *
 	 * <p>
 	 * Losowy człon w kluczu, zamiast stałego {@code avatars/{userId}}, bo pod
@@ -289,11 +297,11 @@ class ProfileService implements ProfileDirectory {
 	 */
 	@Transactional
 	ProfileResponse uploadAvatar(UUID userId, byte[] content) {
-		ImageType type = ImageType.detect(content).orElseThrow(UnsupportedImageException::new);
+		SanitizedImage image = SanitizedImage.from(content);
 		Profile profile = profileRepository.findByUserId(userId).orElseThrow(ProfileNotFoundException::new);
 
-		String key = "avatars/%s/%s.%s".formatted(userId, UUID.randomUUID(), type.extension());
-		objectStorage.put(key, content, type.contentType());
+		String key = "avatars/%s/%s.%s".formatted(userId, UUID.randomUUID(), image.type().extension());
+		objectStorage.put(key, image.content(), image.type().contentType());
 		replaceAvatarKey(profile, key);
 		return toResponse(profile);
 	}
@@ -345,9 +353,19 @@ class ProfileService implements ProfileDirectory {
 				Collectors.mapping(UserGenre::getGenreId, Collectors.toSet())));
 	}
 
-	private String defaultDisplayName(String email) {
-		int at = email.indexOf('@');
-		return at > 0 ? email.substring(0, at) : email;
+	/**
+	 * Nazwa do czasu, aż użytkownik wybierze własną (ADR 0046). Wcześniej była to
+	 * część adresu przed „@” — publiczna, wyszukiwalna i u większości ludzi będąca
+	 * imieniem i nazwiskiem, czyli połową adresu e-mail podaną każdemu, kto otworzy
+	 * profil albo wpisze fragment nazwy w wyszukiwarkę.
+	 *
+	 * <p>
+	 * Sześć cyfr, a nie cztery: nazwy nie są unikalne, ale przy kilku tysiącach
+	 * kont z domyślną nazwą krótszy sufiks dawałby w wyszukiwarce całe listy
+	 * identycznie wyglądających osób.
+	 */
+	private static String defaultDisplayName() {
+		return "%s %06d".formatted(DEFAULT_DISPLAY_NAME_PREFIX, ThreadLocalRandom.current().nextInt(1_000_000));
 	}
 
 	private ProfileResponse toResponse(Profile profile) {

@@ -49,6 +49,9 @@ class SecurityConfig {
 						.requestMatchers(HttpMethod.POST, "/api/v1/auth/password/reset-request",
 								"/api/v1/auth/password/reset")
 						.permitAll().requestMatchers("/api/v1/now-playing/spotify/callback").permitAll()
+						// Strona usuwania konta bez aplikacji (ADR 0043). Tożsamość potwierdza
+						// link z maila, nie sesja — kto o to prosi, często nie ma już aplikacji.
+						.requestMatchers("/account-deletion", "/account-deletion/confirm").permitAll()
 						.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 						.requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
 						.requestMatchers("/actuator/prometheus", "/actuator/metrics/**").hasAuthority("ROLE_ADMIN")

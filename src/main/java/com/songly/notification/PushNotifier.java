@@ -126,6 +126,8 @@ class PushNotifier {
 			case COMMUNITY_MODERATOR_REVOKED -> new Text(community(event), "Nie masz już uprawnień moderatora");
 			case COMMUNITY_BANNED -> new Text(community(event), "Moderacja zablokowała Ci pisanie w tej społeczności");
 			case COMMUNITY_POST_REMOVED -> new Text(community(event), "Moderacja usunęła Twój post");
+			// Zasobem jest post, nie społeczność — tytuł bez nazwy, ale też bez moderatora.
+			case COMMUNITY_COMMENT_REMOVED -> new Text(APP_NAME, "Moderacja usunęła Twój komentarz");
 			case BAN_APPEAL_SUBMITTED -> new Text(community(event), "Nowe odwołanie od bana do rozpatrzenia");
 			case BAN_APPEAL_ACCEPTED -> new Text(community(event), "Odwołanie uznane — ban zdjęty");
 			case BAN_APPEAL_REJECTED -> new Text(community(event), "Odwołanie od bana odrzucone");

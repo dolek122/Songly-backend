@@ -19,10 +19,11 @@ class RateLimitProperties {
 	 * <p>
 	 * Domyślnie wszystkie ścieżki wystawione publicznie w {@code SecurityConfig}:
 	 * dwie ścieżki wejściowe (rejestracja, logowanie), dwie operujące na refresh
-	 * tokenie, dwie ścieżki resetu hasła i publiczny callback OAuth. Endpointy za
-	 * JWT zostają poza listą — te limituje per użytkownik
-	 * {@link UserRateLimitingFilter} (ADR 0034), bo licznik per IP nie wie, kto
-	 * pyta.
+	 * tokenie, dwie ścieżki resetu hasła, publiczny callback OAuth i strona
+	 * usuwania konta bez aplikacji (ADR 0043 — jej formularz wysyła maila, więc
+	 * potrzebuje tego samego hamulca co reset hasła). Endpointy za JWT zostają poza
+	 * listą — te limituje per użytkownik {@link UserRateLimitingFilter} (ADR 0034),
+	 * bo licznik per IP nie wie, kto pyta.
 	 *
 	 * <p>
 	 * Przy resecie hasła limit per IP to tylko połowa ochrony: sam nie powstrzymuje
@@ -35,7 +36,8 @@ class RateLimitProperties {
 	 */
 	private List<String> protectedPaths = List.of("/api/v1/auth/register", "/api/v1/auth/register/verify",
 			"/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout", "/api/v1/auth/password/reset-request",
-			"/api/v1/auth/password/reset", "/api/v1/now-playing/spotify/callback");
+			"/api/v1/auth/password/reset", "/api/v1/now-playing/spotify/callback", "/account-deletion",
+			"/account-deletion/confirm");
 
 	boolean isEnabled() {
 		return enabled;
