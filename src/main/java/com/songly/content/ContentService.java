@@ -588,14 +588,31 @@ class ContentService {
 				comment.getCreatedAt()));
 	}
 
+	/**
+	 * Autor kasuje swój komentarz wszędzie; <b>właściciel i moderatorzy
+	 * społeczności</b> — dowolny komentarz pod postem w swojej społeczności. Bez
+	 * tego jedyną odpowiedzią moderacji na komentarz trolla było skasowanie całego
+	 * posta, czyli ukaranie jego autora za cudzą treść.
+	 *
+	 * <p>
+	 * Przy zwykłych postach nic się nie zmienia: tam chroni wyłącznie autorstwo
+	 * (§8), a autor posta nie moderuje komentarzy pod nim.
+	 */
 	@Transactional
 	void deleteComment(UUID postId, UUID commentId, UUID requesterId) {
 		Comment comment = commentRepository.findById(commentId).filter(c -> c.getPostId().equals(postId))
 				.orElseThrow(CommentNotFoundException::new);
-		if (!comment.getAuthorId().equals(requesterId)) {
+		if (comment.getAuthorId().equals(requesterId)) {
+			commentRepository.delete(comment);
+			return;
+		}
+		Post post = postRepository.findById(postId).orElseThrow(CommentNotFoundException::new);
+		if (!moderates(post, requesterId)) {
 			throw new NotResourceOwnerException();
 		}
 		commentRepository.delete(comment);
+		eventPublisher.publishEvent(new CommunityCommentRemovedEvent(post.getCommunityId(), postId,
+				comment.getAuthorId(), requesterId, Instant.now()));
 	}
 
 	/**

@@ -189,6 +189,10 @@ class ContentServiceTest {
 		UUID commentId = UUID.randomUUID();
 		Comment comment = new Comment(commentId, postId, UUID.randomUUID(), "treść", Instant.now());
 		when(commentRepository.findById(commentId)).thenReturn(Optional.of(comment));
+		// Zwykły post (bez społeczności) — tam nikt poza autorem komentarza go nie
+		// usunie, także autor posta.
+		when(postRepository.findById(postId))
+				.thenReturn(Optional.of(new Post(postId, UUID.randomUUID(), "post", Instant.now(), null, null)));
 
 		assertThatThrownBy(() -> contentService.deleteComment(postId, commentId, UUID.randomUUID()))
 				.isInstanceOf(NotResourceOwnerException.class);

@@ -33,6 +33,9 @@ public enum AnalyticsEventType {
 	/** Posty usunięte przez moderatora; usunięcia własnych postów tu nie ma. */
 	COMMUNITY_POST_REMOVED,
 
+	/** Komentarze usunięte przez moderatora; własnych usunięć tu nie ma. */
+	COMMUNITY_COMMENT_REMOVED,
+
 	/**
 	 * Rozdzielone na bezterminowe i czasowe, bo to jedyny sposób sprawdzenia, czy
 	 * bany czasowe (ADR 0014) w ogóle się przyjęły — analityka liczy same typy, bez

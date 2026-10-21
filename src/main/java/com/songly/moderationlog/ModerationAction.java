@@ -21,6 +21,9 @@ public enum ModerationAction {
 	 */
 	COMMUNITY_POST_REMOVED,
 
+	/** Cudzy komentarz usunięty przez moderację; podmiotem jest jego autor. */
+	COMMUNITY_COMMENT_REMOVED,
+
 	POST_REPORT_DISMISSED,
 
 	/**

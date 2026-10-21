@@ -24,6 +24,12 @@ public enum NotificationType {
 	 */
 	COMMUNITY_POST_REMOVED,
 
+	/**
+	 * Do autora komentarza usuniętego przez moderację; zasobem jest post, pod
+	 * którym komentarz był — ten, w przeciwieństwie do usuniętego posta, istnieje.
+	 */
+	COMMUNITY_COMMENT_REMOVED,
+
 	/** Do moderatorów, przy pierwszym zgłoszeniu danego posta. */
 	COMMUNITY_POST_REPORTED,
 
@@ -88,8 +94,25 @@ public enum NotificationType {
 	 * nie widzieć od niego także tego — koszt ponosi sam.
 	 */
 	static final Set<NotificationType> MODERATION = Set.of(COMMUNITY_BANNED, COMMUNITY_POST_REMOVED,
-			COMMUNITY_POST_REPORTED, POST_REPORT_DISMISSED, BAN_APPEAL_SUBMITTED, BAN_APPEAL_ACCEPTED,
-			BAN_APPEAL_REJECTED, BAN_ESCALATION_ACCEPTED, BAN_ESCALATION_REJECTED);
+			COMMUNITY_COMMENT_REMOVED, COMMUNITY_POST_REPORTED, POST_REPORT_DISMISSED, BAN_APPEAL_SUBMITTED,
+			BAN_APPEAL_ACCEPTED, BAN_APPEAL_REJECTED, BAN_ESCALATION_ACCEPTED, BAN_ESCALATION_REJECTED);
+
+	/**
+	 * Decyzje, których aktorem jest moderator albo administrator rozstrzygający w
+	 * sprawie adresata. Skrzynka <b>nie wydaje</b> przy nich nazwy ani awatara
+	 * aktora: decyzja należy do społeczności (albo platformy), a nie do osoby,
+	 * która kliknęła (ADR 0015) — wskazanie palcem służy odwetowi, nie zrozumieniu.
+	 * Push i mail już podpisywały się społecznością; skrzynka wydawała dotąd nazwę,
+	 * a ukrywał ją dopiero klient, więc każdy nowy typ, którego klient jeszcze nie
+	 * znał, pokazałby moderatora z imienia.
+	 *
+	 * <p>
+	 * Identyfikator aktora zostaje, bo kontrakt z klientem ma to pole jako
+	 * wymagane.
+	 */
+	static final Set<NotificationType> DECIDED_BY_MODERATION = Set.of(COMMUNITY_BANNED, COMMUNITY_POST_REMOVED,
+			COMMUNITY_COMMENT_REMOVED, POST_REPORT_DISMISSED, BAN_APPEAL_ACCEPTED, BAN_APPEAL_REJECTED,
+			BAN_ESCALATION_ACCEPTED, BAN_ESCALATION_REJECTED);
 
 	/**
 	 * Powiadomienia o <b>stanie</b>, który aktor może cofnąć i przywrócić (ADR

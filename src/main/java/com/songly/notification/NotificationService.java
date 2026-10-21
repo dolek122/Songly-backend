@@ -74,12 +74,22 @@ class NotificationService {
 	Page<NotificationResponse> list(UUID userId, Pageable pageable) {
 		Page<Notification> page = notificationRepository.findVisible(userId, socialGraph.blockedEitherWayIds(userId),
 				NotificationType.MODERATION, pageable);
-		Set<UUID> actorIds = page.getContent().stream().map(Notification::getActorId).collect(Collectors.toSet());
+		Set<UUID> actorIds = page.getContent().stream()
+				.filter(notification -> !NotificationType.DECIDED_BY_MODERATION.contains(notification.getType()))
+				.map(Notification::getActorId).collect(Collectors.toSet());
 		Map<UUID, String> names = profileDirectory.displayNames(actorIds);
 		Map<UUID, String> avatars = profileDirectory.avatarUrls(actorIds);
-		return page.map(notification -> new NotificationResponse(notification.getId(), notification.getType(),
-				notification.getActorId(), names.get(notification.getActorId()), avatars.get(notification.getActorId()),
-				notification.getResourceId(), notification.getCreatedAt(), notification.getReadAt()));
+		return page.map(notification -> {
+			// Przy decyzjach moderacji bez nazwy i awatara (ADR 0015) — patrz
+			// NotificationType.DECIDED_BY_MODERATION. Sprawdzane per wiersz, nie tylko
+			// przy budowaniu map: ten sam moderator może mieć na tej samej stronie
+			// zwykłe powiadomienie (np. lajk), a wtedy jego nazwa jest w mapie.
+			boolean anonymous = NotificationType.DECIDED_BY_MODERATION.contains(notification.getType());
+			UUID actorId = notification.getActorId();
+			return new NotificationResponse(notification.getId(), notification.getType(), actorId,
+					anonymous ? null : names.get(actorId), anonymous ? null : avatars.get(actorId),
+					notification.getResourceId(), notification.getCreatedAt(), notification.getReadAt());
+		});
 	}
 
 	/**

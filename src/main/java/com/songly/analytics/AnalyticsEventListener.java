@@ -5,6 +5,7 @@ import com.songly.community.CommunityBanAppealRejectedEvent;
 import com.songly.community.CommunityBanAppealSubmittedEvent;
 import com.songly.community.CommunityMemberBannedEvent;
 import com.songly.community.CommunityMemberJoinedEvent;
+import com.songly.content.CommunityCommentRemovedEvent;
 import com.songly.content.CommunityPostRemovedEvent;
 import com.songly.content.PostCommentedEvent;
 import com.songly.content.PostLikedEvent;
@@ -86,6 +87,11 @@ class AnalyticsEventListener {
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onCommunityPostRemoved(CommunityPostRemovedEvent event) {
 		analyticsService.record(AnalyticsEventType.COMMUNITY_POST_REMOVED, event.occurredAt());
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onCommunityCommentRemoved(CommunityCommentRemovedEvent event) {
+		analyticsService.record(AnalyticsEventType.COMMUNITY_COMMENT_REMOVED, event.occurredAt());
 	}
 
 	/**
