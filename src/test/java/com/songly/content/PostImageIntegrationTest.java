@@ -237,7 +237,10 @@ class PostImageIntegrationTest extends AbstractIntegrationTest {
 		mockMvc.perform(post("/api/v1/posts").header("Authorization", "Bearer " + token)
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"content":"za pozno","imageKey":"%s"}""".formatted(key))).andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.code").value("UNKNOWN_POST_IMAGE"));
+				.andExpect(jsonPath("$.code").value("UNKNOWN_POST_IMAGE"))
+				// To jedyna droga, którą trafia tu uczciwy klient, więc komunikat ma
+				// mówić, co zrobić, a nie oskarżać o cudzy klucz.
+				.andExpect(jsonPath("$.message").value("Zdjęcie wygasło albo zostało już użyte. Wgraj je ponownie."));
 	}
 
 	/**
