@@ -119,6 +119,7 @@
         "properties" : {
           "durationDays" : {
             "format" : "int32",
+            "maximum" : 36500,
             "minimum" : 1,
             "type" : "integer"
           },
@@ -1224,6 +1225,7 @@
         "properties" : {
           "durationDays" : {
             "format" : "int32",
+            "maximum" : 36500,
             "minimum" : 1,
             "type" : "integer"
           },

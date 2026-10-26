@@ -206,4 +206,21 @@ class TemporaryBanIntegrationTest extends AbstractIntegrationTest {
 				.header("Authorization", "Bearer " + owner.token()).contentType(MediaType.APPLICATION_JSON).content("""
 						{"reason":"spam","durationDays":0}""")).andExpect(status().isBadRequest());
 	}
+
+	/**
+	 * Absurdalny termin wypychał {@code expires_at} poza zakres znacznika czasu
+	 * Postgresa i kończył się błędem serwera zamiast 400 (ADR 0049).
+	 */
+	@Test
+	void absurdlyLongDurationIsRejected() throws Exception {
+		TestUser owner = user("tempban-huge-owner@songly.io");
+		TestUser troll = user("tempban-huge-troll@songly.io");
+		String communityId = createCommunity(owner, "Tempban-bez-konca");
+		join(troll, communityId);
+
+		mockMvc.perform(put("/api/v1/communities/" + communityId + "/bans/" + troll.userId())
+				.header("Authorization", "Bearer " + owner.token()).contentType(MediaType.APPLICATION_JSON).content("""
+						{"reason":"spam","durationDays":2000000000}""")).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+	}
 }

@@ -16,9 +16,12 @@ interface PostReportRepository extends JpaRepository<PostReport, UUID> {
 	boolean existsByPostIdAndReporterId(UUID postId, UUID reporterId);
 
 	/**
-	 * Czy post ma już jakiekolwiek zgłoszenie — patrz {@code PostReportedEvent}.
+	 * Czy post czeka już w kolejce, czyli ma zgłoszenie nierozpatrzone — patrz
+	 * {@code PostReportedEvent}. Zgłoszenia odrzucone się nie liczą: po ich
+	 * odrzuceniu kolejka jest dla tego posta pusta, więc nowe zgłoszenie znów musi
+	 * kogoś zawołać.
 	 */
-	boolean existsByPostId(UUID postId);
+	boolean existsByPostIdAndStatus(UUID postId, ReportStatus status);
 
 	/** Ile zgłoszeń ma post — liczone przed jego usunięciem (ADR 0024). */
 	long countByPostId(UUID postId);

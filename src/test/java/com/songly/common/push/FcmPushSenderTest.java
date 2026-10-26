@@ -89,6 +89,19 @@ class FcmPushSenderTest {
 	}
 
 	/**
+	 * 404 bez {@code UNREGISTERED} to zwykle błąd konfiguracji (zły adres albo
+	 * projekt) — gdyby kasował token, jedna pomyłka odpięłaby wszystkie telefony.
+	 */
+	@Test
+	void notFoundWithoutUnregisteredIsAnOrdinaryFailure() {
+		status = 404;
+		response = "<html>Not Found</html>";
+
+		assertThatThrownBy(() -> sender().send(message())).isInstanceOf(PushDeliveryException.class)
+				.isNotInstanceOf(InvalidPushTokenException.class);
+	}
+
+	/**
 	 * INVALID_ARGUMENT bywa błędem żądania — nie wolno na tej podstawie kasować
 	 * urządzenia.
 	 */

@@ -1,7 +1,5 @@
 package com.songly.common.storage;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -9,8 +7,6 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 class S3ObjectStorage implements ObjectStorage {
-
-	private static final Logger log = LoggerFactory.getLogger(S3ObjectStorage.class);
 
 	private final S3Client client;
 	private final StorageProperties properties;
@@ -35,7 +31,7 @@ class S3ObjectStorage implements ObjectStorage {
 		try {
 			client.deleteObject(DeleteObjectRequest.builder().bucket(properties.getBucket()).key(key).build());
 		} catch (SdkException ex) {
-			log.warn("Nie udało się skasować pliku {} — zostaje osierocony: {}", key, ex.toString());
+			throw new ObjectStorageException("Nie udało się skasować pliku", ex);
 		}
 	}
 

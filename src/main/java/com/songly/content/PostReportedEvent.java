@@ -4,7 +4,11 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Publikowane przy <b>pierwszym</b> zgłoszeniu danego posta, a nie przy każdym.
+ * Publikowane przy <b>pierwszym</b> zgłoszeniu danego posta, a nie przy każdym
+ * — dokładniej: przy pierwszym, gdy post nie ma żadnego zgłoszenia czekającego
+ * w kolejce (ADR 0049). Wcześniej liczyły się też zgłoszenia odrzucone, więc
+ * post, który ktoś zgłosił ponownie po odrzuceniu poprzednich zgłoszeń, trafiał
+ * do kolejki bez żadnego powiadomienia.
  *
  * <p>
  * Adresatami są wszyscy moderatorzy społeczności, więc bez tego ograniczenia
