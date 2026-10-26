@@ -1,6 +1,7 @@
 package com.songly.nowplaying;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -26,8 +27,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -395,5 +399,39 @@ class NowPlayingServiceRefreshTest {
 
 		assertThat(service.tryAcquirePollLock(userId)).isTrue();
 		assertThat(service.tryAcquirePollLock(userId)).isFalse();
+	}
+
+	/**
+	 * Awaria Redisa nie może wywrócić usunięcia konta (ADR 0049) — klucze statusu i
+	 * tak wygasają same, a prawo z RODO nie może zależeć od cache'a.
+	 */
+	@Test
+	void deleteAccountData_survivesRedisFailure() {
+		UUID userId = UUID.randomUUID();
+		when(redisTemplate.delete(anyString())).thenThrow(new RedisConnectionFailureException("Redis nie odpowiada"));
+
+		assertThatCode(() -> service.deleteAccountData(userId)).doesNotThrowAnyException();
+
+		verify(linkRepository).deleteByUserId(userId);
+		verify(preferenceRepository).deleteByUserId(userId);
+	}
+
+	/**
+	 * Redis dopiero po commicie: „przestał słuchać” wysłane przed commitem
+	 * ogłaszałoby znajomym usunięcie, które mogło się jeszcze wycofać.
+	 */
+	@Test
+	void deleteAccountData_touchesRedisOnlyAfterCommit() {
+		UUID userId = UUID.randomUUID();
+		TransactionSynchronizationManager.initSynchronization();
+		try {
+			service.deleteAccountData(userId);
+
+			verify(statusPublisher, never()).publishStopped(userId);
+			TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+			verify(statusPublisher).publishStopped(userId);
+		} finally {
+			TransactionSynchronizationManager.clearSynchronization();
+		}
 	}
 }

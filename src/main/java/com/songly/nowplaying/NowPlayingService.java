@@ -21,10 +21,14 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -37,6 +41,8 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 @EnableConfigurationProperties(NowPlayingProperties.class)
 class NowPlayingService {
+
+	private static final Logger log = LoggerFactory.getLogger(NowPlayingService.class);
 
 	private static final String STATE_KEY_PREFIX = "now-playing:oauth-state:";
 	private static final String CACHE_KEY_PREFIX = "now-playing:status:";
@@ -112,15 +118,40 @@ class NowPlayingService {
 		}
 	}
 
+	/**
+	 * Wiersze w transakcji usunięcia konta, Redis <b>po jej commicie</b> i bez
+	 * prawa do wywrócenia go (ADR 0049). Wcześniej awaria Redisa wycofywała całe
+	 * usunięcie konta, czyli blokowała prawo z RODO z powodu cache'a, którego
+	 * klucze i tak wygasają same. Przy okazji „przestał słuchać” nie wychodzi już
+	 * przed commitem usunięcia, które mogło się jeszcze wycofać.
+	 */
 	@Transactional
 	void deleteAccountData(UUID userId) {
 		linkRepository.deleteByUserId(userId);
 		preferenceRepository.deleteByUserId(userId);
-		redisTemplate.delete(CACHE_KEY_PREFIX + userId);
-		redisTemplate.delete(MANUAL_KEY_PREFIX + userId);
-		// Bez tego znajomi z otwartym strumieniem widzieliby status konta, którego
-		// już nie ma — aż do własnego reconnectu.
-		statusPublisher.publishStopped(userId);
+		if (TransactionSynchronizationManager.isSynchronizationActive()) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCommit() {
+					forgetLiveState(userId);
+				}
+			});
+		} else {
+			forgetLiveState(userId);
+		}
+	}
+
+	private void forgetLiveState(UUID userId) {
+		try {
+			redisTemplate.delete(CACHE_KEY_PREFIX + userId);
+			redisTemplate.delete(MANUAL_KEY_PREFIX + userId);
+			// Bez tego znajomi z otwartym strumieniem widzieliby status konta, którego
+			// już nie ma — aż do własnego reconnectu.
+			statusPublisher.publishStopped(userId);
+		} catch (RuntimeException ex) {
+			log.warn("Nie udało się wyczyścić statusu usuniętego konta {} w Redisie — wygaśnie sam: {}", userId,
+					ex.toString());
+		}
 	}
 
 	@Transactional(readOnly = true)
