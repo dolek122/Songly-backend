@@ -1,6 +1,7 @@
 package com.songly.common.web;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -47,6 +48,24 @@ class ErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 	void missingRequiredRequestParameter_returnsBadRequest() throws Exception {
 		mockMvc.perform(get("/api/v1/now-playing/spotify/callback")).andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("MISSING_PARAMETER"));
+	}
+
+	/** Wcześniej 500 ze stack tracem — wywoływalne przez każdego, bez logowania. */
+	@Test
+	void unsupportedContentType_returnsUnsupportedMediaType() throws Exception {
+		mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.TEXT_PLAIN).content("cokolwiek"))
+				.andExpect(status().isUnsupportedMediaType())
+				.andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
+	}
+
+	@Test
+	void multipartWithoutRequiredPart_returnsBadRequest() throws Exception {
+		MvcResult registration = registerAndVerify("missing-part@songly.io", "password123");
+		String accessToken = objectMapper.readTree(registration.getResponse().getContentAsString()).get("accessToken")
+				.asText();
+
+		mockMvc.perform(multipart("/api/v1/profiles/me/avatar").header("Authorization", "Bearer " + accessToken))
+				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("MISSING_PARAMETER"));
 	}
 
 	@Test
