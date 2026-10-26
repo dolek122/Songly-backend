@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.songly.identity.SuspendedAccounts;
 import com.songly.nowplaying.dto.FriendNowPlayingResponse;
 import com.songly.nowplaying.dto.NowPlayingStatusResponse;
 import com.songly.profile.ProfileDirectory;
@@ -37,6 +38,9 @@ class NowPlayingStreamBroadcasterTest {
 
 	@Mock
 	private NowPlayingService nowPlayingService;
+
+	@Mock
+	private SuspendedAccounts suspendedAccounts;
 
 	@InjectMocks
 	private NowPlayingStreamBroadcaster broadcaster;
@@ -68,6 +72,27 @@ class NowPlayingStreamBroadcasterTest {
 		assertThat(payload.getValue().displayName()).isEqualTo("Ada");
 		assertThat(payload.getValue().avatarUrl()).isEqualTo("http://a/ada.png");
 		assertThat(payload.getValue().status()).isEqualTo(status);
+	}
+
+	/**
+	 * Zawieszenie działa od razu (ADR 0022), a otwarty strumień nie przechodzi już
+	 * przez autoryzację — więc odbiorcę odcina dopiero ten filtr (ADR 0049).
+	 */
+	@Test
+	void suspendedFriend_withOpenStream_receivesNothing() {
+		UUID subject = UUID.randomUUID();
+		UUID activeFriend = UUID.randomUUID();
+		UUID suspendedFriend = UUID.randomUUID();
+		when(hub.hasAnySubscriber()).thenReturn(true);
+		when(nowPlayingService.sharesStatus(subject)).thenReturn(true);
+		when(socialGraph.friendIds(subject)).thenReturn(Set.of(activeFriend, suspendedFriend));
+		when(hub.hasSubscribers(any())).thenReturn(true);
+		when(suspendedAccounts.suspendedUserIds()).thenReturn(Set.of(suspendedFriend));
+
+		broadcaster.broadcast(new NowPlayingStatusChangedMessage(subject, status()));
+
+		verify(hub).push(eq(activeFriend), eq("now-playing"), any());
+		verify(hub, never()).push(eq(suspendedFriend), any(), any());
 	}
 
 	@Test

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.songly.identity.SuspendedAccounts;
 import com.songly.nowplaying.dto.NowPlayingStatusResponse;
 import com.songly.nowplaying.dto.UpdateNowPlayingSettingsRequest;
 import com.songly.profile.ProfileDirectory;
@@ -64,6 +65,9 @@ class NowPlayingServiceRefreshTest {
 	@Mock
 	private NowPlayingStatusPublisher statusPublisher;
 
+	@Mock
+	private SuspendedAccounts suspendedAccounts;
+
 	private final ObjectMapper objectMapper = new ObjectMapper();
 	private final NowPlayingProperties properties = new NowPlayingProperties();
 	private final UUID userId = UUID.randomUUID();
@@ -73,7 +77,7 @@ class NowPlayingServiceRefreshTest {
 	@BeforeEach
 	void setUp() {
 		service = new NowPlayingService(musicProvider, linkRepository, preferenceRepository, redisTemplate,
-				objectMapper, properties, socialGraph, profileDirectory, statusPublisher);
+				objectMapper, properties, socialGraph, profileDirectory, statusPublisher, suspendedAccounts);
 	}
 
 	private void provider(String title) {

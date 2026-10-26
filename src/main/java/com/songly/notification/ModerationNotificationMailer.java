@@ -15,6 +15,7 @@ import com.songly.content.CommunityPostRemovedEvent;
 import com.songly.content.PostReportDismissedEvent;
 import com.songly.content.PostReportedEvent;
 import com.songly.identity.AdminDirectory;
+import com.songly.identity.SuspendedAccounts;
 import com.songly.identity.UserEmailDirectory;
 import com.songly.identity.UserSuspendedEvent;
 import com.songly.identity.UserSuspensionAppealAcceptedEvent;
@@ -92,11 +93,13 @@ class ModerationNotificationMailer {
 	private final MeterRegistry meterRegistry;
 	private final NotificationMailPreferenceService mailPreferences;
 	private final AdminDirectory adminDirectory;
+	private final SuspendedAccounts suspendedAccounts;
 
 	ModerationNotificationMailer(MailSender mailSender, UserEmailDirectory userEmailDirectory,
 			CommunityDirectory communityDirectory, CommunityMembership communityMembership,
 			StringRedisTemplate redisTemplate, ModerationMailProperties properties, MeterRegistry meterRegistry,
-			NotificationMailPreferenceService mailPreferences, AdminDirectory adminDirectory) {
+			NotificationMailPreferenceService mailPreferences, AdminDirectory adminDirectory,
+			SuspendedAccounts suspendedAccounts) {
 		this.mailSender = mailSender;
 		this.userEmailDirectory = userEmailDirectory;
 		this.communityDirectory = communityDirectory;
@@ -106,6 +109,7 @@ class ModerationNotificationMailer {
 		this.meterRegistry = meterRegistry;
 		this.mailPreferences = mailPreferences;
 		this.adminDirectory = adminDirectory;
+		this.suspendedAccounts = suspendedAccounts;
 	}
 
 	/**
@@ -446,7 +450,12 @@ class ModerationNotificationMailer {
 			log.debug("Mail do moderatorów społeczności {} ({}) wyciszony odstępem", communityId, kind);
 			return;
 		}
-		sendTo(communityMembership.moderatorIds(communityId), actorId, MailCategory.MODERATION_QUEUE, subject, body);
+		// Zawieszony moderator nie może rozpatrzyć sprawy, do której ten mail wzywa
+		// (ADR 0022) — wezwania do kolejki dostają tylko ci, którzy mogą ją otworzyć.
+		Set<UUID> suspended = suspendedAccounts.suspendedUserIds();
+		Set<UUID> moderators = communityMembership.moderatorIds(communityId).stream()
+				.filter(moderatorId -> !suspended.contains(moderatorId)).collect(Collectors.toSet());
+		sendTo(moderators, actorId, MailCategory.MODERATION_QUEUE, subject, body);
 	}
 
 	private boolean claimModeratorMailSlot(UUID communityId, String kind) {

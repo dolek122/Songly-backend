@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -35,6 +36,9 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 
 	@Autowired
 	private MockMvc mockMvc;
+
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
 
 	@Autowired
 	private ObjectMapper objectMapper;
@@ -222,6 +226,24 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$[0].status.title").value("Bohemian Rhapsody"))
 				.andExpect(jsonPath("$[0].status.artist").value("Queen"))
 				.andExpect(jsonPath("$[0].status.playing").value(true));
+	}
+
+	/**
+	 * Status zawieszonego konta nie opuszcza serwera (ADR 0049). ADR 0026 zakładał,
+	 * że zawieszony go „nie odświeży”, ale ręczny status żyje godzinami, a ten ze
+	 * Spotify odświeża serwerowy poll.
+	 */
+	@Test
+	void friends_leavesOutSuspendedFriend() throws Exception {
+		TestUser viewer = registerUser("np-friends-suspended-viewer@songly.io");
+		TestUser suspended = registerUser("np-friends-suspended@songly.io");
+		setManualStatus(suspended, "Bohemian Rhapsody", "Queen", "Tidal");
+		befriend(viewer, suspended);
+		jdbcTemplate.update("UPDATE users SET suspended_at = now(), suspension_reason = 'test' WHERE id = ?::uuid",
+				suspended.userId());
+
+		mockMvc.perform(get("/api/v1/now-playing/friends").header("Authorization", "Bearer " + viewer.accessToken()))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
 	}
 
 	@Test

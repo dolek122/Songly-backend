@@ -1,5 +1,6 @@
 package com.songly.nowplaying;
 
+import com.songly.identity.SuspendedAccounts;
 import com.songly.nowplaying.dto.FriendNowPlayingResponse;
 import com.songly.nowplaying.dto.ManualNowPlayingRequest;
 import com.songly.nowplaying.dto.NowPlayingSettingsResponse;
@@ -54,12 +55,14 @@ class NowPlayingService {
 	private final SocialGraph socialGraph;
 	private final ProfileDirectory profileDirectory;
 	private final NowPlayingStatusPublisher statusPublisher;
+	private final SuspendedAccounts suspendedAccounts;
 	private final SecureRandom secureRandom = new SecureRandom();
 
 	NowPlayingService(MusicProvider musicProvider, MusicProviderLinkRepository linkRepository,
 			NowPlayingPreferenceRepository preferenceRepository, StringRedisTemplate redisTemplate,
 			ObjectMapper objectMapper, NowPlayingProperties properties, SocialGraph socialGraph,
-			ProfileDirectory profileDirectory, NowPlayingStatusPublisher statusPublisher) {
+			ProfileDirectory profileDirectory, NowPlayingStatusPublisher statusPublisher,
+			SuspendedAccounts suspendedAccounts) {
 		this.musicProvider = musicProvider;
 		this.linkRepository = linkRepository;
 		this.preferenceRepository = preferenceRepository;
@@ -69,6 +72,7 @@ class NowPlayingService {
 		this.socialGraph = socialGraph;
 		this.profileDirectory = profileDirectory;
 		this.statusPublisher = statusPublisher;
+		this.suspendedAccounts = suspendedAccounts;
 	}
 
 	String beginConnect(UUID userId) {
@@ -150,23 +154,36 @@ class NowPlayingService {
 	}
 
 	/**
-	 * Czy użytkownik zgadza się pokazywać status znajomym (ADR 0007, Etap 4).
-	 * Sprawdzane przy <b>każdym</b> pushu, nie tylko przy otwarciu strumienia —
-	 * ustawienie może się zmienić w trakcie trwania połączenia.
+	 * Czy status użytkownika może opuścić serwer: zgadza się go pokazywać (ADR
+	 * 0007, Etap 4) i nie jest zawieszony (ADR 0049). Sprawdzane przy <b>każdym</b>
+	 * pushu, nie tylko przy otwarciu strumienia — oba stany mogą się zmienić w
+	 * trakcie trwania połączenia.
+	 *
+	 * <p>
+	 * Zawieszenie jest tu, a nie osobnym filtrem na każdej ścieżce, z tego samego
+	 * powodu co widoczność: jedno miejsce obejmuje listę znajomych, push i dobór do
+	 * polla. ADR 0026 zakładał, że zawieszony „nie odświeży” statusu, ale odświeża
+	 * go serwer — poll działa na zapisanych tokenach Spotify.
 	 */
 	@Transactional(readOnly = true)
 	boolean sharesStatus(UUID userId) {
-		return !preferenceRepository.existsByUserIdAndShareWithFriendsFalse(userId);
+		return !preferenceRepository.existsByUserIdAndShareWithFriendsFalse(userId)
+				&& !suspendedAccounts.suspendedUserIds().contains(userId);
 	}
 
-	/** Z podanych użytkowników ci, którzy nie wyłączyli widoczności statusu. */
+	/**
+	 * Z podanych użytkowników ci, których status może opuścić serwer — patrz
+	 * {@link #sharesStatus}.
+	 */
 	@Transactional(readOnly = true)
 	Set<UUID> sharingUserIds(Set<UUID> candidates) {
 		if (candidates.isEmpty()) {
 			return Set.of();
 		}
 		Set<UUID> optedOut = preferenceRepository.findOptedOutUserIds(candidates);
-		return candidates.stream().filter(userId -> !optedOut.contains(userId)).collect(Collectors.toSet());
+		Set<UUID> suspended = suspendedAccounts.suspendedUserIds();
+		return candidates.stream().filter(userId -> !optedOut.contains(userId) && !suspended.contains(userId))
+				.collect(Collectors.toSet());
 	}
 
 	/**

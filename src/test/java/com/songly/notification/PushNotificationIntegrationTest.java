@@ -13,6 +13,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
@@ -34,6 +35,9 @@ class PushNotificationIntegrationTest extends AbstractIntegrationTest {
 
 	@Autowired
 	private PushDeviceRepository pushDeviceRepository;
+
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
 
 	private record TestUser(String token, String userId, String displayName) {
 	}
@@ -93,6 +97,26 @@ class PushNotificationIntegrationTest extends AbstractIntegrationTest {
 		assertThat(push.body()).isEqualTo("Polubienie Twojego posta");
 		assertThat(push.data()).containsEntry("type", "POST_LIKED").containsEntry("resourceId", postId)
 				.containsKey("notificationId");
+	}
+
+	/**
+	 * Zawieszenie nie odpina telefonów, a zawieszone konto nie ma dostępu do
+	 * niczego, do czego push prowadzi (ADR 0022). Bez filtra ekran blokady dalej
+	 * pokazywał nazwy osób zapraszających je do znajomych (ADR 0049).
+	 */
+	@Test
+	void suspendedRecipientGetsNoPush() throws Exception {
+		TestUser suspended = user("push-suspended-recipient@songly.io");
+		TestUser sender = user("push-suspended-sender@songly.io");
+		registerDevice(suspended, "push-suspended-device");
+		jdbcTemplate.update("UPDATE users SET suspended_at = now(), suspension_reason = 'test' WHERE id = ?::uuid",
+				suspended.userId());
+
+		mockMvc.perform(post("/api/v1/friends/requests").header("Authorization", "Bearer " + sender.token())
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"addresseeId":"%s"}""".formatted(suspended.userId()))).andExpect(status().isCreated());
+
+		assertThat(pushes.sentTo("push-suspended-device")).isEmpty();
 	}
 
 	/**
