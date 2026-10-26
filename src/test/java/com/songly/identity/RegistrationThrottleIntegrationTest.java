@@ -46,4 +46,23 @@ class RegistrationThrottleIntegrationTest extends AbstractIntegrationTest {
 
 		assertThat(mails.sentTo(email)).hasSize(1);
 	}
+
+	/**
+	 * Ten sam odstęp chroni właściciela istniejącego konta. Wcześniej każde
+	 * zgłoszenie na jego adres wysyłało mu kolejne ostrzeżenie — zasypywanie cudzej
+	 * skrzynki ograniczał tylko limit per IP.
+	 */
+	@Test
+	void repeatedRegistrationsOnAnExistingAccount_sendOnlyOneWarning() throws Exception {
+		String email = "registration-throttle-existing@songly.io";
+		registerAndVerify(email, "password123");
+		mails.clearFor(email);
+
+		for (int attempt = 0; attempt < 3; attempt++) {
+			mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
+					{"email":"%s","password":"inne-haslo-123"}""".formatted(email))).andExpect(status().isAccepted());
+		}
+
+		assertThat(mails.sentTo(email)).hasSize(1);
+	}
 }

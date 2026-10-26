@@ -27,7 +27,7 @@ class TokenIssuer {
 	}
 
 	AuthTokensResponse issueFor(User user) {
-		String accessToken = jwtService.generateAccessToken(user.getId(), user.getEmail());
+		String accessToken = jwtService.generateAccessToken(user.getId());
 		String refreshToken = SecureTokens.generate();
 		Instant now = Instant.now();
 		Session session = new Session(UUID.randomUUID(), user.getId(), SecureTokens.hash(refreshToken), now,

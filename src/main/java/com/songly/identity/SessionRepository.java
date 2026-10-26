@@ -38,8 +38,17 @@ interface SessionRepository extends JpaRepository<Session, UUID> {
 	int revokeAllForUser(@Param("userId") UUID userId, @Param("now") Instant now);
 
 	/**
-	 * Kasuje porcję sesji, które nie mogą już nikogo uwierzytelnić: odwołanych
-	 * dawniej niż {@code cutoff} albo wygasłych przed nim.
+	 * Kasuje porcję sesji wygasłych przed {@code cutoff}.
+	 *
+	 * <p>
+	 * <b>Odwołana sesja zostaje do swojego {@code expires_at}</b> i to jest warunek
+	 * wykrywania kradzieży tokenu, nie ostrożność. Rotacja odwołuje token przy
+	 * każdym odświeżeniu, a {@code AuthService.refresh} rozpoznaje skradzioną kopię
+	 * wyłącznie po tym, że znajduje jej wiersz jako odwołany. Wcześniej odwołane
+	 * wiersze znikały po tygodniu: prawowity użytkownik, który wrócił po ośmiu
+	 * dniach ze starym tokenem, dostawał zwykłe „nieznany token”, a łańcuch sesji
+	 * złodzieja żył dalej. Odwołany, ale jeszcze ważny token jest tym samym dowodem
+	 * kopii po tygodniu co po minucie.
 	 *
 	 * <p>
 	 * Zapytanie natywne, bo JPQL nie zna {@code LIMIT}, a limit jest tu istotny:
@@ -57,7 +66,7 @@ interface SessionRepository extends JpaRepository<Session, UUID> {
 	@Query(nativeQuery = true, value = """
 			DELETE FROM sessions WHERE id IN (
 			    SELECT id FROM sessions
-			    WHERE (revoked_at IS NOT NULL AND revoked_at < :cutoff) OR expires_at < :cutoff
+			    WHERE expires_at < :cutoff
 			    LIMIT :batchSize
 			)
 			""")

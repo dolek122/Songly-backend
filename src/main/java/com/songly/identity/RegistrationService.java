@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,6 +58,8 @@ class RegistrationService {
 	 */
 	private static final String REGISTRATION_ATTEMPTS_METRIC = "songly.auth.registration.attempts";
 
+	private static final String EXISTING_ACCOUNT_WARNING_KEY_PREFIX = "registration:existing-account-warning:";
+
 	private final UserRepository userRepository;
 	private final PendingRegistrationRepository pendingRepository;
 	private final PasswordEncoder passwordEncoder;
@@ -64,10 +67,11 @@ class RegistrationService {
 	private final RegistrationProperties properties;
 	private final ApplicationEventPublisher eventPublisher;
 	private final MeterRegistry meterRegistry;
+	private final StringRedisTemplate redisTemplate;
 
 	RegistrationService(UserRepository userRepository, PendingRegistrationRepository pendingRepository,
 			PasswordEncoder passwordEncoder, TokenIssuer tokenIssuer, RegistrationProperties properties,
-			ApplicationEventPublisher eventPublisher, MeterRegistry meterRegistry) {
+			ApplicationEventPublisher eventPublisher, MeterRegistry meterRegistry, StringRedisTemplate redisTemplate) {
 		this.userRepository = userRepository;
 		this.pendingRepository = pendingRepository;
 		this.passwordEncoder = passwordEncoder;
@@ -75,6 +79,7 @@ class RegistrationService {
 		this.properties = properties;
 		this.eventPublisher = eventPublisher;
 		this.meterRegistry = meterRegistry;
+		this.redisTemplate = redisTemplate;
 	}
 
 	/**
@@ -97,8 +102,10 @@ class RegistrationService {
 			User owner = existing.get();
 			registrationOutcome("existing-account").increment();
 			log.info("Próba rejestracji na adres istniejącego konta {}", owner.getId());
-			eventPublisher
-					.publishEvent(new RegistrationAttemptedOnExistingAccountEvent(owner.getId(), owner.getEmail()));
+			if (claimExistingAccountWarning(owner.getId())) {
+				eventPublisher
+						.publishEvent(new RegistrationAttemptedOnExistingAccountEvent(owner.getId(), owner.getEmail()));
+			}
 			return;
 		}
 
@@ -124,6 +131,31 @@ class RegistrationService {
 				SecureTokens.hash(token), now, now.plus(properties.getTtl())));
 		registrationOutcome("pending").increment();
 		eventPublisher.publishEvent(new RegistrationVerificationRequestedEvent(request.email(), token));
+	}
+
+	/**
+	 * Odstęp między ostrzeżeniami „ktoś próbował założyć konto” dla jednego konta —
+	 * ten sam {@code resend-interval} co przy zgłoszeniach na wolny adres (ADR
+	 * 0009). Bez niego ta gałąź była darmowym mailerem wycelowanym w skrzynkę
+	 * każdego, kto ma tu konto: limit per IP chroni przed jednym źródłem, a ofiara
+	 * jest jedna. Przy okazji zapychała wspólną kolejkę SMTP, z której wychodzą też
+	 * linki resetu hasła.
+	 *
+	 * <p>
+	 * W Redisie, nie w bazie: {@code users} nie ma gdzie trzymać tej daty, a to
+	 * stan, który wolno zgubić przy restarcie. <b>Fail-open</b> jak rate limiter
+	 * (§9) — przy awarii Redisa ostrzeżenie wychodzi, bo wyciszone przez pomyłkę
+	 * byłoby gorsze niż jedno zbędne.
+	 */
+	private boolean claimExistingAccountWarning(UUID userId) {
+		try {
+			Boolean claimed = redisTemplate.opsForValue().setIfAbsent(EXISTING_ACCOUNT_WARNING_KEY_PREFIX + userId, "1",
+					properties.getResendInterval());
+			return claimed == null || claimed;
+		} catch (RuntimeException ex) {
+			log.warn("Odstęp ostrzeżeń o rejestracji wyłączony dla tej próby — Redis nie odpowiada: {}", ex.toString());
+			return true;
+		}
 	}
 
 	/**
