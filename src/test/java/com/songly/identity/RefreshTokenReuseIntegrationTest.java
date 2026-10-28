@@ -5,10 +5,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.songly.AbstractIntegrationTest;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -34,6 +38,12 @@ class RefreshTokenReuseIntegrationTest extends AbstractIntegrationTest {
 
 	@Autowired
 	private ObjectMapper objectMapper;
+
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
+
+	@Autowired
+	private SessionRepository sessionRepository;
 
 	private String register(String email) throws Exception {
 		MvcResult result = registerAndVerify(email, "password123");
@@ -62,6 +72,27 @@ class RefreshTokenReuseIntegrationTest extends AbstractIntegrationTest {
 		// Token po rotacji żyje — dopóki nikt nie odtworzy poprzedniego.
 		refresh(stolen, 401);
 
+		refresh(rotated, 401);
+	}
+
+	/**
+	 * Sprzątanie sesji nie może wyłączać wykrywania. Wcześniej odwołany wiersz
+	 * znikał tydzień po rotacji: prawowity użytkownik wracający po ośmiu dniach ze
+	 * starym tokenem dostawał zwykłe 401, a łańcuch złodzieja żył dalej. Wiersz
+	 * odwołany ustawiamy w przeszłość SQL-em, bo właśnie jego wiek jest tu
+	 * przedmiotem testu.
+	 */
+	@Test
+	void reuseIsStillDetected_afterSessionCleanupRan() throws Exception {
+		String stolen = register("reuse-after-cleanup@songly.io");
+		String rotated = refreshTokenOf(refresh(stolen, 200));
+		Instant now = Instant.now();
+		jdbcTemplate.update("UPDATE sessions SET revoked_at = ? WHERE refresh_token_hash = ?",
+				now.minus(8, ChronoUnit.DAYS).atOffset(ZoneOffset.UTC), SecureTokens.hash(stolen));
+
+		sessionRepository.deleteDeadSessions(now.minus(7, ChronoUnit.DAYS), 5_000);
+
+		refresh(stolen, 401);
 		refresh(rotated, 401);
 	}
 

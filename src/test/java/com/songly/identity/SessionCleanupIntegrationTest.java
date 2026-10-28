@@ -68,7 +68,7 @@ class SessionCleanupIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	@Test
-	void removesExpiredAndLongRevokedSessions_keepingLiveAndRecentlyDeadOnes() {
+	void removesExpiredSessions_keepingRevokedOnesUntilTheyExpire() {
 		Instant now = Instant.now();
 		Instant cutoff = now.minus(7, ChronoUnit.DAYS);
 
@@ -80,11 +80,11 @@ class SessionCleanupIntegrationTest extends AbstractIntegrationTest {
 
 		int deleted = sessionRepository.deleteDeadSessions(cutoff, 5_000);
 
-		assertThat(deleted).isEqualTo(2);
+		assertThat(deleted).isEqualTo(1);
 		assertThat(exists(longExpired)).isFalse();
-		// Sedno kolumny revoked_at: ta sesja ma expires_at 23 dni w przyszłość, więc
-		// po samym expires_at przeżyłaby jeszcze trzy tygodnie mimo że jest martwa.
-		assertThat(exists(longRevoked)).isFalse();
+		// Odwołana dawno, ale ważna jeszcze 23 dni: zostaje, bo tylko po tym wierszu
+		// refresh rozpozna skradzioną kopię tokenu jako ponowne użycie.
+		assertThat(exists(longRevoked)).isTrue();
 		assertThat(exists(justExpired)).isTrue();
 		assertThat(exists(justRevoked)).isTrue();
 		assertThat(exists(live)).isTrue();

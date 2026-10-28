@@ -16,6 +16,13 @@ public interface ObjectStorage {
 	 * Kasuje obiekt. <b>Idempotentnie</b> — brak obiektu pod tym kluczem nie jest
 	 * błędem. Wołający zwykle sprząta po czymś, co i tak ma zniknąć, więc wyjątek
 	 * „już go nie ma" zmuszałby każde takie miejsce do łapania go bez powodu.
+	 *
+	 * <p>
+	 * Awaria magazynu <b>jest</b> błędem ({@link ObjectStorageException}) i to
+	 * wołający decyduje, co z nią zrobić (ADR 0049). Wcześniej była tu połykana, a
+	 * sprzątanie porzuconych zdjęć polega na tym, że błąd przerywa przebieg —
+	 * inaczej przy niedostępnym magazynie kasowało wszystkie wiersze i zostawiało
+	 * pliki, do których nic już nie prowadzi.
 	 */
 	void delete(String key);
 

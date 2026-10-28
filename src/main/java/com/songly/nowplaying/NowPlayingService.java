@@ -1,5 +1,6 @@
 package com.songly.nowplaying;
 
+import com.songly.identity.SuspendedAccounts;
 import com.songly.nowplaying.dto.FriendNowPlayingResponse;
 import com.songly.nowplaying.dto.ManualNowPlayingRequest;
 import com.songly.nowplaying.dto.NowPlayingSettingsResponse;
@@ -20,10 +21,14 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -36,6 +41,8 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 @EnableConfigurationProperties(NowPlayingProperties.class)
 class NowPlayingService {
+
+	private static final Logger log = LoggerFactory.getLogger(NowPlayingService.class);
 
 	private static final String STATE_KEY_PREFIX = "now-playing:oauth-state:";
 	private static final String CACHE_KEY_PREFIX = "now-playing:status:";
@@ -54,12 +61,14 @@ class NowPlayingService {
 	private final SocialGraph socialGraph;
 	private final ProfileDirectory profileDirectory;
 	private final NowPlayingStatusPublisher statusPublisher;
+	private final SuspendedAccounts suspendedAccounts;
 	private final SecureRandom secureRandom = new SecureRandom();
 
 	NowPlayingService(MusicProvider musicProvider, MusicProviderLinkRepository linkRepository,
 			NowPlayingPreferenceRepository preferenceRepository, StringRedisTemplate redisTemplate,
 			ObjectMapper objectMapper, NowPlayingProperties properties, SocialGraph socialGraph,
-			ProfileDirectory profileDirectory, NowPlayingStatusPublisher statusPublisher) {
+			ProfileDirectory profileDirectory, NowPlayingStatusPublisher statusPublisher,
+			SuspendedAccounts suspendedAccounts) {
 		this.musicProvider = musicProvider;
 		this.linkRepository = linkRepository;
 		this.preferenceRepository = preferenceRepository;
@@ -69,6 +78,7 @@ class NowPlayingService {
 		this.socialGraph = socialGraph;
 		this.profileDirectory = profileDirectory;
 		this.statusPublisher = statusPublisher;
+		this.suspendedAccounts = suspendedAccounts;
 	}
 
 	String beginConnect(UUID userId) {
@@ -108,15 +118,40 @@ class NowPlayingService {
 		}
 	}
 
+	/**
+	 * Wiersze w transakcji usunięcia konta, Redis <b>po jej commicie</b> i bez
+	 * prawa do wywrócenia go (ADR 0049). Wcześniej awaria Redisa wycofywała całe
+	 * usunięcie konta, czyli blokowała prawo z RODO z powodu cache'a, którego
+	 * klucze i tak wygasają same. Przy okazji „przestał słuchać” nie wychodzi już
+	 * przed commitem usunięcia, które mogło się jeszcze wycofać.
+	 */
 	@Transactional
 	void deleteAccountData(UUID userId) {
 		linkRepository.deleteByUserId(userId);
 		preferenceRepository.deleteByUserId(userId);
-		redisTemplate.delete(CACHE_KEY_PREFIX + userId);
-		redisTemplate.delete(MANUAL_KEY_PREFIX + userId);
-		// Bez tego znajomi z otwartym strumieniem widzieliby status konta, którego
-		// już nie ma — aż do własnego reconnectu.
-		statusPublisher.publishStopped(userId);
+		if (TransactionSynchronizationManager.isSynchronizationActive()) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCommit() {
+					forgetLiveState(userId);
+				}
+			});
+		} else {
+			forgetLiveState(userId);
+		}
+	}
+
+	private void forgetLiveState(UUID userId) {
+		try {
+			redisTemplate.delete(CACHE_KEY_PREFIX + userId);
+			redisTemplate.delete(MANUAL_KEY_PREFIX + userId);
+			// Bez tego znajomi z otwartym strumieniem widzieliby status konta, którego
+			// już nie ma — aż do własnego reconnectu.
+			statusPublisher.publishStopped(userId);
+		} catch (RuntimeException ex) {
+			log.warn("Nie udało się wyczyścić statusu usuniętego konta {} w Redisie — wygaśnie sam: {}", userId,
+					ex.toString());
+		}
 	}
 
 	@Transactional(readOnly = true)
@@ -150,23 +185,36 @@ class NowPlayingService {
 	}
 
 	/**
-	 * Czy użytkownik zgadza się pokazywać status znajomym (ADR 0007, Etap 4).
-	 * Sprawdzane przy <b>każdym</b> pushu, nie tylko przy otwarciu strumienia —
-	 * ustawienie może się zmienić w trakcie trwania połączenia.
+	 * Czy status użytkownika może opuścić serwer: zgadza się go pokazywać (ADR
+	 * 0007, Etap 4) i nie jest zawieszony (ADR 0049). Sprawdzane przy <b>każdym</b>
+	 * pushu, nie tylko przy otwarciu strumienia — oba stany mogą się zmienić w
+	 * trakcie trwania połączenia.
+	 *
+	 * <p>
+	 * Zawieszenie jest tu, a nie osobnym filtrem na każdej ścieżce, z tego samego
+	 * powodu co widoczność: jedno miejsce obejmuje listę znajomych, push i dobór do
+	 * polla. ADR 0026 zakładał, że zawieszony „nie odświeży” statusu, ale odświeża
+	 * go serwer — poll działa na zapisanych tokenach Spotify.
 	 */
 	@Transactional(readOnly = true)
 	boolean sharesStatus(UUID userId) {
-		return !preferenceRepository.existsByUserIdAndShareWithFriendsFalse(userId);
+		return !preferenceRepository.existsByUserIdAndShareWithFriendsFalse(userId)
+				&& !suspendedAccounts.suspendedUserIds().contains(userId);
 	}
 
-	/** Z podanych użytkowników ci, którzy nie wyłączyli widoczności statusu. */
+	/**
+	 * Z podanych użytkowników ci, których status może opuścić serwer — patrz
+	 * {@link #sharesStatus}.
+	 */
 	@Transactional(readOnly = true)
 	Set<UUID> sharingUserIds(Set<UUID> candidates) {
 		if (candidates.isEmpty()) {
 			return Set.of();
 		}
 		Set<UUID> optedOut = preferenceRepository.findOptedOutUserIds(candidates);
-		return candidates.stream().filter(userId -> !optedOut.contains(userId)).collect(Collectors.toSet());
+		Set<UUID> suspended = suspendedAccounts.suspendedUserIds();
+		return candidates.stream().filter(userId -> !optedOut.contains(userId) && !suspended.contains(userId))
+				.collect(Collectors.toSet());
 	}
 
 	/**

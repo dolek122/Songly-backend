@@ -1,5 +1,6 @@
 package com.songly.identity.dto;
 
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -14,5 +15,6 @@ import jakarta.validation.constraints.Size;
  * {@code durationDays} {@code null} = bezterminowo, jak przy banach czasowych
  * (ADR 0014).
  */
-public record SuspendAccountRequest(@NotBlank @Size(max = 500) String reason, @Min(1) Integer durationDays) {
+public record SuspendAccountRequest(@NotBlank @Size(max = 500) String reason,
+		@Min(1) @Max(36_500) Integer durationDays) {
 }

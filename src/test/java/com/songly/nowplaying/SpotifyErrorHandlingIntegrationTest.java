@@ -111,6 +111,9 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 	@Autowired
 	private MusicProviderLinkRepository linkRepository;
 
+	@Autowired
+	private TokenEncryptor tokenEncryptor;
+
 	/**
 	 * Fałszywy Spotify jest statyczny (jeden na klasę), więc bez resetu odpowiedź
 	 * ustawiona przez jeden test psułaby fazę przygotowania kolejnego — a kolejność
@@ -176,6 +179,26 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isBadGateway()).andExpect(jsonPath("$.code").value("MUSIC_PROVIDER_ERROR"));
 
 		assertThat(linkRepository.findByUserIdAndProvider(user.userId(), SpotifyProvider.NAME)).isPresent();
+	}
+
+	/**
+	 * Token odświeżony tuż przed nieudanym wywołaniem API jest prawdziwy i musi
+	 * przetrwać (ADR 0049). Rollback go wyrzucał: przy zrotowanym refresh tokenie w
+	 * bazie zostawał stary, a następne odświeżenie mogło skasować zdrowy link.
+	 */
+	@Test
+	void tokenRefreshedBeforeProviderFailure_isKept() throws Exception {
+		ConnectedUser user = connectSpotify("spotify-refresh-kept@songly.io");
+		tokenResponder = json(200, """
+				{"access_token":"fresh-access","refresh_token":"rotated-refresh","expires_in":3600}""");
+		apiResponder = json(503, "{}");
+
+		mockMvc.perform(get("/api/v1/now-playing/me").header("Authorization", "Bearer " + user.accessToken()))
+				.andExpect(status().isBadGateway());
+
+		MusicProviderLink link = linkRepository.findByUserIdAndProvider(user.userId(), SpotifyProvider.NAME)
+				.orElseThrow();
+		assertThat(tokenEncryptor.decrypt(link.getRefreshTokenEncrypted())).isEqualTo("rotated-refresh");
 	}
 
 	@Test

@@ -32,4 +32,5 @@ Wynikały z tego trzy problemy:
 
 - Pliki wgrane przed tą zmianą i nigdy nieprzypięte zostają w magazynie, bo nie mają wierszy. Migracja SQL nie widzi magazynu. Jednorazowe sprzątanie wymagałoby wylistowania prefiksu `posts/` i porównania go z `posts.image_key`.
 - Wgranie zrobione tuż przed wdrożeniem i przypinane po nim dostanie `400 UNKNOWN_POST_IMAGE`. Klient pokazuje błąd, a użytkownik wybiera zdjęcie jeszcze raz.
+- **Nieaktualne do ADR 0049:** `S3ObjectStorage.delete` połykał błąd magazynu i zostawiał po nim tylko wpis w logu, więc przebieg sprzątania wcale się nie przerywał. Przy awarii magazynu kasował wszystkie zaległe wiersze i osierocał wszystkie pliki. Od ADR 0049 kasowanie rzuca `ObjectStorageException` i przerwanie działa tak, jak opisuje ta decyzja.
 - Post nie może dziś zmienić zdjęcia. Gdy pojawi się edycja posta, podmiana zdjęcia musi zużywać nowy wiersz i oddawać stary plik do skasowania.

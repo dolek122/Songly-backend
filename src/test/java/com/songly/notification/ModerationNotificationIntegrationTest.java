@@ -222,6 +222,42 @@ class ModerationNotificationIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	/**
+	 * „Pierwsze zgłoszenie” znaczy „pierwsze w kolejce” (ADR 0049). Po odrzuceniu
+	 * poprzednich zgłoszeń kolejka jest dla tego posta pusta, więc nowe zgłoszenie
+	 * znów musi zawołać moderatorów — wcześniej czekało w niej bez żadnego sygnału.
+	 */
+	@Test
+	void reportAfterDismissal_notifiesModeratorsAgain() throws Exception {
+		TestUser owner = user("modnotif-redo-owner@songly.io");
+		TestUser author = user("modnotif-redo-author@songly.io");
+		TestUser firstReporter = user("modnotif-redo-reporter1@songly.io");
+		TestUser secondReporter = user("modnotif-redo-reporter2@songly.io");
+		String communityId = createCommunity(owner, "Notif-ponowne");
+		join(author, communityId);
+		String postId = createPost(author, communityId, "post zgloszony dwa razy");
+		mockMvc.perform(
+				post("/api/v1/posts/" + postId + "/reports").header("Authorization", "Bearer " + firstReporter.token())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"reason":"SPAM"}"""))
+				.andExpect(status().isAccepted());
+		String reportId = objectMapper.readTree(mockMvc
+				.perform(get("/api/v1/communities/" + communityId + "/post-reports").header("Authorization",
+						"Bearer " + owner.token()))
+				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("content").get(0)
+				.get("id").asText();
+		mockMvc.perform(post("/api/v1/communities/" + communityId + "/post-reports/" + reportId + "/dismissal")
+				.header("Authorization", "Bearer " + owner.token())).andExpect(status().isNoContent());
+
+		mockMvc.perform(
+				post("/api/v1/posts/" + postId + "/reports").header("Authorization", "Bearer " + secondReporter.token())
+						.contentType(MediaType.APPLICATION_JSON).content("""
+								{"reason":"HARASSMENT"}"""))
+				.andExpect(status().isAccepted());
+
+		assertThat(countOfType(owner, "COMMUNITY_POST_REPORTED")).isEqualTo(2);
+	}
+
+	/**
 	 * Sedno tej zmiany od strony bezpieczeństwa: powiadomienie o decyzji
 	 * moderacyjnej <b>przechodzi mimo blokady</b>. Reszta skrzynki znika, gdy
 	 * nadawca jest zablokowany (§9) — i tak ma być, bo blokada odcina od zaczepek.

@@ -17,6 +17,7 @@ import com.songly.community.CommunityDirectory;
 import com.songly.community.CommunityMembership;
 import com.songly.content.PostReportedEvent;
 import com.songly.identity.AdminDirectory;
+import com.songly.identity.SuspendedAccounts;
 import com.songly.identity.UserEmailDirectory;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -65,6 +66,9 @@ class ModerationNotificationMailerTest {
 	@Mock
 	private AdminDirectory adminDirectory;
 
+	@Mock
+	private SuspendedAccounts suspendedAccounts;
+
 	private ModerationNotificationMailer mailer;
 
 	private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
@@ -76,7 +80,7 @@ class ModerationNotificationMailerTest {
 	void setUp() {
 		mailer = new ModerationNotificationMailer(mailSender, userEmailDirectory, communityDirectory,
 				communityMembership, redisTemplate, new ModerationMailProperties(), meterRegistry, mailPreferences,
-				adminDirectory);
+				adminDirectory, suspendedAccounts);
 	}
 
 	/** Domyślnie okno wolne — wyciszanie sprawdzają osobne testy. */
@@ -135,6 +139,27 @@ class ModerationNotificationMailerTest {
 		mailer.onPostReported(reportedEvent());
 
 		verify(userEmailDirectory).emailsOf(Set.of(otherModerator));
+		verify(mailSender).send(eq("mod@songly.io"), anyString(), anyString());
+	}
+
+	/**
+	 * Zawieszony moderator nie otworzy kolejki, do której ten mail wzywa (ADR 0022,
+	 * 0049) — wypada z adresatów, pozostali dostają wiadomość jak dotąd.
+	 */
+	@Test
+	void suspendedModeratorIsLeftOutOfQueueMail() {
+		mailSlotFree();
+		allRecipientsAllowed();
+		UUID suspendedModerator = UUID.randomUUID();
+		UUID activeModerator = UUID.randomUUID();
+		when(communityDirectory.nameOf(communityId)).thenReturn(Optional.of("Metalowcy"));
+		when(communityMembership.moderatorIds(communityId)).thenReturn(Set.of(suspendedModerator, activeModerator));
+		when(suspendedAccounts.suspendedUserIds()).thenReturn(Set.of(suspendedModerator));
+		when(userEmailDirectory.emailsOf(Set.of(activeModerator))).thenReturn(Map.of(activeModerator, "mod@songly.io"));
+
+		mailer.onPostReported(reportedEvent());
+
+		verify(userEmailDirectory).emailsOf(Set.of(activeModerator));
 		verify(mailSender).send(eq("mod@songly.io"), anyString(), anyString());
 	}
 

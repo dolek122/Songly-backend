@@ -4,6 +4,7 @@ import com.songly.common.push.InvalidPushTokenException;
 import com.songly.common.push.PushMessage;
 import com.songly.common.push.PushSender;
 import com.songly.community.CommunityDirectory;
+import com.songly.identity.SuspendedAccounts;
 import com.songly.profile.ProfileDirectory;
 import com.songly.social.SocialGraph;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -57,21 +58,31 @@ class PushNotifier {
 	private final ProfileDirectory profileDirectory;
 	private final CommunityDirectory communityDirectory;
 	private final MeterRegistry meterRegistry;
+	private final SuspendedAccounts suspendedAccounts;
 
 	PushNotifier(PushSender pushSender, PushDeviceService devices, SocialGraph socialGraph,
-			ProfileDirectory profileDirectory, CommunityDirectory communityDirectory, MeterRegistry meterRegistry) {
+			ProfileDirectory profileDirectory, CommunityDirectory communityDirectory, MeterRegistry meterRegistry,
+			SuspendedAccounts suspendedAccounts) {
 		this.pushSender = pushSender;
 		this.devices = devices;
 		this.socialGraph = socialGraph;
 		this.profileDirectory = profileDirectory;
 		this.communityDirectory = communityDirectory;
 		this.meterRegistry = meterRegistry;
+		this.suspendedAccounts = suspendedAccounts;
 	}
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onNotificationCreated(NotificationCreatedEvent event) {
 		List<String> tokens = devices.tokensOf(event.recipientId());
 		if (tokens.isEmpty()) {
+			return;
+		}
+		// Zawieszone konto nie ma dostępu do skrzynki ani do niczego, do czego push
+		// prowadzi (ADR 0022), a zawieszenie nie odpina telefonów. Bez tego ekran
+		// blokady dalej pokazywał nazwy osób, które go zaczepiają (ADR 0049).
+		if (suspendedAccounts.suspendedUserIds().contains(event.recipientId())) {
+			outcome("skipped-suspended");
 			return;
 		}
 		if (!NotificationType.MODERATION.contains(event.type())

@@ -1,5 +1,6 @@
 package com.songly.community.dto;
 
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 
@@ -17,9 +18,11 @@ import jakarta.validation.constraints.Size;
  * <p>
  * {@code durationDays} — {@code null} to ban bezterminowy (ADR 0014). Doba jest
  * najdrobniejszą jednostką celowo: „przerwa do jutra" to najkrótszy ban, który
- * jeszcze coś znaczy, a godziny kusiłyby do banów-prztyczków. Górnej granicy
- * nie ma — bardzo długi ban czasowy jest po prostu gorszą pisownią
- * bezterminowego i niczym nie grozi.
+ * jeszcze coś znaczy, a godziny kusiłyby do banów-prztyczków. Górna granica
+ * (sto lat) nie ogranicza moderacji — dłuższy ban czasowy to tylko gorsza
+ * pisownia bezterminowego — ale chroni bazę: kilkaset milionów dni wypycha
+ * {@code expires_at} poza zakres znacznika czasu Postgresa i kończyło się 500
+ * zamiast 400 (ADR 0049).
  */
-public record BanMemberRequest(@Size(max = 500) String reason, @Min(1) Integer durationDays) {
+public record BanMemberRequest(@Size(max = 500) String reason, @Min(1) @Max(36_500) Integer durationDays) {
 }

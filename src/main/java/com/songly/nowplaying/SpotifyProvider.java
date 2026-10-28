@@ -58,9 +58,17 @@ class SpotifyProvider implements MusicProvider {
 	 * {@link #freshAccessToken} kasuje martwy link i dopiero potem rzuca. Bez tego
 	 * wyjątku rollback cofnąłby to kasowanie i poller próbowałby tego samego
 	 * użytkownika co 30 sekund w nieskończoność.
+	 *
+	 * <p>
+	 * {@link SpotifyApiException} z tego samego powodu od drugiej strony (ADR
+	 * 0049): token odświeżony tuż przed nieudanym wywołaniem API (429, 5xx) jest
+	 * prawdziwy i ma przetrwać. Rollback go wyrzucał, więc każda próba podczas
+	 * awarii Spotify odświeżała od nowa, a gdy Spotify zwrócił nowy refresh token,
+	 * w bazie zostawał stary — następne odświeżenie mogło dostać
+	 * {@code invalid_grant} i skasować zdrowy link.
 	 */
 	@Override
-	@Transactional(noRollbackFor = ProviderReauthorizationRequiredException.class)
+	@Transactional(noRollbackFor = {ProviderReauthorizationRequiredException.class, SpotifyApiException.class})
 	public Optional<NowPlayingTrack> getCurrentlyPlaying(UUID userId) {
 		MusicProviderLink link = linkRepository.findByUserIdAndProvider(userId, NAME)
 				.orElseThrow(ProviderNotConnectedException::new);

@@ -5,7 +5,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.function.Supplier;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.ResourceAccessException;
@@ -55,9 +54,15 @@ class FcmPushSender implements PushSender {
 	 * samym tokenie. {@code INVALID_ARGUMENT} bywa i złym tokenem, i złym żądaniem
 	 * — kasowanie tokenu na tej podstawie mogłoby po cichu odpiąć wszystkie
 	 * urządzenia po jednym błędzie w kodzie, więc traktujemy go jak zwykłą porażkę.
+	 *
+	 * <p>
+	 * Z tego samego powodu <b>sam status 404 nie wystarcza</b> (ADR 0049): zły
+	 * adres FCM albo identyfikator projektu w konfiguracji też daje 404, a wtedy
+	 * każdy push kasowałby telefon swojego adresata. FCM przy nieaktualnym tokenie
+	 * zawsze dokłada kod {@code UNREGISTERED}.
 	 */
 	private static RuntimeException failure(HttpStatusCode status, String body) {
-		if (status.value() == HttpStatus.NOT_FOUND.value() || body.contains("UNREGISTERED")) {
+		if (body.contains("UNREGISTERED")) {
 			return new InvalidPushTokenException("FCM nie zna tego urządzenia");
 		}
 		return new PushDeliveryException("FCM odrzucił wiadomość: HTTP " + status.value());

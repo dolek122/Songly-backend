@@ -1,6 +1,7 @@
 package com.songly.nowplaying;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -9,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.songly.identity.SuspendedAccounts;
 import com.songly.nowplaying.dto.NowPlayingStatusResponse;
 import com.songly.nowplaying.dto.UpdateNowPlayingSettingsRequest;
 import com.songly.profile.ProfileDirectory;
@@ -25,8 +27,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -64,6 +69,9 @@ class NowPlayingServiceRefreshTest {
 	@Mock
 	private NowPlayingStatusPublisher statusPublisher;
 
+	@Mock
+	private SuspendedAccounts suspendedAccounts;
+
 	private final ObjectMapper objectMapper = new ObjectMapper();
 	private final NowPlayingProperties properties = new NowPlayingProperties();
 	private final UUID userId = UUID.randomUUID();
@@ -73,7 +81,7 @@ class NowPlayingServiceRefreshTest {
 	@BeforeEach
 	void setUp() {
 		service = new NowPlayingService(musicProvider, linkRepository, preferenceRepository, redisTemplate,
-				objectMapper, properties, socialGraph, profileDirectory, statusPublisher);
+				objectMapper, properties, socialGraph, profileDirectory, statusPublisher, suspendedAccounts);
 	}
 
 	private void provider(String title) {
@@ -391,5 +399,39 @@ class NowPlayingServiceRefreshTest {
 
 		assertThat(service.tryAcquirePollLock(userId)).isTrue();
 		assertThat(service.tryAcquirePollLock(userId)).isFalse();
+	}
+
+	/**
+	 * Awaria Redisa nie może wywrócić usunięcia konta (ADR 0049) — klucze statusu i
+	 * tak wygasają same, a prawo z RODO nie może zależeć od cache'a.
+	 */
+	@Test
+	void deleteAccountData_survivesRedisFailure() {
+		UUID userId = UUID.randomUUID();
+		when(redisTemplate.delete(anyString())).thenThrow(new RedisConnectionFailureException("Redis nie odpowiada"));
+
+		assertThatCode(() -> service.deleteAccountData(userId)).doesNotThrowAnyException();
+
+		verify(linkRepository).deleteByUserId(userId);
+		verify(preferenceRepository).deleteByUserId(userId);
+	}
+
+	/**
+	 * Redis dopiero po commicie: „przestał słuchać” wysłane przed commitem
+	 * ogłaszałoby znajomym usunięcie, które mogło się jeszcze wycofać.
+	 */
+	@Test
+	void deleteAccountData_touchesRedisOnlyAfterCommit() {
+		UUID userId = UUID.randomUUID();
+		TransactionSynchronizationManager.initSynchronization();
+		try {
+			service.deleteAccountData(userId);
+
+			verify(statusPublisher, never()).publishStopped(userId);
+			TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+			verify(statusPublisher).publishStopped(userId);
+		} finally {
+			TransactionSynchronizationManager.clearSynchronization();
+		}
 	}
 }

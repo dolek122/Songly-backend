@@ -1,5 +1,6 @@
 package com.songly.nowplaying;
 
+import com.songly.identity.SuspendedAccounts;
 import com.songly.nowplaying.dto.FriendNowPlayingResponse;
 import com.songly.profile.ProfileDirectory;
 import com.songly.social.SocialGraph;
@@ -30,13 +31,15 @@ class NowPlayingStreamBroadcaster {
 	private final SocialGraph socialGraph;
 	private final ProfileDirectory profileDirectory;
 	private final NowPlayingService nowPlayingService;
+	private final SuspendedAccounts suspendedAccounts;
 
 	NowPlayingStreamBroadcaster(NowPlayingStreamHub hub, SocialGraph socialGraph, ProfileDirectory profileDirectory,
-			NowPlayingService nowPlayingService) {
+			NowPlayingService nowPlayingService, SuspendedAccounts suspendedAccounts) {
 		this.hub = hub;
 		this.socialGraph = socialGraph;
 		this.profileDirectory = profileDirectory;
 		this.nowPlayingService = nowPlayingService;
+		this.suspendedAccounts = suspendedAccounts;
 	}
 
 	void broadcast(NowPlayingStatusChangedMessage event) {
@@ -64,11 +67,20 @@ class NowPlayingStreamBroadcaster {
 		if (listeningFriends.isEmpty()) {
 			return;
 		}
+		// Zawieszony odbiorca z otwartym strumieniem nie dostaje już niczego (ADR
+		// 0049). Strumień żyje do 30 minut, a zawieszenie ma działać od razu (ADR
+		// 0022) — nowe żądania odcina ROLE_SUSPENDED, otwartego połączenia już nie.
+		Set<UUID> suspended = suspendedAccounts.suspendedUserIds();
+		Set<UUID> recipients = listeningFriends.stream().filter(friendId -> !suspended.contains(friendId))
+				.collect(Collectors.toSet());
+		if (recipients.isEmpty()) {
+			return;
+		}
 		Map<UUID, String> names = profileDirectory.displayNames(Set.of(subjectId));
 		Map<UUID, String> avatars = profileDirectory.avatarUrls(Set.of(subjectId));
 		FriendNowPlayingResponse payload = new FriendNowPlayingResponse(subjectId, names.get(subjectId),
 				avatars.get(subjectId), event.status());
-		for (UUID friendId : listeningFriends) {
+		for (UUID friendId : recipients) {
 			hub.push(friendId, EVENT_NAME, payload);
 		}
 	}

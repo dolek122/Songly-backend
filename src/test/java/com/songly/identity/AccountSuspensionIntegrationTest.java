@@ -253,4 +253,19 @@ class AccountSuspensionIntegrationTest extends AbstractIntegrationTest {
 		return mockMvc.perform(get("/api/v1/admin/suspensions").header("Authorization", "Bearer " + admin.token()))
 				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 	}
+
+	/**
+	 * Kilkaset milionów dni wypycha termin poza zakres znacznika czasu Postgresa —
+	 * bez górnej granicy kończyło się to 500 zamiast 400 (ADR 0049).
+	 */
+	@Test
+	void absurdlyLongSuspensionIsRejected() throws Exception {
+		TestUser admin = admin("suspension-huge-admin@songly.io");
+		TestUser troll = user("suspension-huge-troll@songly.io");
+
+		mockMvc.perform(put("/api/v1/admin/users/" + troll.userId() + "/suspension")
+				.header("Authorization", "Bearer " + admin.token()).contentType(MediaType.APPLICATION_JSON).content("""
+						{"reason":"nękanie innych","durationDays":2000000000}""")).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+	}
 }

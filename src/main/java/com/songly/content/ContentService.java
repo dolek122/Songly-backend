@@ -272,7 +272,7 @@ class ContentService {
 			meterRegistry.counter(REPORT_REJECTED_METRIC, "reason", "rate-limit").increment();
 			throw new ReportRateLimitExceededException();
 		}
-		boolean firstReport = !reportRepository.existsByPostId(postId);
+		boolean firstReport = !reportRepository.existsByPostIdAndStatus(postId, ReportStatus.PENDING);
 		Instant now = Instant.now();
 		reportRepository.save(new PostReport(UUID.randomUUID(), postId, reporterId, reason, details, now));
 		if (firstReport) {

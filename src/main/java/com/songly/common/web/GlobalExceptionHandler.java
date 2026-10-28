@@ -4,18 +4,24 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
@@ -71,6 +77,43 @@ class GlobalExceptionHandler {
 				.body(toApiError("FILE_TOO_LARGE", "Przesłany plik jest za duży", request));
 	}
 
+	/**
+	 * Ciało w formacie, którego endpoint nie przyjmuje (np. {@code text/plain}
+	 * zamiast JSON-a). Wcześniej wpadało do łapacza {@code Exception} jako 500 ze
+	 * stack tracem, a boty potrafią to wywołać dowolnie często.
+	 */
+	@ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+	ResponseEntity<ApiError> handleUnsupportedMediaType(HttpMediaTypeNotSupportedException ex,
+			HttpServletRequest request) {
+		return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+				.body(toApiError("UNSUPPORTED_MEDIA_TYPE", "Nieobsługiwany format treści żądania", request));
+	}
+
+	/** Np. upload awatara bez części {@code file}. */
+	@ExceptionHandler(MissingServletRequestPartException.class)
+	ResponseEntity<ApiError> handleMissingPart(MissingServletRequestPartException ex, HttpServletRequest request) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+				toApiError("MISSING_PARAMETER", "Brak wymaganej części żądania: " + ex.getRequestPartName(), request));
+	}
+
+	/**
+	 * Brak wymaganego nagłówka, ciasteczka albo atrybutu żądania. Nazwy nie
+	 * podajemy, bo bywa nią szczegół implementacji, a klientowi wystarczy wiedzieć,
+	 * że żądanie jest niekompletne.
+	 */
+	@ExceptionHandler(ServletRequestBindingException.class)
+	ResponseEntity<ApiError> handleRequestBinding(ServletRequestBindingException ex, HttpServletRequest request) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+				.body(toApiError("MALFORMED_REQUEST", "Żądanie jest niekompletne", request));
+	}
+
+	/** Ograniczenia na parametrach metody kontrolera (nie na ciele JSON). */
+	@ExceptionHandler(HandlerMethodValidationException.class)
+	ResponseEntity<ApiError> handleMethodValidation(HandlerMethodValidationException ex, HttpServletRequest request) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+				.body(toApiError("VALIDATION_ERROR", "Nieprawidłowe dane wejściowe", request));
+	}
+
 	/** Np. nie-UUID w ścieżce {@code /posts/{postId}}. */
 	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
 	ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
@@ -114,10 +157,16 @@ class GlobalExceptionHandler {
 	 * „spróbuj później" zamiast „odśwież". Stack trace zostaje w logu, bo ten sam
 	 * objaw daje brakujący listener kasowania konta (Claude.md §9) — to ma być
 	 * widać. Komunikat bez szczegółów: nazwa ograniczenia mówi o schemacie bazy.
+	 *
+	 * <p>
+	 * Ten sam wyścig od drugiej strony to
+	 * {@link OptimisticLockingFailureException}: podwójne „cofnij lajk” wczytuje
+	 * wiersz dwa razy, a drugi DELETE trafia w wiersz już usunięty przez pierwszy
+	 * ({@code expected row count 1 but was 0}). To też konflikt ze stanem danych,
+	 * nie awaria.
 	 */
-	@ExceptionHandler(DataIntegrityViolationException.class)
-	ResponseEntity<ApiError> handleDataIntegrityViolation(DataIntegrityViolationException ex,
-			HttpServletRequest request) {
+	@ExceptionHandler({DataIntegrityViolationException.class, OptimisticLockingFailureException.class})
+	ResponseEntity<ApiError> handleDataIntegrityViolation(DataAccessException ex, HttpServletRequest request) {
 		log.warn("Zapis odrzucony przez ograniczenie w bazie: {} {}", request.getMethod(), request.getRequestURI(), ex);
 		return ResponseEntity.status(HttpStatus.CONFLICT).body(toApiError("CONFLICT",
 				"Żądanie koliduje z bieżącym stanem danych — odśwież i spróbuj ponownie", request));
