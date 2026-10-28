@@ -301,6 +301,17 @@
         },
         "type" : "object"
       },
+      "CompleteConnectRequest" : {
+        "properties" : {
+          "ticket" : {
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [ "ticket" ],
+        "type" : "object"
+      },
       "ConnectResponse" : {
         "properties" : {
           "authorizeUrl" : {
@@ -3483,7 +3494,7 @@
         } ],
         "responses" : {
           "302" : {
-            "description" : "Przekierowanie do aplikacji z wynikiem w parametrze `result`: `connected`, `denied` (użytkownik odmówił zgody) albo `error` z kodem błędu w `code` (`INVALID_OAUTH_STATE`, `INVALID_AUTHORIZATION_CODE`, `MUSIC_PROVIDER_ERROR`)"
+            "description" : "Przekierowanie do aplikacji z wynikiem w parametrze `result`: `authorized` z jednorazowym biletem w `ticket` (aplikacja kończy nim łączenie przez `POST /spotify/connect/complete`), `denied` (użytkownik odmówił zgody) albo `error` z kodem błędu w `code` (`INVALID_OAUTH_STATE`, `MUSIC_PROVIDER_ERROR`)"
           },
           "400" : {
             "content" : {
@@ -3512,6 +3523,50 @@
               }
             },
             "description" : "OK"
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ],
+        "tags" : [ "now-playing-controller" ]
+      }
+    },
+    "/api/v1/now-playing/spotify/connect/complete" : {
+      "post" : {
+        "operationId" : "completeConnect",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CompleteConnectRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "Spotify połączony"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Bilet nieznany, zużyty, wygasły albo z łączenia rozpoczętego na innym koncie (`INVALID_CONNECT_TICKET`), kod Spotify wygasł (`INVALID_AUTHORIZATION_CODE`) albo puste pole (`VALIDATION_ERROR`)"
+          },
+          "502" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Spotify nie odpowiedział poprawnie (`MUSIC_PROVIDER_ERROR`)"
           }
         },
         "security" : [ {

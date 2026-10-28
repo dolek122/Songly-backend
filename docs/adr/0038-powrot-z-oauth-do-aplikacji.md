@@ -1,7 +1,7 @@
 # 38. Powrót z OAuth Spotify do aplikacji
 
 Data: 2026-10-18
-Status: zaakceptowane
+Status: zaakceptowane, częściowo zastąpione przez ADR 0050
 
 ## Kontekst
 
@@ -15,7 +15,7 @@ Callback **zawsze odpowiada `302`** na `songly.now-playing.connect-result-url` (
 
 | Sytuacja | Przekierowanie |
 |---|---|
-| połączono | `?result=connected` |
+| połączono | `?result=connected` (od ADR 0050: `?result=authorized&ticket=…`, a łączy dopiero aplikacja) |
 | użytkownik odmówił (`error=access_denied`) | `?result=denied` |
 | inny błąd zgłoszony przez providera | `?result=error&code=MUSIC_PROVIDER_ERROR` |
 | błąd po naszej stronie (`ApiException`) | `?result=error&code=<kod z ApiException>` |
@@ -31,7 +31,7 @@ Callback **zawsze odpowiada `302`** na `songly.now-playing.connect-result-url` (
 
 ## Konsekwencje
 
-- **Przechwycenie schematu przez obcą aplikację jest tu nieszkodliwe**, inaczej niż w ADR 0037. Przekierowanie nie niesie żadnego sekretu: tokeny zostają na serwerze, a state jest już zużyty. Złośliwa aplikacja dowie się najwyżej, że ktoś właśnie połączył Spotify.
+- **Przechwycenie schematu przez obcą aplikację jest tu nieszkodliwe**, inaczej niż w ADR 0037. Przekierowanie nie niesie żadnego sekretu: tokeny zostają na serwerze, a state jest już zużyty. Złośliwa aplikacja dowie się najwyżej, że ktoś właśnie połączył Spotify. **Nieaktualne od ADR 0050:** przekierowanie niesie bilet, którym aplikacja kończy łączenie.
 - **Nieoczekiwany wyjątek (spoza `ApiException`) nadal kończy się 500 z JSON-em.** Przekierowywanie wszystkiego ukryłoby błąd programisty pod „spróbuj ponownie”. Takie 500 zostaje zalogowane ze stack trace’em przez `GlobalExceptionHandler`.
-- **Bez zainstalowanej aplikacji przeglądarka nie ma dokąd pójść.** Callback osiąga się jednak tylko z przepływu rozpoczętego w aplikacji, więc w praktyce to sytuacja hipotetyczna.
+- **Bez zainstalowanej aplikacji przeglądarka nie ma dokąd pójść.** Callback osiąga się jednak tylko z przepływu rozpoczętego w aplikacji, więc w praktyce to sytuacja hipotetyczna. **To założenie było błędne** (ADR 0050): nic nie wiązało powrotu z osobą, która zaczęła łączenie, więc adres autoryzacji podesłany ofierze przypinał jej Spotify do konta autora linku.
 - Klient mobilny musi przechwytywać `songly://now-playing` i odświeżać ekran „teraz gram” po powrocie.

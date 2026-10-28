@@ -418,6 +418,7 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 	@Test
 	void nowPlayingEndpoints_requireAuthentication() throws Exception {
 		mockMvc.perform(post("/api/v1/now-playing/spotify/connect")).andExpect(status().isUnauthorized());
+		mockMvc.perform(post("/api/v1/now-playing/spotify/connect/complete")).andExpect(status().isUnauthorized());
 		mockMvc.perform(get("/api/v1/now-playing/me")).andExpect(status().isUnauthorized());
 		mockMvc.perform(get("/api/v1/now-playing/friends")).andExpect(status().isUnauthorized());
 		mockMvc.perform(get("/api/v1/now-playing/stream")).andExpect(status().isUnauthorized());

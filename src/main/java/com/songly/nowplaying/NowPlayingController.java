@@ -1,5 +1,6 @@
 package com.songly.nowplaying;
 
+import com.songly.nowplaying.dto.CompleteConnectRequest;
 import com.songly.nowplaying.dto.ConnectResponse;
 import com.songly.nowplaying.dto.FriendNowPlayingResponse;
 import com.songly.nowplaying.dto.ManualNowPlayingRequest;
@@ -68,33 +69,63 @@ class NowPlayingController {
 	 * po drugiej stronie stoi przeglądarka, a nie klient API, więc JSON z błędem
 	 * byłby dla użytkownika ślepą uliczką, a 204 — pustą kartą. Jedyny wyjątek to
 	 * brak {@code state}: wtedy nie jest to powrót od providera.
+	 *
+	 * <p>
+	 * Sukces nie łączy jeszcze konta (ADR 0050): przekierowanie niesie bilet,
+	 * którym aplikacja kończy łączenie przez
+	 * {@code POST /spotify/connect/complete}.
 	 */
 	// springdoc nie dokłada adnotowanych odpowiedzi do wywnioskowanych, tylko je
 	// nimi zastępuje — więc gdy opisujemy błędy, sukces trzeba wypisać razem z
 	// nimi.
 	@GetMapping("/spotify/callback")
 	@ApiResponse(responseCode = "302", description = "Przekierowanie do aplikacji z wynikiem w parametrze `result`: "
-			+ "`connected`, `denied` (użytkownik odmówił zgody) albo `error` z kodem błędu w `code` "
-			+ "(`INVALID_OAUTH_STATE`, `INVALID_AUTHORIZATION_CODE`, `MUSIC_PROVIDER_ERROR`)", content = @Content)
+			+ "`authorized` z jednorazowym biletem w `ticket` (aplikacja kończy nim łączenie przez "
+			+ "`POST /spotify/connect/complete`), `denied` (użytkownik odmówił zgody) albo `error` z kodem błędu "
+			+ "w `code` (`INVALID_OAUTH_STATE`, `MUSIC_PROVIDER_ERROR`)", content = @Content)
 	@ApiResponse(responseCode = "400", description = "Brak parametru `state` (`MISSING_PARAMETER`)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiError.class)))
 	ResponseEntity<Void> callback(@RequestParam String state, @RequestParam(required = false) String code,
 			@RequestParam(required = false) String error) {
 		if (code == null) {
 			nowPlayingService.abandonConnect(state);
-			return "access_denied".equals(error) ? backToApp("denied", null) : backToApp("error", MUSIC_PROVIDER_ERROR);
+			return "access_denied".equals(error)
+					? backToApp("denied", null, null)
+					: backToApp("error", "code", MUSIC_PROVIDER_ERROR);
 		}
+		String ticket;
 		try {
-			nowPlayingService.completeConnect(state, code);
+			ticket = nowPlayingService.acceptAuthorization(state, code);
 		} catch (ApiException e) {
-			return backToApp("error", e.getCode());
+			return backToApp("error", "code", e.getCode());
 		}
-		return backToApp("connected", null);
+		return backToApp("authorized", "ticket", ticket);
 	}
 
-	private ResponseEntity<Void> backToApp(String result, String errorCode) {
-		URI location = UriComponentsBuilder.fromUriString(properties.getConnectResultUrl()).queryParam("result", result)
-				.queryParamIfPresent("code", Optional.ofNullable(errorCode)).build().toUri();
+	private ResponseEntity<Void> backToApp(String result, String paramName, String paramValue) {
+		UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(properties.getConnectResultUrl())
+				.queryParam("result", result);
+		Optional.ofNullable(paramValue).ifPresent(value -> builder.queryParam(paramName, value));
+		URI location = builder.build().toUri();
 		return ResponseEntity.status(HttpStatus.FOUND).location(location).build();
+	}
+
+	/**
+	 * Drugi krok łączenia (ADR 0050), wołany przez aplikację po powrocie z
+	 * przeglądarki. Dopiero tu kod ze Spotify zamienia się na tokeny, i tylko gdy
+	 * łączenie zaczęło to samo konto, które teraz pyta — inaczej podesłany link
+	 * przypinałby Spotify ofiary do konta autora linku.
+	 */
+	@PostMapping("/spotify/connect/complete")
+	@SecurityRequirement(name = "bearerAuth")
+	@ApiResponse(responseCode = "204", description = "Spotify połączony", content = @Content)
+	@ApiResponse(responseCode = "400", description = "Bilet nieznany, zużyty, wygasły albo z łączenia rozpoczętego na innym "
+			+ "koncie (`INVALID_CONNECT_TICKET`), kod Spotify wygasł (`INVALID_AUTHORIZATION_CODE`) albo puste pole "
+			+ "(`VALIDATION_ERROR`)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiError.class)))
+	@ApiResponse(responseCode = "502", description = "Spotify nie odpowiedział poprawnie (`MUSIC_PROVIDER_ERROR`)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiError.class)))
+	ResponseEntity<Void> completeConnect(Authentication authentication,
+			@Valid @RequestBody CompleteConnectRequest request) {
+		nowPlayingService.completeConnect(currentUserId(authentication), request.ticket());
+		return ResponseEntity.noContent().build();
 	}
 
 	@DeleteMapping("/spotify")
