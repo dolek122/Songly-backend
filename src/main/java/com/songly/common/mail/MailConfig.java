@@ -18,8 +18,15 @@ class MailConfig {
 
 	private static final int SMTP_QUEUE_CAPACITY = 500;
 
+	/**
+	 * Nazwa beana <b>nie może</b> brzmieć {@code mailSender}: pod tą nazwą Boot
+	 * rejestruje własny {@code JavaMailSender}, gdy tylko ustawiony jest
+	 * {@code spring.mail.host}. Nadpisywanie definicji jest wyłączone, więc kolizja
+	 * wywracała start każdej instancji z prawdziwym SMTP (ADR 0051), a testy jej
+	 * nie widziały, bo działają bez hosta. Pilnuje tego {@code MailConfigTest}.
+	 */
 	@Bean
-	MailSender mailSender(MailProperties properties, ObjectProvider<JavaMailSender> javaMailSender) {
+	MailSender songlyMailSender(MailProperties properties, ObjectProvider<JavaMailSender> javaMailSender) {
 		if (!"smtp".equalsIgnoreCase(properties.getProvider())) {
 			return new LoggingMailSender(properties.getFrom());
 		}

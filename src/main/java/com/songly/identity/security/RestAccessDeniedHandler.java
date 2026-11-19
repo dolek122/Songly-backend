@@ -4,6 +4,7 @@ import com.songly.common.web.ApiError;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
@@ -34,6 +35,8 @@ class RestAccessDeniedHandler implements AccessDeniedHandler {
 			AccessDeniedException accessDeniedException) throws IOException {
 		response.setStatus(HttpServletResponse.SC_FORBIDDEN);
 		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+		// Ten sam powód co w TooManyRequestsResponse: bez tego ISO-8859-1 (ADR 0051).
+		response.setCharacterEncoding(StandardCharsets.UTF_8.name());
 		ApiError error = suspended()
 				? new ApiError("ACCOUNT_SUSPENDED",
 						"Konto jest zawieszone — szczegóły pod GET /api/v1/auth/me/suspension", Instant.now(),

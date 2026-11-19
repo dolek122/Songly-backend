@@ -47,6 +47,7 @@ class AuthService {
 	private final ApplicationEventPublisher eventPublisher;
 	private final MeterRegistry meterRegistry;
 	private final AccountEraser accountEraser;
+	private final LoginAttemptLimiter loginAttemptLimiter;
 
 	/**
 	 * Skrót, z którym porównujemy hasło, gdy konta nie ma (ADR 0041). Liczony raz
@@ -58,7 +59,7 @@ class AuthService {
 	AuthService(UserRepository userRepository, SessionRepository sessionRepository,
 			PasswordResetTokenRepository passwordResetTokenRepository, PasswordEncoder passwordEncoder,
 			TokenIssuer tokenIssuer, ApplicationEventPublisher eventPublisher, MeterRegistry meterRegistry,
-			AccountEraser accountEraser) {
+			AccountEraser accountEraser, LoginAttemptLimiter loginAttemptLimiter) {
 		this.userRepository = userRepository;
 		this.sessionRepository = sessionRepository;
 		this.passwordResetTokenRepository = passwordResetTokenRepository;
@@ -67,6 +68,7 @@ class AuthService {
 		this.eventPublisher = eventPublisher;
 		this.meterRegistry = meterRegistry;
 		this.accountEraser = accountEraser;
+		this.loginAttemptLimiter = loginAttemptLimiter;
 		this.unknownAccountHash = passwordEncoder.encode(SecureTokens.generate());
 	}
 
@@ -90,6 +92,15 @@ class AuthService {
 	 */
 	@Transactional
 	AuthTokensResponse login(LoginRequest request) {
+		try {
+			loginAttemptLimiter.recordAttempt(request.email());
+		} catch (LoginRateLimitExceededException ex) {
+			// Bez userId: rozpoznanie konta zdradzałoby w logu więcej, niż potrzeba
+			// do zauważenia ataku, a licznik i requestId wystarczą (§13).
+			loginOutcome("throttled").increment();
+			log.warn("Limit prób logowania na adres przekroczony");
+			throw ex;
+		}
 		User user = userRepository.findByEmail(request.email()).orElse(null);
 		if (user == null) {
 			passwordEncoder.matches(request.password(), unknownAccountHash);
@@ -100,6 +111,7 @@ class AuthService {
 			auditFailedLogin("błędne hasło", user.getId());
 			throw new InvalidCredentialsException();
 		}
+		loginAttemptLimiter.reset(request.email());
 		loginOutcome("success").increment();
 		log.info("Zalogowano użytkownika {}", user.getId());
 		return tokenIssuer.issueFor(user);

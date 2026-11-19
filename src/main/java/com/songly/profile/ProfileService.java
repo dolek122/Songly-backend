@@ -155,7 +155,8 @@ class ProfileService implements ProfileDirectory {
 
 	@Transactional(readOnly = true)
 	Page<GenreResponse> listGenres(Pageable pageable) {
-		return genreRepository.findAll(pageable).map(genre -> new GenreResponse(genre.getId(), genre.getName()));
+		return genreRepository.findAllByOrderByNameAsc(pageable)
+				.map(genre -> new GenreResponse(genre.getId(), genre.getName()));
 	}
 
 	@Transactional

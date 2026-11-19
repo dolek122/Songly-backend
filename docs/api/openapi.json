@@ -734,12 +734,6 @@
             "format" : "int32",
             "minimum" : 1,
             "type" : "integer"
-          },
-          "sort" : {
-            "items" : {
-              "type" : "string"
-            },
-            "type" : "array"
           }
         },
         "type" : "object"

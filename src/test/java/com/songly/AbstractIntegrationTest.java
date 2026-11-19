@@ -64,9 +64,14 @@ import org.testcontainers.utility.DockerImageName;
  * klasie osobno jak limit per IP: testy przepływów robią jednym kontem serie
  * zapisów, a limit trafiony w połowie scenariusza dawałby 429 bez związku z
  * tematem testu. Włącza go wyłącznie UserRateLimitingIntegrationTest.
+ *
+ * Pushe wychodzą tu synchronicznie, bo testy sprawdzają je zaraz po odpowiedzi.
+ * Na produkcji idą w tle (ADR 0051); tę ścieżkę sprawdza wyłącznie
+ * PushDeliveryConcurrencyIntegrationTest.
  */
 @TestPropertySource(properties = {"spring.datasource.hikari.maximum-pool-size=4",
-		"spring.datasource.hikari.minimum-idle=0", "songly.security.user-rate-limit.enabled=false"})
+		"spring.datasource.hikari.minimum-idle=0", "songly.security.user-rate-limit.enabled=false",
+		"songly.notification.push.async-delivery=false"})
 public abstract class AbstractIntegrationTest {
 
 	private static final Pattern TOKEN_IN_LINK = Pattern.compile("token=([A-Za-z0-9_-]+)");

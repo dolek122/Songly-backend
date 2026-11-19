@@ -35,6 +35,9 @@ class AuthServiceTest {
 	private UserRepository userRepository;
 
 	@Mock
+	private LoginAttemptLimiter loginAttemptLimiter;
+
+	@Mock
 	private SessionRepository sessionRepository;
 
 	@Mock
@@ -59,7 +62,7 @@ class AuthServiceTest {
 	@BeforeEach
 	void setUp() {
 		authService = new AuthService(userRepository, sessionRepository, passwordResetTokenRepository, passwordEncoder,
-				tokenIssuer, eventPublisher, meterRegistry, eraser());
+				tokenIssuer, eventPublisher, meterRegistry, eraser(), loginAttemptLimiter);
 	}
 
 	/**
@@ -124,7 +127,7 @@ class AuthServiceTest {
 	void login_spendsBcrypt_evenWhenUserNotFound() {
 		PasswordEncoder spyEncoder = spy(new BCryptPasswordEncoder());
 		AuthService service = new AuthService(userRepository, sessionRepository, passwordResetTokenRepository,
-				spyEncoder, tokenIssuer, eventPublisher, meterRegistry, eraser());
+				spyEncoder, tokenIssuer, eventPublisher, meterRegistry, eraser(), loginAttemptLimiter);
 		when(userRepository.findByEmail("missing@songly.io")).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> service.login(new LoginRequest("missing@songly.io", "password123")))
