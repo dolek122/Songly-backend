@@ -101,6 +101,9 @@ class ErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 	@Test
 	void unknownRouteWhenAnonymous_returnsUnauthorized() throws Exception {
 		mockMvc.perform(get("/api/v1/nie-ma-takiej-sciezki")).andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+				.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
+				// Pisane przez filtr bezpieczeństwa, nie przez GlobalExceptionHandler — stąd
+				// jawne UTF-8 (ADR 0051).
+				.andExpect(header().string("Content-Type", "application/json;charset=UTF-8"));
 	}
 }

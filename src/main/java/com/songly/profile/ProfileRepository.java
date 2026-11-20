@@ -35,6 +35,7 @@ interface ProfileRepository extends JpaRepository<Profile, UUID> {
 			select p from Profile p
 			where lower(p.displayName) like lower(concat('%', :displayName, '%')) escape '\\'
 			and p.userId not in :excludedUserIds
+			order by lower(p.displayName), p.userId
 			""")
 	Page<Profile> searchByDisplayName(@Param("displayName") String displayName,
 			@Param("excludedUserIds") Collection<UUID> excludedUserIds, Pageable pageable);

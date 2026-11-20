@@ -4,6 +4,7 @@ import com.songly.common.web.ApiError;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.AuthenticationException;
@@ -25,6 +26,8 @@ class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
 			AuthenticationException authException) throws IOException {
 		response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
 		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+		// Ten sam powód co w TooManyRequestsResponse: bez tego ISO-8859-1 (ADR 0051).
+		response.setCharacterEncoding(StandardCharsets.UTF_8.name());
 		ApiError error = new ApiError("UNAUTHENTICATED", "Wymagane uwierzytelnienie", Instant.now(),
 				request.getRequestURI());
 		objectMapper.writeValue(response.getWriter(), error);

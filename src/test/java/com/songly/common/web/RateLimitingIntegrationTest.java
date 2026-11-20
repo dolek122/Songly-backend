@@ -33,7 +33,11 @@ class RateLimitingIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.code").value("RATE_LIMIT_EXCEEDED"))
 				// Bez tego klient nie wie, kiedy wolno spróbować, więc dobija się w kółko —
 				// czyli dokładnie to, przed czym limit ma chronić.
-				.andExpect(header().exists(HttpHeaders.RETRY_AFTER));
+				.andExpect(header().exists(HttpHeaders.RETRY_AFTER))
+				// Odpowiedź piszemy poza Springiem MVC, więc kodowanie trzeba ustawić samemu —
+				// inaczej ISO-8859-1 i „Zbyt wiele ??da?" w aplikacji (ADR 0051).
+				.andExpect(header().string(HttpHeaders.CONTENT_TYPE, "application/json;charset=UTF-8"))
+				.andExpect(jsonPath("$.message").value("Zbyt wiele żądań, spróbuj ponownie później"));
 	}
 
 	/**

@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,28 +52,13 @@ class JwtAuthenticationFilter extends OncePerRequestFilter {
 		if (header != null && header.startsWith(BEARER_PREFIX)) {
 			try {
 				UUID userId = jwtService.parseUserId(header.substring(BEARER_PREFIX.length()));
-				AccountStatus status = accountStatusService.statusOf(userId);
-				boolean admin = status.admin();
-				// Zawieszone konto dostaje WYŁĄCZNIE ROLE_SUSPENDED, nigdy ROLE_USER (ADR
-				// 0022). Uprawnienia są tu całą egzekucją zawieszenia: wszystko poza krótką
-				// listą z SecurityConfig wymaga ROLE_USER, więc nowy endpoint jest domyślnie
-				// niedostępny dla zawieszonego — i nie da się o tym zapomnieć tak, jak dałoby
-				// się zapomnieć o sprawdzeniu w każdej ścieżce zapisu osobno.
-				List<GrantedAuthority> authorities = status.suspended()
-						? List.of(new SimpleGrantedAuthority(SUSPENDED_AUTHORITY))
-						: admin
-								? List.of(new SimpleGrantedAuthority(USER_AUTHORITY),
-										new SimpleGrantedAuthority("ROLE_ADMIN"))
-								: List.of(new SimpleGrantedAuthority(USER_AUTHORITY));
-				SecurityContextHolder.getContext()
-						.setAuthentication(new UsernamePasswordAuthenticationToken(userId, null, authorities));
-				// Sprzątanie MDC należy do RequestIdFilter, który zamyka cały łańcuch — tu
-				// tylko dokładamy to, czego przed uwierzytelnieniem nie było jak poznać.
-				MDC.put(RequestIdFilter.USER_ID_KEY, userId.toString());
-				if (admin) {
-					// Adminów jest niewielu, a ich żądania sięgają danych całego serwisu —
-					// ślad audytowy każdego z nich jest tańszy niż odtwarzanie go po fakcie.
-					log.info("Żądanie z uprawnieniami administratora: {} {}", request.getMethod(),
+				Optional<AccountStatus> account = accountStatusService.statusOf(userId);
+				if (account.isPresent()) {
+					authenticate(request, userId, account.get());
+				} else {
+					// Token konta, którego już nie ma. Bez uwierzytelnienia chronione ścieżki
+					// odpowiadają 401 jak na każdy nieważny token (ADR 0052).
+					log.debug("Odrzucono token usuniętego konta dla {} {}", request.getMethod(),
 							request.getRequestURI());
 				}
 			} catch (RuntimeException e) {
@@ -83,5 +69,29 @@ class JwtAuthenticationFilter extends OncePerRequestFilter {
 			}
 		}
 		filterChain.doFilter(request, response);
+	}
+
+	private void authenticate(HttpServletRequest request, UUID userId, AccountStatus status) {
+		boolean admin = status.admin();
+		// Zawieszone konto dostaje WYŁĄCZNIE ROLE_SUSPENDED, nigdy ROLE_USER (ADR
+		// 0022). Uprawnienia są tu całą egzekucją zawieszenia: wszystko poza krótką
+		// listą z SecurityConfig wymaga ROLE_USER, więc nowy endpoint jest domyślnie
+		// niedostępny dla zawieszonego — i nie da się o tym zapomnieć tak, jak dałoby
+		// się zapomnieć o sprawdzeniu w każdej ścieżce zapisu osobno.
+		List<GrantedAuthority> authorities = status.suspended()
+				? List.of(new SimpleGrantedAuthority(SUSPENDED_AUTHORITY))
+				: admin
+						? List.of(new SimpleGrantedAuthority(USER_AUTHORITY), new SimpleGrantedAuthority("ROLE_ADMIN"))
+						: List.of(new SimpleGrantedAuthority(USER_AUTHORITY));
+		SecurityContextHolder.getContext()
+				.setAuthentication(new UsernamePasswordAuthenticationToken(userId, null, authorities));
+		// Sprzątanie MDC należy do RequestIdFilter, który zamyka cały łańcuch — tu
+		// tylko dokładamy to, czego przed uwierzytelnieniem nie było jak poznać.
+		MDC.put(RequestIdFilter.USER_ID_KEY, userId.toString());
+		if (admin) {
+			// Adminów jest niewielu, a ich żądania sięgają danych całego serwisu —
+			// ślad audytowy każdego z nich jest tańszy niż odtwarzanie go po fakcie.
+			log.info("Żądanie z uprawnieniami administratora: {} {}", request.getMethod(), request.getRequestURI());
+		}
 	}
 }

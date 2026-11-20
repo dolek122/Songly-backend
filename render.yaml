@@ -17,7 +17,9 @@ services:
     plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    healthCheckPath: /actuator/health
+    # Grupa readiness: stan aplikacji i baza, bez Redisa i poczty, bo obie są
+    # fail-open i ich awaria nie może zdejmować instancji z ruchu (ADR 0051).
+    healthCheckPath: /actuator/health/readiness
     envVars:
       - key: DB_HOST
         fromDatabase:
@@ -46,8 +48,14 @@ services:
           property: connectionString
       # Render terminuje ruch na swoim proxy, więc bez tego rate limiter widziałby
       # jeden adres dla wszystkich klientów i odcinał ich wspólnym limitem.
+      # "native", nie "framework" (ADR 0051): adres klienta to pierwszy od prawej
+      # wpis X-Forwarded-For spoza sieci wewnętrznej, czyli dopisany przez proxy
+      # Rendera. "framework" ufał lewemu wpisowi i nagłówkowi Forwarded, które
+      # podaje sam klient. Założenie: proxy Rendera łączy się z adresu prywatnego
+      # i dopisuje adres klienta na końcu. Gdyby dopisywał jeszcze coś po nim,
+      # limit liczyłby za grubo (wspólny kubełek), ale nie dałby się obejść.
       - key: FORWARD_HEADERS_STRATEGY
-        value: framework
+        value: native
       # Bez prawdziwych JWT_SECRET i NOW_PLAYING_TOKEN_KEY aplikacja nie wstanie:
       # wartości domyślne z application.properties są publiczne (leżą w repo), a z
       # nimi każdy podpisałby token admina i odszyfrował tokeny Spotify.

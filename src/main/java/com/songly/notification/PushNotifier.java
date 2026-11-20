@@ -1,5 +1,6 @@
 package com.songly.notification;
 
+import com.songly.common.concurrent.BoundedExecutor;
 import com.songly.common.push.InvalidPushTokenException;
 import com.songly.common.push.PushMessage;
 import com.songly.common.push.PushSender;
@@ -12,8 +13,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -38,12 +42,18 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * (Claude.md §8). Ekran blokady telefonu to kanał push w najczystszej postaci.
  *
  * <p>
- * Wysyłka synchronicznie, po commicie zapisu do skrzynki, w wątku żądania,
- * które je wywołało — jak mail. Awaria jednego urządzenia nie zatrzymuje
- * pozostałych, a żadna nie wraca do wywołującego: skrzynka już zapisała.
+ * <b>Wysyłka poza wątkiem żądania</b> (ADR 0051), po commicie zapisu do
+ * skrzynki. Listener {@code AFTER_COMMIT} działa, zanim żądanie odda połączenia
+ * z bazą: swoje i to z {@code REQUIRES_NEW} zapisu do skrzynki. Synchroniczna
+ * rozmowa z FCM (do 7 s przy timeoutach) trzymała więc dwa połączenia z puli na
+ * każde polubienie, a kilka naraz wyczerpywało pulę i kończyło się 500 także w
+ * żądaniach, które z pushami nie mają nic wspólnego. Przepełniona kolejka gubi
+ * push ({@code outcome="dropped"}), nigdy żądanie. Awaria jednego urządzenia
+ * nie zatrzymuje pozostałych, a żadna nie wraca do wywołującego: skrzynka już
+ * zapisała.
  */
 @Component
-class PushNotifier {
+class PushNotifier implements AutoCloseable {
 
 	private static final Logger log = LoggerFactory.getLogger(PushNotifier.class);
 
@@ -52,6 +62,14 @@ class PushNotifier {
 
 	private static final String APP_NAME = "Songly";
 
+	/**
+	 * Dwa wątki: push wychodzi przy zaczepkach i decyzjach, więc ruch jest rzędu
+	 * zapisów, a każdy wątek to rozmowa z jednym serwerem.
+	 */
+	private static final int DELIVERY_THREADS = 2;
+
+	private static final int DELIVERY_QUEUE_CAPACITY = 1000;
+
 	private final PushSender pushSender;
 	private final PushDeviceService devices;
 	private final SocialGraph socialGraph;
@@ -59,10 +77,18 @@ class PushNotifier {
 	private final CommunityDirectory communityDirectory;
 	private final MeterRegistry meterRegistry;
 	private final SuspendedAccounts suspendedAccounts;
+	private final Executor deliveries;
 
+	/**
+	 * {@code async-delivery=false} wyłącznie w testach integracyjnych
+	 * ({@code AbstractIntegrationTest}), które sprawdzają push zaraz po odpowiedzi.
+	 * Ścieżkę asynchroniczną pokrywa
+	 * {@code PushDeliveryConcurrencyIntegrationTest}.
+	 */
 	PushNotifier(PushSender pushSender, PushDeviceService devices, SocialGraph socialGraph,
 			ProfileDirectory profileDirectory, CommunityDirectory communityDirectory, MeterRegistry meterRegistry,
-			SuspendedAccounts suspendedAccounts) {
+			SuspendedAccounts suspendedAccounts,
+			@Value("${songly.notification.push.async-delivery:true}") boolean asyncDelivery) {
 		this.pushSender = pushSender;
 		this.devices = devices;
 		this.socialGraph = socialGraph;
@@ -70,10 +96,33 @@ class PushNotifier {
 		this.communityDirectory = communityDirectory;
 		this.meterRegistry = meterRegistry;
 		this.suspendedAccounts = suspendedAccounts;
+		this.deliveries = asyncDelivery
+				? new BoundedExecutor("push-sender", DELIVERY_THREADS, DELIVERY_QUEUE_CAPACITY)
+				: Runnable::run;
 	}
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onNotificationCreated(NotificationCreatedEvent event) {
+		try {
+			deliveries.execute(() -> deliver(event));
+		} catch (RejectedExecutionException ex) {
+			outcome("dropped");
+			log.warn("Kolejka pushy jest pełna, push do użytkownika {} przepada", event.recipientId());
+		}
+	}
+
+	/**
+	 * Spring woła przy zamykaniu kontekstu: przyjęte pushe dostają chwilę na
+	 * wyjście.
+	 */
+	@Override
+	public void close() throws InterruptedException {
+		if (deliveries instanceof BoundedExecutor executor) {
+			executor.close();
+		}
+	}
+
+	private void deliver(NotificationCreatedEvent event) {
 		List<String> tokens = devices.tokensOf(event.recipientId());
 		if (tokens.isEmpty()) {
 			return;
@@ -95,11 +144,11 @@ class PushNotifier {
 				event.notificationId().toString(), "resourceId", event.resourceId().toString(), "title", text.title(),
 				"body", text.body());
 		for (String token : tokens) {
-			deliver(event.recipientId(), new PushMessage(token, text.title(), text.body(), data));
+			deliverTo(event.recipientId(), new PushMessage(token, text.title(), text.body(), data));
 		}
 	}
 
-	private void deliver(UUID recipientId, PushMessage message) {
+	private void deliverTo(UUID recipientId, PushMessage message) {
 		try {
 			pushSender.send(message);
 			outcome("sent");

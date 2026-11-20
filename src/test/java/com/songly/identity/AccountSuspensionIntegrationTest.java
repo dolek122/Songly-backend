@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -89,7 +90,13 @@ class AccountSuspensionIntegrationTest extends AbstractIntegrationTest {
 		mockMvc.perform(post("/api/v1/posts").header("Authorization", "Bearer " + troll.token())
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"content":"nie powinno przejsc"}""")).andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.code").value("ACCOUNT_SUSPENDED"));
+				.andExpect(jsonPath("$.code").value("ACCOUNT_SUSPENDED"))
+				// Komunikat ma polskie znaki, a pisze go filtr, nie Spring MVC (ADR 0051).
+				// MockMvc odczyta treść poprawnie w każdym kodowaniu, więc o tym, co zobaczy
+				// klient, mówi dopiero nagłówek.
+				.andExpect(header().string("Content-Type", "application/json;charset=UTF-8"))
+				.andExpect(jsonPath("$.message")
+						.value("Konto jest zawieszone — szczegóły pod GET /api/v1/auth/me/suspension"));
 		mockMvc.perform(get("/api/v1/feed").header("Authorization", "Bearer " + troll.token()))
 				.andExpect(status().isForbidden());
 		mockMvc.perform(get("/api/v1/notifications").header("Authorization", "Bearer " + troll.token()))

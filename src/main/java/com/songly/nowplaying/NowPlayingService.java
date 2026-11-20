@@ -45,6 +45,7 @@ class NowPlayingService {
 	private static final Logger log = LoggerFactory.getLogger(NowPlayingService.class);
 
 	private static final String STATE_KEY_PREFIX = "now-playing:oauth-state:";
+	private static final String TICKET_KEY_PREFIX = "now-playing:oauth-ticket:";
 	private static final String CACHE_KEY_PREFIX = "now-playing:status:";
 	private static final String MANUAL_KEY_PREFIX = "now-playing:manual:";
 	private static final String POLL_LOCK_KEY_PREFIX = "now-playing:poll-lock:";
@@ -82,20 +83,66 @@ class NowPlayingService {
 	}
 
 	String beginConnect(UUID userId) {
-		byte[] bytes = new byte[24];
-		secureRandom.nextBytes(bytes);
-		String state = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+		String state = randomToken();
 		redisTemplate.opsForValue().set(STATE_KEY_PREFIX + state, userId.toString(), properties.getOauthStateTtl());
 		return musicProvider.buildAuthorizeUrl(state);
 	}
 
-	void completeConnect(String state, String authorizationCode) {
-		String key = STATE_KEY_PREFIX + state;
-		String userId = redisTemplate.opsForValue().getAndDelete(key);
+	/**
+	 * Powrót z providera <b>nie łączy konta</b>, tylko odkłada kod pod nowym,
+	 * jednorazowym biletem, z którym przeglądarka wraca do aplikacji (ADR 0050).
+	 *
+	 * <p>
+	 * State nie wystarcza do dokończenia, bo zna go także ten, kto zaczął łączenie.
+	 * Ktoś mógł wywołać {@code /connect} na własnym koncie i podesłać link ofierze:
+	 * jej przeglądarka wracała tu z jej kodem, a callback przypinał jej Spotify do
+	 * cudzego konta, które potem czytało, czego ofiara słucha. Bilet powstaje
+	 * dopiero tutaj i trafia wyłącznie do przeglądarki, która przeszła przez
+	 * Spotify, więc autor podesłanego linku go nie zna.
+	 */
+	String acceptAuthorization(String state, String authorizationCode) {
+		String userId = redisTemplate.opsForValue().getAndDelete(STATE_KEY_PREFIX + state);
 		if (userId == null) {
 			throw new InvalidOAuthStateException();
 		}
-		musicProvider.connect(UUID.fromString(userId), authorizationCode);
+		String ticket = randomToken();
+		redisTemplate.opsForValue().set(TICKET_KEY_PREFIX + ticket,
+				objectMapper.writeValueAsString(new PendingConnection(userId, authorizationCode)),
+				properties.getOauthTicketTtl());
+		return ticket;
+	}
+
+	/**
+	 * Kończy łączenie wyłącznie na koncie, które je zaczęło. W scenariuszu z
+	 * podesłanym linkiem bilet trafia do aplikacji ofiary, zalogowanej na jej
+	 * konto, więc porównanie z właścicielem state'u go odrzuca. Bilet ginie przy
+	 * pierwszej próbie, także nieudanej.
+	 */
+	void completeConnect(UUID userId, String ticket) {
+		String value = redisTemplate.opsForValue().getAndDelete(TICKET_KEY_PREFIX + ticket);
+		if (value == null) {
+			throw new InvalidConnectTicketException();
+		}
+		PendingConnection pending = objectMapper.readValue(value, PendingConnection.class);
+		if (!userId.toString().equals(pending.userId())) {
+			log.warn("Bilet połączenia Spotify z przepływu innego konta: flowOwner={}, caller={}", pending.userId(),
+					userId);
+			throw new InvalidConnectTicketException();
+		}
+		musicProvider.connect(userId, pending.code());
+	}
+
+	/**
+	 * Kod autoryzacyjny w Redisie bez szyfrowania jest tu w porządku: bez client
+	 * secretu nie da się go wymienić na tokeny.
+	 */
+	private record PendingConnection(String userId, String code) {
+	}
+
+	private String randomToken() {
+		byte[] bytes = new byte[24];
+		secureRandom.nextBytes(bytes);
+		return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
 	}
 
 	/**

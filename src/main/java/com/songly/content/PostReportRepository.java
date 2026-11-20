@@ -1,17 +1,29 @@
 package com.songly.content;
 
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 interface PostReportRepository extends JpaRepository<PostReport, UUID> {
+
+	/**
+	 * Zgłoszenie z blokadą wiersza do końca transakcji (ADR 0052). Drugi moderator,
+	 * który kliknął w tej samej chwili, czeka i widzi już odrzucone zgłoszenie,
+	 * więc nie zapisuje drugiej decyzji ani kary.
+	 */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select r from PostReport r where r.id = :id")
+	Optional<PostReport> findByIdForUpdate(@Param("id") UUID id);
 
 	boolean existsByPostIdAndReporterId(UUID postId, UUID reporterId);
 
