@@ -373,7 +373,7 @@ class ContentService {
 	@Transactional
 	void dismissReport(UUID communityId, UUID reportId, UUID requesterId) {
 		requireModerator(communityId, requesterId);
-		PostReport report = reportRepository.findById(reportId).orElseThrow(ReportNotFoundException::new);
+		PostReport report = reportRepository.findByIdForUpdate(reportId).orElseThrow(ReportNotFoundException::new);
 		Post post = postRepository.findById(report.getPostId()).orElseThrow(ReportNotFoundException::new);
 		// Zgłoszenie z innej społeczności zgłaszamy jako nieistniejące, a nie jako
 		// brak uprawnień: 403 potwierdzałoby, że taki identyfikator istnieje.
@@ -381,7 +381,9 @@ class ContentService {
 			throw new ReportNotFoundException();
 		}
 		// Idempotentne, jak reszta decyzji moderacyjnych: drugie kliknięcie albo
-		// drugi moderator nie dokłada decyzji. Bez tego każde powtórzenie zapisywało
+		// drugi moderator nie dokłada decyzji. Także równolegle, bo wiersz zgłoszenia
+		// jest zablokowany do końca transakcji (ADR 0052). Bez tego każde powtórzenie
+		// zapisywało
 		// kolejne odrzucenie, czyli kolejną karę w przydziale zgłaszającego (ADR
 		// 0025), a do tego drugie powiadomienie i drugi wpis w dzienniku. Jedno
 		// zgłoszenie wystarczało, żeby zbić komuś przydział do podłogi.

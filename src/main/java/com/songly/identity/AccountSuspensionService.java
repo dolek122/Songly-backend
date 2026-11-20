@@ -66,7 +66,7 @@ class AccountSuspensionService implements SuspendedAccounts {
 		if (targetUserId.equals(requesterId)) {
 			throw new CannotSuspendSelfException();
 		}
-		User target = userRepository.findById(targetUserId).orElseThrow(AdminUserNotFoundException::new);
+		User target = userRepository.findByIdForUpdate(targetUserId).orElseThrow(AdminUserNotFoundException::new);
 		if (target.isAdmin()) {
 			throw new CannotSuspendAdminException();
 		}
@@ -91,7 +91,7 @@ class AccountSuspensionService implements SuspendedAccounts {
 	/** Idempotentne — zdjęcie zawieszenia z konta aktywnego nie jest błędem. */
 	@Transactional
 	void lift(UUID targetUserId, UUID requesterId) {
-		User target = userRepository.findById(targetUserId).orElseThrow(AdminUserNotFoundException::new);
+		User target = userRepository.findByIdForUpdate(targetUserId).orElseThrow(AdminUserNotFoundException::new);
 		if (target.getSuspendedAt() == null) {
 			return;
 		}
@@ -141,7 +141,7 @@ class AccountSuspensionService implements SuspendedAccounts {
 	@Transactional
 	void appeal(UUID userId, String text) {
 		Instant now = Instant.now();
-		User user = userRepository.findById(userId).filter(candidate -> candidate.isSuspendedAt(now))
+		User user = userRepository.findByIdForUpdate(userId).filter(candidate -> candidate.isSuspendedAt(now))
 				.orElseThrow(NoSuspensionToAppealException::new);
 		if (user.hasAppeal()) {
 			throw new SuspensionAppealAlreadySubmittedException();
@@ -158,7 +158,7 @@ class AccountSuspensionService implements SuspendedAccounts {
 	@Transactional
 	void rejectAppeal(UUID targetUserId, UUID requesterId) {
 		Instant now = Instant.now();
-		User target = userRepository.findById(targetUserId).filter(user -> user.isSuspendedAt(now))
+		User target = userRepository.findByIdForUpdate(targetUserId).filter(user -> user.isSuspendedAt(now))
 				.filter(User::hasPendingAppeal).orElseThrow(SuspensionAppealNotFoundException::new);
 		target.rejectAppeal();
 		log.warn("Odrzucono odwołanie od zawieszenia konta {} (wykonał {})", targetUserId, requesterId);

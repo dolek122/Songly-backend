@@ -1,9 +1,11 @@
 package com.songly.identity;
 
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -12,6 +14,17 @@ import org.springframework.transaction.annotation.Transactional;
 interface SessionRepository extends JpaRepository<Session, UUID> {
 
 	Optional<Session> findByRefreshTokenHash(String refreshTokenHash);
+
+	/**
+	 * Sesja z blokadą wiersza do końca transakcji (ADR 0052). Równoległe
+	 * odświeżenia tym samym tokenem widziały aktywną sesję i każde wydawało nową,
+	 * czyli z jednego tokenu powstawało kilka niezależnych łańcuchów. Z blokadą
+	 * drugie czeka, widzi sesję już odwołaną i trafia w wykrywanie ponownego
+	 * użycia.
+	 */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select s from Session s where s.refreshTokenHash = :hash")
+	Optional<Session> findByRefreshTokenHashForUpdate(@Param("hash") String refreshTokenHash);
 
 	void deleteByUserId(UUID userId);
 

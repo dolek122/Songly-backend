@@ -11,6 +11,4 @@ package com.songly.identity;
  * działają natychmiast, bez unieważniania sesji.
  */
 public record AccountStatus(boolean admin, boolean suspended) {
-
-	static final AccountStatus UNKNOWN = new AccountStatus(false, false);
 }

@@ -157,7 +157,9 @@ class AuthService {
 	@Transactional(noRollbackFor = RefreshTokenReuseDetectedException.class)
 	AuthTokensResponse refresh(RefreshRequest request) {
 		String hash = SecureTokens.hash(request.refreshToken());
-		Session session = sessionRepository.findByRefreshTokenHash(hash).orElseGet(() -> {
+		// Z blokadą wiersza: równoległe odświeżenie tym samym tokenem czeka i trafia
+		// niżej w wykrywanie ponownego użycia, zamiast wydać drugi łańcuch (ADR 0052).
+		Session session = sessionRepository.findByRefreshTokenHashForUpdate(hash).orElseGet(() -> {
 			refreshOutcome("invalid").increment();
 			throw new InvalidRefreshTokenException();
 		});
