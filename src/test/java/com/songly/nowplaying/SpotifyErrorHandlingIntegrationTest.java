@@ -3,7 +3,6 @@ package com.songly.nowplaying;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -21,11 +20,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.web.util.UriComponentsBuilder;
 import tools.jackson.databind.ObjectMapper;
 
@@ -37,8 +38,10 @@ import tools.jackson.databind.ObjectMapper;
  * wyjątku lecącego z metody transakcyjnej.
  *
  * <p>
- * Przy okazji jest to jedyne miejsce, które przechodzi cały udany callback
- * OAuth (state → wymiana kodu → zapis zaszyfrowanych tokenów).
+ * Przy okazji jest to jedyne miejsce, które przechodzi całe udane łączenie
+ * OAuth (state → callback z biletem → dokończenie w aplikacji → wymiana kodu →
+ * zapis zaszyfrowanych tokenów), więc tu siedzą też testy podesłanego linku z
+ * ADR 0050.
  */
 @TestPropertySource(properties = {"songly.security.rate-limit.enabled=false", "songly.now-playing.poll.enabled=false",
 		"songly.now-playing.stream.heartbeat.enabled=false"})
@@ -128,29 +131,100 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 	private record ConnectedUser(String accessToken, UUID userId) {
 	}
 
-	/** Rejestracja + pełne przejście OAuth przez publiczny callback. */
-	private ConnectedUser connectSpotify(String email) throws Exception {
+	private ConnectedUser register(String email) throws Exception {
 		MvcResult registration = registerAndVerify(email, "password123");
 		String accessToken = objectMapper.readTree(registration.getResponse().getContentAsString()).get("accessToken")
 				.asText();
-
 		MvcResult profile = mockMvc.perform(get("/api/v1/profiles/me").header("Authorization", "Bearer " + accessToken))
 				.andExpect(status().isOk()).andReturn();
 		UUID userId = UUID
 				.fromString(objectMapper.readTree(profile.getResponse().getContentAsString()).get("userId").asText());
+		return new ConnectedUser(accessToken, userId);
+	}
 
-		MvcResult connect = mockMvc
-				.perform(post("/api/v1/now-playing/spotify/connect").header("Authorization", "Bearer " + accessToken))
+	/** {@code POST /connect} — zwraca state z adresu autoryzacji. */
+	private String beginConnect(ConnectedUser user) throws Exception {
+		MvcResult connect = mockMvc.perform(
+				post("/api/v1/now-playing/spotify/connect").header("Authorization", "Bearer " + user.accessToken()))
 				.andExpect(status().isOk()).andReturn();
 		String authorizeUrl = objectMapper.readTree(connect.getResponse().getContentAsString()).get("authorizeUrl")
 				.asText();
-		String state = UriComponentsBuilder.fromUriString(authorizeUrl).build().getQueryParams().getFirst("state");
+		return UriComponentsBuilder.fromUriString(authorizeUrl).build().getQueryParams().getFirst("state");
+	}
 
-		mockMvc.perform(get("/api/v1/now-playing/spotify/callback").param("code", "auth-code").param("state", state))
-				.andExpect(status().isFound())
-				.andExpect(header().string("Location", "songly://now-playing/spotify?result=connected"));
-		assertThat(linkRepository.findByUserIdAndProvider(userId, SpotifyProvider.NAME)).isPresent();
-		return new ConnectedUser(accessToken, userId);
+	/**
+	 * Powrót przeglądarki ze Spotify — zwraca bilet z przekierowania do aplikacji.
+	 */
+	private String callback(String state, String code) throws Exception {
+		MvcResult callback = mockMvc
+				.perform(get("/api/v1/now-playing/spotify/callback").param("code", code).param("state", state))
+				.andExpect(status().isFound()).andReturn();
+		String location = callback.getResponse().getHeader("Location");
+		assertThat(location).startsWith("songly://now-playing/spotify?result=authorized&ticket=");
+		return UriComponentsBuilder.fromUriString(location).build().getQueryParams().getFirst("ticket");
+	}
+
+	private ResultActions complete(ConnectedUser user, String ticket) throws Exception {
+		return mockMvc.perform(post("/api/v1/now-playing/spotify/connect/complete")
+				.header("Authorization", "Bearer " + user.accessToken()).contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"ticket":"%s"}""".formatted(ticket)));
+	}
+
+	/** Rejestracja + pełne przejście OAuth: callback i dokończenie w aplikacji. */
+	private ConnectedUser connectSpotify(String email) throws Exception {
+		ConnectedUser user = register(email);
+		String ticket = callback(beginConnect(user), "auth-code");
+
+		// Sam powrót z przeglądarki niczego nie przypina (ADR 0050).
+		assertThat(linkRepository.findByUserIdAndProvider(user.userId(), SpotifyProvider.NAME)).isEmpty();
+		complete(user, ticket).andExpect(status().isNoContent());
+		assertThat(linkRepository.findByUserIdAndProvider(user.userId(), SpotifyProvider.NAME)).isPresent();
+		return user;
+	}
+
+	/**
+	 * Sedno ADR 0050. Autor linku zaczyna łączenie na własnym koncie i podsyła
+	 * adres autoryzacji ofierze; jej przeglądarka wraca z jej kodem. Wcześniej
+	 * callback przypinał wtedy Spotify ofiary do konta autora linku, który czytał
+	 * potem, czego ofiara słucha.
+	 */
+	@Test
+	void linkSentByAnotherAccount_attachesNothing() throws Exception {
+		ConnectedUser author = register("spotify-csrf-author@songly.io");
+		ConnectedUser victim = register("spotify-csrf-victim@songly.io");
+		String authorsState = beginConnect(author);
+
+		String ticket = callback(authorsState, "victims-code");
+		// Bilet trafia do aplikacji ofiary, zalogowanej na jej konto.
+		complete(victim, ticket).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("INVALID_CONNECT_TICKET"));
+		// Autor linku zna tylko state, a state biletem nie jest. Bilet z kolei
+		// zginął przy pierwszej próbie, więc nawet przechwycony już nie zadziała.
+		complete(author, authorsState).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("INVALID_CONNECT_TICKET"));
+		complete(author, ticket).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("INVALID_CONNECT_TICKET"));
+
+		assertThat(linkRepository.findByUserIdAndProvider(author.userId(), SpotifyProvider.NAME)).isEmpty();
+		assertThat(linkRepository.findByUserIdAndProvider(victim.userId(), SpotifyProvider.NAME)).isEmpty();
+	}
+
+	@Test
+	void ticketIsSingleUse() throws Exception {
+		ConnectedUser user = connectSpotify("spotify-ticket-once@songly.io");
+		String ticket = callback(beginConnect(user), "second-code");
+		complete(user, ticket).andExpect(status().isNoContent());
+
+		complete(user, ticket).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("INVALID_CONNECT_TICKET"));
+	}
+
+	@Test
+	void blankTicket_isRejectedAsValidationError() throws Exception {
+		ConnectedUser user = register("spotify-ticket-blank@songly.io");
+
+		complete(user, "").andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 	}
 
 	@Test
@@ -201,22 +275,19 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 		assertThat(tokenEncryptor.decrypt(link.getRefreshTokenEncrypted())).isEqualTo("rotated-refresh");
 	}
 
+	/**
+	 * Kod wymieniamy dopiero przy dokończeniu, więc jego błąd wraca jako zwykła
+	 * odpowiedź API do aplikacji, a nie przez przekierowanie przeglądarki.
+	 */
 	@Test
 	void staleAuthorizationCode_returnsBadRequest() throws Exception {
-		MvcResult registration = registerAndVerify("spotify-stale-code@songly.io", "password123");
-		String accessToken = objectMapper.readTree(registration.getResponse().getContentAsString()).get("accessToken")
-				.asText();
-		MvcResult connect = mockMvc
-				.perform(post("/api/v1/now-playing/spotify/connect").header("Authorization", "Bearer " + accessToken))
-				.andExpect(status().isOk()).andReturn();
-		String authorizeUrl = objectMapper.readTree(connect.getResponse().getContentAsString()).get("authorizeUrl")
-				.asText();
-		String state = UriComponentsBuilder.fromUriString(authorizeUrl).build().getQueryParams().getFirst("state");
+		ConnectedUser user = register("spotify-stale-code@songly.io");
+		String ticket = callback(beginConnect(user), "stale");
 		tokenResponder = json(400, """
 				{"error":"invalid_grant","error_description":"Invalid authorization code"}""");
 
-		mockMvc.perform(get("/api/v1/now-playing/spotify/callback").param("code", "stale").param("state", state))
-				.andExpect(status().isFound()).andExpect(header().string("Location",
-						"songly://now-playing/spotify?result=error&code=INVALID_AUTHORIZATION_CODE"));
+		complete(user, ticket).andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("INVALID_AUTHORIZATION_CODE"));
+		assertThat(linkRepository.findByUserIdAndProvider(user.userId(), SpotifyProvider.NAME)).isEmpty();
 	}
 }

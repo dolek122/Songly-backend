@@ -23,4 +23,13 @@ public abstract class ApiException extends RuntimeException {
 	public String getCode() {
 		return code;
 	}
+
+	/**
+	 * Za ile sekund wolno spróbować ponownie, dla odpowiedzi 429. {@code null} =
+	 * bez nagłówka {@code Retry-After}. Bez niego klient nie wie, kiedy wrócić, i
+	 * dobija się w kółko — czyli robi to, przed czym limit ma chronić.
+	 */
+	public Long getRetryAfterSeconds() {
+		return null;
+	}
 }

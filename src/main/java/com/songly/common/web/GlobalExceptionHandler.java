@@ -8,6 +8,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -31,7 +32,11 @@ class GlobalExceptionHandler {
 
 	@ExceptionHandler(ApiException.class)
 	ResponseEntity<ApiError> handleApiException(ApiException ex, HttpServletRequest request) {
-		return ResponseEntity.status(ex.getStatus()).body(toApiError(ex.getCode(), ex.getMessage(), request));
+		ResponseEntity.BodyBuilder response = ResponseEntity.status(ex.getStatus());
+		if (ex.getRetryAfterSeconds() != null) {
+			response.header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()));
+		}
+		return response.body(toApiError(ex.getCode(), ex.getMessage(), request));
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)

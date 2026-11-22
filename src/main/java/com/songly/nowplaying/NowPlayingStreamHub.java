@@ -116,6 +116,19 @@ class NowPlayingStreamHub {
 		}
 	}
 
+	/**
+	 * Zamyka wszystkie strumienie użytkownika na tej instancji. Po usunięciu konta
+	 * (ADR 0052) strumień i tak nie niósłby już niczego, bo znajomości znikają
+	 * razem z kontem, ale trzymałby połączenie i miejsce w limicie do swojego
+	 * timeoutu.
+	 */
+	void closeAll(UUID userId) {
+		Set<SseEmitter> userEmitters = emitters.remove(userId);
+		if (userEmitters != null) {
+			userEmitters.forEach(SseEmitter::complete);
+		}
+	}
+
 	/** Czy użytkownik ma choć jeden otwarty strumień (kogoś, kto go obserwuje). */
 	boolean hasSubscribers(UUID userId) {
 		return emitters.containsKey(userId);

@@ -1,16 +1,9 @@
 package com.songly.common.mail;
 
-import java.time.Duration;
-import java.util.Map;
-import java.util.concurrent.LinkedBlockingQueue;
+import com.songly.common.concurrent.BoundedExecutor;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
 
 /**
  * Wysyłka poza wątkiem żądania (ADR 0041). Odpowiedź HTTP nie czeka na serwer
@@ -38,39 +31,28 @@ class AsyncMailSender implements MailSender, AutoCloseable {
 
 	private static final Logger log = LoggerFactory.getLogger(AsyncMailSender.class);
 
-	/** Ile czekamy przy zamykaniu aplikacji na wiadomości już przyjęte. */
-	private static final Duration SHUTDOWN_GRACE = Duration.ofSeconds(30);
-
 	private final MailSender delegate;
-	private final ThreadPoolExecutor executor;
+	private final BoundedExecutor executor;
 
 	AsyncMailSender(MailSender delegate, int threads, int queueCapacity) {
 		this.delegate = delegate;
-		this.executor = new ThreadPoolExecutor(threads, threads, 0, TimeUnit.MILLISECONDS,
-				new LinkedBlockingQueue<>(queueCapacity), new MailThreadFactory(),
-				new ThreadPoolExecutor.AbortPolicy());
+		this.executor = new BoundedExecutor("mail-sender", threads, queueCapacity);
 	}
 
 	@Override
 	public void send(String to, String subject, String body) {
-		Map<String, String> context = MDC.getCopyOfContextMap();
 		try {
-			executor.execute(() -> deliver(to, subject, body, context));
+			executor.execute(() -> deliver(to, subject, body));
 		} catch (RejectedExecutionException ex) {
 			throw new MailDeliveryException("Kolejka wysyłki e-maili jest pełna", ex);
 		}
 	}
 
-	private void deliver(String to, String subject, String body, Map<String, String> context) {
-		if (context != null) {
-			MDC.setContextMap(context);
-		}
+	private void deliver(String to, String subject, String body) {
 		try {
 			delegate.send(to, subject, body);
 		} catch (RuntimeException ex) {
 			log.error("Nie udało się wysłać wiadomości e-mail", ex);
-		} finally {
-			MDC.clear();
 		}
 	}
 
@@ -81,26 +63,6 @@ class AsyncMailSender implements MailSender, AutoCloseable {
 	 */
 	@Override
 	public void close() throws InterruptedException {
-		executor.shutdown();
-		if (!executor.awaitTermination(SHUTDOWN_GRACE.toMillis(), TimeUnit.MILLISECONDS)) {
-			int dropped = executor.shutdownNow().size();
-			log.warn("Zamknięcie aplikacji przerwało wysyłkę e-maili, niewysłanych: {}", dropped);
-		}
-	}
-
-	/**
-	 * Wątki demony z czytelną nazwą: demon nie zatrzyma JVM, gdyby zamknięcie
-	 * kontekstu się nie wydarzyło, a nazwa mówi w zrzucie wątków, co tu robią.
-	 */
-	private static final class MailThreadFactory implements ThreadFactory {
-
-		private final AtomicInteger counter = new AtomicInteger();
-
-		@Override
-		public Thread newThread(Runnable runnable) {
-			Thread thread = new Thread(runnable, "mail-sender-" + counter.incrementAndGet());
-			thread.setDaemon(true);
-			return thread;
-		}
+		executor.close();
 	}
 }

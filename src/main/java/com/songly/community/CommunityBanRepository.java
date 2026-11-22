@@ -1,16 +1,30 @@
 package com.songly.community;
 
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 interface CommunityBanRepository extends JpaRepository<CommunityBan, CommunityBanId> {
+
+	/**
+	 * Ban z blokadą wiersza do końca transakcji (ADR 0052). Każda decyzja o banie
+	 * sprawdza jego stan, a potem go zmienia i publikuje zdarzenie. Bez blokady
+	 * równoległe żądania widziały ten sam stan wyjściowy i każde publikowało własne
+	 * zdarzenie: trzy odwołania naraz dawały dwa przyjęte i dwa powiadomienia dla
+	 * moderacji.
+	 */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select b from CommunityBan b where b.communityId = :communityId and b.userId = :userId")
+	Optional<CommunityBan> findForUpdate(@Param("communityId") UUID communityId, @Param("userId") UUID userId);
 
 	/**
 	 * Czy ban <b>aktywny</b> — wygasły nie liczy się nigdzie (ADR 0014). Wygasanie

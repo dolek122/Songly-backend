@@ -9,6 +9,7 @@ class NowPlayingProperties {
 	private String tokenEncryptionKey;
 	private Duration cacheTtl = Duration.ofSeconds(45);
 	private Duration oauthStateTtl = Duration.ofMinutes(10);
+	private Duration oauthTicketTtl = Duration.ofMinutes(5);
 	private Duration manualStatusTtl = Duration.ofHours(3);
 	private Duration announcedTtl = Duration.ofHours(6);
 	private String connectResultUrl = "songly://now-playing/spotify";
@@ -38,6 +39,14 @@ class NowPlayingProperties {
 
 	void setOauthStateTtl(Duration oauthStateTtl) {
 		this.oauthStateTtl = oauthStateTtl;
+	}
+
+	Duration getOauthTicketTtl() {
+		return oauthTicketTtl;
+	}
+
+	void setOauthTicketTtl(Duration oauthTicketTtl) {
+		this.oauthTicketTtl = oauthTicketTtl;
 	}
 
 	Duration getManualStatusTtl() {

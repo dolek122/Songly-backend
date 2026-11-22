@@ -121,7 +121,8 @@ jednocześnie lista kontrolna do ustawienia na serwerze. Najważniejsze:
 | `MAIL_PROVIDER`, `SPRING_MAIL_*`, `MAIL_FROM` | wysyłka maili (`smtp`) | `log` |
 | `PUSH_PROVIDER`, `FCM_CREDENTIALS_JSON` | pushe przez Firebase (`fcm`) | `log` |
 | `STORAGE_*` | magazyn plików S3/R2 | domyślne pasują do MinIO |
-| `FORWARD_HEADERS_STRATEGY` | `framework` za zaufanym proxy (Render), inaczej rate limiter widzi jeden adres IP | `none` |
+| `FORWARD_HEADERS_STRATEGY` | `native` za zaufanym proxy (Render), inaczej rate limiter widzi jeden adres IP | `none` |
+| `JDK_JAVA_OPTIONS` | flagi JVM; obraz ustawia wartości pod 512 MB (ADR 0051), na większym planie nadpisz | — |
 
 **Sekretów nie commitujemy.** `.env.example` zawiera wyłącznie placeholdery.
 
@@ -171,6 +172,11 @@ Staging działa na Renderze pod https://songly-backend-q7zm.onrender.com, a cał
 
 Darmowy plan usypia usługę po ok. 15 minutach bez ruchu. Pierwsze żądanie po
 przebudzeniu trwa wtedy 30–60 s.
+
+Render sprawdza `/actuator/health/readiness`, czyli stan aplikacji i bazy. Redis
+i poczta są fail-open, więc ich awaria nie zdejmuje instancji z ruchu. Pełny
+stan pokazuje `/actuator/health`. Obraz ustawia flagi JVM pod limit 512 MB
+darmowego planu (ADR 0051).
 
 Zmienne oznaczone w `render.yaml` jako `sync: false` (sekrety, Spotify, SMTP,
 Firebase, magazyn plików) ustawiasz ręcznie w panelu Rendera. Kilka ustawień

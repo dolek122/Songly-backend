@@ -18,6 +18,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class CommunityService implements CommunityMembership, CommunityDirectory {
+
+	/** Indeks z V34, który rozstrzyga wyścig o nazwę (ADR 0052). */
+	private static final String NAME_INDEX = "uq_communities_name_lower";
 
 	private final CommunityRepository communityRepository;
 	private final CommunityMemberRepository memberRepository;
@@ -50,6 +54,7 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		Instant now = Instant.now();
 		Community community = new Community(UUID.randomUUID(), name, description, ownerId, now);
 		communityRepository.save(community);
+		flushRespectingUniqueName();
 		memberRepository.save(new CommunityMember(community.getId(), ownerId, CommunityRole.OWNER, now));
 		return toResponse(community, 1, CommunityRole.OWNER);
 	}
@@ -62,8 +67,27 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 			throw new CommunityNameTakenException();
 		}
 		community.update(name, description);
+		flushRespectingUniqueName();
 		return toResponse(community, memberRepository.countByCommunityId(communityId),
 				roleOf(communityId, requesterId));
+	}
+
+	/**
+	 * Sprawdzenie nazwy przed zapisem nie wystarcza przy dwóch żądaniach naraz:
+	 * żadne nie widzi jeszcze wiersza drugiego. Rozstrzyga indeks na
+	 * {@code lower(name)} (ADR 0052), a ten zapis zamienia jego naruszenie w ten
+	 * sam błąd, który dostałby drugi klikający po kolei, zamiast ogólnego 409.
+	 */
+	private void flushRespectingUniqueName() {
+		try {
+			communityRepository.flush();
+		} catch (DataIntegrityViolationException ex) {
+			String cause = ex.getMostSpecificCause().getMessage();
+			if (cause != null && cause.contains(NAME_INDEX)) {
+				throw new CommunityNameTakenException();
+			}
+			throw ex;
+		}
 	}
 
 	@Transactional
@@ -221,7 +245,7 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		memberRepository.findById(new CommunityMemberId(communityId, targetUserId)).ifPresent(memberRepository::delete);
 		Instant now = Instant.now();
 		Instant expiresAt = durationDays == null ? null : now.plus(Duration.ofDays(durationDays));
-		CommunityBan existing = banRepository.findById(new CommunityBanId(communityId, targetUserId)).orElse(null);
+		CommunityBan existing = banRepository.findForUpdate(communityId, targetUserId).orElse(null);
 		// Zdarzenie leci tylko przy banie, który zmienia stan z „niezbanowany" na
 		// „zbanowany" — czyli przy pierwszym i przy nadpisaniu wygasłego. Powtórzone
 		// kliknięcie na aktywnym banie nie dokłada powiadomienia o tym samym.
@@ -250,7 +274,7 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 	void unban(UUID communityId, UUID requesterId, UUID targetUserId) {
 		requireCommunity(communityId);
 		requireModerator(communityId, requesterId);
-		banRepository.findById(new CommunityBanId(communityId, targetUserId)).ifPresent(ban -> {
+		banRepository.findForUpdate(communityId, targetUserId).ifPresent(ban -> {
 			Instant now = Instant.now();
 			boolean wasActive = ban.isActiveAt(now);
 			if (wasActive && ban.hasPendingAppeal()) {
@@ -278,8 +302,8 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 	void appealBan(UUID communityId, UUID userId, String text) {
 		requireCommunity(communityId);
 		Instant now = Instant.now();
-		CommunityBan ban = banRepository.findById(new CommunityBanId(communityId, userId))
-				.filter(existing -> existing.isActiveAt(now)).orElseThrow(NoBanToAppealException::new);
+		CommunityBan ban = banRepository.findForUpdate(communityId, userId).filter(existing -> existing.isActiveAt(now))
+				.orElseThrow(NoBanToAppealException::new);
 		if (ban.hasAppeal()) {
 			throw new BanAppealAlreadySubmittedException();
 		}
@@ -302,8 +326,8 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 	void escalateBanAppeal(UUID communityId, UUID userId) {
 		requireCommunity(communityId);
 		Instant now = Instant.now();
-		CommunityBan ban = banRepository.findById(new CommunityBanId(communityId, userId))
-				.filter(existing -> existing.isActiveAt(now)).orElseThrow(NoBanToAppealException::new);
+		CommunityBan ban = banRepository.findForUpdate(communityId, userId).filter(existing -> existing.isActiveAt(now))
+				.orElseThrow(NoBanToAppealException::new);
 		if (!ban.hasRejectedAppeal()) {
 			throw new BanAppealNotEscalatableException();
 		}
@@ -344,7 +368,7 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 	void overturnBan(UUID communityId, UUID targetUserId, UUID adminId) {
 		requireCommunity(communityId);
 		Instant now = Instant.now();
-		CommunityBan ban = banRepository.findById(new CommunityBanId(communityId, targetUserId))
+		CommunityBan ban = banRepository.findForUpdate(communityId, targetUserId)
 				.filter(existing -> existing.isActiveAt(now)).filter(CommunityBan::hasEscalatedAppeal)
 				.orElseThrow(EscalatedAppealNotFoundException::new);
 		banRepository.delete(ban);
@@ -360,7 +384,7 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 	void rejectBanAppealEscalation(UUID communityId, UUID targetUserId, UUID adminId) {
 		requireCommunity(communityId);
 		Instant now = Instant.now();
-		CommunityBan ban = banRepository.findById(new CommunityBanId(communityId, targetUserId))
+		CommunityBan ban = banRepository.findForUpdate(communityId, targetUserId)
 				.filter(existing -> existing.isActiveAt(now)).filter(CommunityBan::hasEscalatedAppeal)
 				.orElseThrow(EscalatedAppealNotFoundException::new);
 		ban.rejectEscalation();
@@ -378,7 +402,7 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		requireCommunity(communityId);
 		requireModerator(communityId, requesterId);
 		Instant now = Instant.now();
-		CommunityBan ban = banRepository.findById(new CommunityBanId(communityId, targetUserId))
+		CommunityBan ban = banRepository.findForUpdate(communityId, targetUserId)
 				.filter(existing -> existing.isActiveAt(now)).filter(CommunityBan::hasPendingAppeal)
 				.orElseThrow(BanAppealNotFoundException::new);
 		ban.rejectAppeal();

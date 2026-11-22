@@ -35,6 +35,9 @@ class AuthServiceTest {
 	private UserRepository userRepository;
 
 	@Mock
+	private LoginAttemptLimiter loginAttemptLimiter;
+
+	@Mock
 	private SessionRepository sessionRepository;
 
 	@Mock
@@ -59,7 +62,7 @@ class AuthServiceTest {
 	@BeforeEach
 	void setUp() {
 		authService = new AuthService(userRepository, sessionRepository, passwordResetTokenRepository, passwordEncoder,
-				tokenIssuer, eventPublisher, meterRegistry, eraser());
+				tokenIssuer, eventPublisher, meterRegistry, eraser(), loginAttemptLimiter);
 	}
 
 	/**
@@ -124,7 +127,7 @@ class AuthServiceTest {
 	void login_spendsBcrypt_evenWhenUserNotFound() {
 		PasswordEncoder spyEncoder = spy(new BCryptPasswordEncoder());
 		AuthService service = new AuthService(userRepository, sessionRepository, passwordResetTokenRepository,
-				spyEncoder, tokenIssuer, eventPublisher, meterRegistry, eraser());
+				spyEncoder, tokenIssuer, eventPublisher, meterRegistry, eraser(), loginAttemptLimiter);
 		when(userRepository.findByEmail("missing@songly.io")).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> service.login(new LoginRequest("missing@songly.io", "password123")))
@@ -150,7 +153,7 @@ class AuthServiceTest {
 		Session session = new Session(UUID.randomUUID(), userId, "hash", Instant.now(),
 				Instant.now().plusSeconds(3600));
 		User user = new User(userId, "user@songly.io", "hash", Instant.now());
-		when(sessionRepository.findByRefreshTokenHash(anyString())).thenReturn(Optional.of(session));
+		when(sessionRepository.findByRefreshTokenHashForUpdate(anyString())).thenReturn(Optional.of(session));
 		when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 		when(tokenIssuer.issueFor(any())).thenReturn(tokensWithAccess("new-access-token"));
 
@@ -163,7 +166,7 @@ class AuthServiceTest {
 
 	@Test
 	void refresh_throws_whenTokenUnknown() {
-		when(sessionRepository.findByRefreshTokenHash(anyString())).thenReturn(Optional.empty());
+		when(sessionRepository.findByRefreshTokenHashForUpdate(anyString())).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> authService.refresh(new RefreshRequest("unknown-token")))
 				.isInstanceOf(InvalidRefreshTokenException.class);
@@ -178,7 +181,7 @@ class AuthServiceTest {
 	void refresh_throws_whenSessionExpired_withoutTreatingItAsReuse() {
 		Session expired = new Session(UUID.randomUUID(), UUID.randomUUID(), "hash", Instant.now().minusSeconds(7200),
 				Instant.now().minusSeconds(3600));
-		when(sessionRepository.findByRefreshTokenHash(anyString())).thenReturn(Optional.of(expired));
+		when(sessionRepository.findByRefreshTokenHashForUpdate(anyString())).thenReturn(Optional.of(expired));
 
 		assertThatThrownBy(() -> authService.refresh(new RefreshRequest("expired-token")))
 				.isInstanceOf(InvalidRefreshTokenException.class)
@@ -199,7 +202,7 @@ class AuthServiceTest {
 		Session revoked = new Session(UUID.randomUUID(), userId, "hash", Instant.now(),
 				Instant.now().plusSeconds(3600));
 		revoked.revoke(Instant.now());
-		when(sessionRepository.findByRefreshTokenHash(anyString())).thenReturn(Optional.of(revoked));
+		when(sessionRepository.findByRefreshTokenHashForUpdate(anyString())).thenReturn(Optional.of(revoked));
 
 		assertThatThrownBy(() -> authService.refresh(new RefreshRequest("revoked-token")))
 				.isInstanceOf(RefreshTokenReuseDetectedException.class);
@@ -217,7 +220,7 @@ class AuthServiceTest {
 		Session revoked = new Session(UUID.randomUUID(), UUID.randomUUID(), "hash", Instant.now(),
 				Instant.now().plusSeconds(3600));
 		revoked.revoke(Instant.now());
-		when(sessionRepository.findByRefreshTokenHash(anyString())).thenReturn(Optional.of(revoked));
+		when(sessionRepository.findByRefreshTokenHashForUpdate(anyString())).thenReturn(Optional.of(revoked));
 
 		RefreshTokenReuseDetectedException reuse = catchThrowableOfType(
 				() -> authService.refresh(new RefreshRequest("revoked-token")),
