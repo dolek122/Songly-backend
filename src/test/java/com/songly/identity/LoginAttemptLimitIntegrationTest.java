@@ -18,10 +18,6 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
-/**
- * Limit prób logowania na adres (ADR 0051). Limit per IP jest tu wyłączony, bo
- * ten test udaje atak rozproszony, przed którym tamten nie chroni.
- */
 @TestPropertySource(properties = {"songly.auth.login.account-limit=3", "songly.security.rate-limit.enabled=false"})
 class LoginAttemptLimitIntegrationTest extends AbstractIntegrationTest {
 
@@ -38,14 +34,11 @@ class LoginAttemptLimitIntegrationTest extends AbstractIntegrationTest {
 			login(email, "zle-haslo").andExpect(status().isUnauthorized());
 		}
 
-		// Poprawne hasło też nie przechodzi: inaczej limit byłby wyrocznią na
-		// trafienie, a atak szedłby dalej po cichu.
 		login(email, PASSWORD).andExpect(status().isTooManyRequests())
 				.andExpect(jsonPath("$.code").value("LOGIN_RATE_LIMIT_EXCEEDED"))
 				.andExpect(header().exists(HttpHeaders.RETRY_AFTER));
 	}
 
-	/** Odmowa nie może mówić, czy pod adresem jest konto. */
 	@Test
 	void addressWithoutAccount_isLimitedExactlyLikeExistingOne() throws Exception {
 		String existing = address("existing");

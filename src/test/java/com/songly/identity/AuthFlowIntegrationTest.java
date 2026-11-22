@@ -54,11 +54,6 @@ class AuthFlowIntegrationTest extends AbstractIntegrationTest {
 				{"refreshToken":"%s"}""".formatted(rotatedRefreshToken))).andExpect(status().isUnauthorized());
 	}
 
-	/**
-	 * Rejestracja na zajęty adres wygląda <b>dokładnie tak samo</b> jak na wolny.
-	 * Wcześniejsze 409 {@code EMAIL_ALREADY_USED} było wyrocznią: wystarczyło
-	 * wpisywać kolejne adresy, żeby wylistować, kto ma tu konto (ADR 0009).
-	 */
 	@Test
 	void register_looksIdentical_whenEmailAlreadyUsed() throws Exception {
 		String email = "duplicate@songly.io";
@@ -67,8 +62,6 @@ class AuthFlowIntegrationTest extends AbstractIntegrationTest {
 		mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
 				{"email":"%s","password":"inne-haslo-123"}""".formatted(email))).andExpect(status().isAccepted());
 
-		// Konto zostaje przy swoim haśle — zgłoszenie na zajęty adres niczego nie
-		// tworzy i niczego nie nadpisuje.
 		mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content("""
 				{"email":"%s","password":"inne-haslo-123"}""".formatted(email))).andExpect(status().isUnauthorized());
 		mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content("""

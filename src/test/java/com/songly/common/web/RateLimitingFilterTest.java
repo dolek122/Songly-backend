@@ -42,13 +42,10 @@ class RateLimitingFilterTest {
 
 	private final RateLimitProperties properties = new RateLimitProperties();
 
-	/** Prawdziwy rejestr, nie mock — pozwala sprawdzić, ile faktycznie zliczył. */
 	private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
 
 	private RateLimitingFilter filterFor(List<String> protectedPaths) {
 		properties.setProtectedPaths(protectedPaths);
-		// Wzorce parsują się w konstruktorze, więc filtr musi powstać po ustawieniu
-		// propercji — inaczej test sprawdzałby domyślną listę.
 		return new RateLimitingFilter(new FixedWindowCounter(redisTemplate), properties, new ObjectMapper(),
 				meterRegistry);
 	}
@@ -81,11 +78,6 @@ class RateLimitingFilterTest {
 		verifyNoInteractions(redisTemplate);
 	}
 
-	/**
-	 * Wzorzec z gwiazdką musi dzielić jedno okno na wszystkie pasujące ścieżki.
-	 * Licznik pod konkretnym URI dałby każdemu identyfikatorowi własny limit, czyli
-	 * limit nie ograniczałby niczego.
-	 */
 	@Test
 	void countsAllPathsMatchingOnePattern_inTheSameWindow() throws Exception {
 		RateLimitingFilter filter = filterFor(List.of("/api/v1/things/*"));
@@ -98,11 +90,6 @@ class RateLimitingFilterTest {
 		verify(valueOperations, times(2)).increment("rate-limit:/api/v1/things/*:10.0.0.1");
 	}
 
-	/**
-	 * Redis to zabezpieczenie, nie warunek poprawności — jego awaria nie może
-	 * odciąć wszystkim logowania. Wcześniej wyjątek leciał wyżej i kończył się
-	 * 500-tką na ścieżce auth.
-	 */
 	@Test
 	void letsRequestThrough_whenRedisIsDown() throws Exception {
 		RateLimitingFilter filter = filterFor(List.of("/api/v1/auth/login"));
@@ -127,8 +114,6 @@ class RateLimitingFilterTest {
 		assertThat(response.getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
 		assertThat(response.getHeader(HttpHeaders.RETRY_AFTER)).isEqualTo("37");
 		assertThat(response.getContentAsString()).contains("RATE_LIMIT_EXCEEDED");
-		// Trafienie w limit musi być widoczne w metrykach — inaczej atak na publiczny
-		// endpoint przechodzi bez śladu na dashboardzie.
 		assertThat(meterRegistry.counter("songly.rate.limit.rejected", "path", "/api/v1/auth/login").count())
 				.isEqualTo(1);
 	}
@@ -145,8 +130,6 @@ class RateLimitingFilterTest {
 		MockHttpServletResponse response = call(filter, "/api/v1/auth/login");
 
 		assertThat(response.getHeader(HttpHeaders.RETRY_AFTER)).isEqualTo("120");
-		// -1 to licznik bez TTL (INCR przeszło, EXPIRE nie) — bez naprawy ten adres
-		// byłby odcięty na zawsze.
 		verify(redisTemplate).expire("rate-limit:/api/v1/auth/login:10.0.0.1", Duration.ofMinutes(2));
 	}
 }

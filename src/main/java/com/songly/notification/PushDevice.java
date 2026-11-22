@@ -9,7 +9,6 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
-/** Urządzenie odbierające pushe (ADR 0040). Kluczem jest token FCM. */
 @Entity
 @Table(name = "push_devices")
 class PushDevice {
@@ -45,7 +44,6 @@ class PushDevice {
 		return userId;
 	}
 
-	/** Ten sam telefon, być może inne konto — patrz komentarz w migracji V28. */
 	void assignTo(UUID userId, PushPlatform platform, Instant now) {
 		this.userId = userId;
 		this.platform = platform;

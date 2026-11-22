@@ -7,13 +7,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-/**
- * Wiadomość z linkiem do potwierdzenia usunięcia konta (ADR 0043).
- * {@code AFTER_COMMIT} i łykanie błędu wysyłki z tych samych powodów co w
- * {@link PasswordResetMailer}: link musi prowadzić do tokenu, który naprawdę
- * jest w bazie, a błąd poczty nie może zamienić się w odpowiedź wyróżniającą
- * istniejące konta.
- */
 @Component
 class AccountDeletionMailer {
 

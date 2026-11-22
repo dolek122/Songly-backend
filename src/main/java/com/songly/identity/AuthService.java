@@ -19,24 +19,8 @@ class AuthService {
 
 	private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
-	/**
-	 * W Prometheusie: {@code songly_auth_login_attempts_total{outcome="..."}} —
-	 * nagły skok {@code failure} to sygnał brute-force'u, widoczny bez parsowania
-	 * logów.
-	 */
 	private static final String LOGIN_ATTEMPTS_METRIC = "songly.auth.login.attempts";
 
-	/**
-	 * {@code songly_auth_refresh_attempts_total{outcome="reuse"}} to sygnał
-	 * kradzieży tokenu — w zdrowym ruchu ta seria stoi na zerze, więc każdy jej
-	 * przyrost jest wart uwagi.
-	 *
-	 * <p>
-	 * Powody niepowodzenia rozdzielamy tutaj, w przeciwieństwie do logowania
-	 * ({@code outcome} przy loginie celowo nie mówi, czy konto istnieje).
-	 * Rozróżnienie „reuse" od „invalid" nie zdradza niczego o cudzych kontach —
-	 * mówi o stanie ataku, i o to właśnie chodzi.
-	 */
 	private static final String REFRESH_ATTEMPTS_METRIC = "songly.auth.refresh.attempts";
 
 	private final UserRepository userRepository;
@@ -49,11 +33,6 @@ class AuthService {
 	private final AccountEraser accountEraser;
 	private final LoginAttemptLimiter loginAttemptLimiter;
 
-	/**
-	 * Skrót, z którym porównujemy hasło, gdy konta nie ma (ADR 0041). Liczony raz
-	 * przy starcie tym samym enkoderem co prawdziwe hasła, więc ma ten sam koszt
-	 * bcrypta.
-	 */
 	private final String unknownAccountHash;
 
 	AuthService(UserRepository userRepository, SessionRepository sessionRepository,
@@ -72,31 +51,11 @@ class AuthService {
 		this.unknownAccountHash = passwordEncoder.encode(SecureTokens.generate());
 	}
 
-	/**
-	 * Wynik każdej próby logowania trafia do logu i do licznika Micrometera.
-	 * Wcześniej brute-force na konkretne konto nie zostawiał żadnego śladu — rate
-	 * limiter go hamował, ale nikt nie mógł zauważyć, że w ogóle miał miejsce.
-	 *
-	 * <p>
-	 * Świadomie <b>bez adresu e-mail</b> w logach: identyfikujemy po
-	 * {@code userId}, a przy nieistniejącym koncie nie logujemy niczego, co by je
-	 * opisywało. Logi krążą po systemach, do których RODO stosuje się tak samo jak
-	 * do bazy (Claude.md §9), a do zbadania ataku wystarczy licznik i identyfikator
-	 * żądania.
-	 *
-	 * <p>
-	 * <b>Przy nieznanym koncie też liczymy bcrypt</b> (ADR 0041). Ten sam kod 401
-	 * dla obu porażek nie wystarcza, jeśli jedna kosztuje zapytanie, a druga
-	 * dodatkowo bcrypt: czas odpowiedzi sam mówiłby, czy pod adresem jest konto.
-	 * Rejestracja broni się przed tym tak samo (ADR 0009).
-	 */
 	@Transactional
 	AuthTokensResponse login(LoginRequest request) {
 		try {
 			loginAttemptLimiter.recordAttempt(request.email());
 		} catch (LoginRateLimitExceededException ex) {
-			// Bez userId: rozpoznanie konta zdradzałoby w logu więcej, niż potrzeba
-			// do zauważenia ataku, a licznik i requestId wystarczą (§13).
 			loginOutcome("throttled").increment();
 			log.warn("Limit prób logowania na adres przekroczony");
 			throw ex;
@@ -126,39 +85,9 @@ class AuthService {
 		return meterRegistry.counter(LOGIN_ATTEMPTS_METRIC, "outcome", outcome);
 	}
 
-	/**
-	 * Rotacja refresh tokenu z <b>wykrywaniem ponownego użycia</b>. Sama rotacja
-	 * (odwołanie starego tokenu przy wydaniu nowego) daje mniej, niż się wydaje:
-	 * bez tego sprawdzenia skradziony token dawał złodziejowi ważną sesję, a
-	 * prawowitemu użytkownikowi tylko ciche 401 przy następnym odświeżeniu — nikt
-	 * nie miał jak zauważyć, że doszło do kradzieży.
-	 *
-	 * <p>
-	 * Token po rotacji istnieje w jednym egzemplarzu i wolno go użyć raz. Podanie
-	 * <b>odwołanego</b> tokenu znaczy więc, że krąży kopia — nie wiadomo tylko, po
-	 * której stronie. Dlatego odwołujemy <b>wszystkie</b> sesje użytkownika:
-	 * złodziej traci swoją, użytkownik loguje się ponownie hasłem, którego złodziej
-	 * nie ma.
-	 *
-	 * <p>
-	 * Rozróżnienie „odwołany" od „wygasły" jest tu istotne. Wygaśnięcie to zwykły
-	 * upływ czasu i nie mówi niczego o kradzieży — traktowanie go jak nadużycia
-	 * wylogowywałoby ze wszystkich urządzeń każdego, kto wrócił do aplikacji po
-	 * miesiącu.
-	 *
-	 * <p>
-	 * {@code noRollbackFor} nie jest ozdobnikiem — ta sama pułapka co w
-	 * {@code SpotifyProvider} (§7): rewokacja dzieje się tuż przed rzuceniem
-	 * wyjątku, więc bez tego rollback cofnąłby ją w całości i wykrycie kradzieży
-	 * nie zostawiłoby żadnego skutku poza wpisem w logu. Sprawdzone przez usunięcie
-	 * tej flagi: czerwienieją wtedy dokładnie te dwa testy, które asertują, że
-	 * rewokacja przetrwała.
-	 */
 	@Transactional(noRollbackFor = RefreshTokenReuseDetectedException.class)
 	AuthTokensResponse refresh(RefreshRequest request) {
 		String hash = SecureTokens.hash(request.refreshToken());
-		// Z blokadą wiersza: równoległe odświeżenie tym samym tokenem czeka i trafia
-		// niżej w wykrywanie ponownego użycia, zamiast wydać drugi łańcuch (ADR 0052).
 		Session session = sessionRepository.findByRefreshTokenHashForUpdate(hash).orElseGet(() -> {
 			refreshOutcome("invalid").increment();
 			throw new InvalidRefreshTokenException();
@@ -191,26 +120,6 @@ class AuthService {
 				.ifPresent(session -> session.revoke(Instant.now()));
 	}
 
-	/**
-	 * Zmiana hasła. Wymaga podania obecnego hasła, tak samo jak usunięcie konta:
-	 * sam ważny access token nie wystarcza, bo mógł zostać przejęty — a to jest
-	 * dokładnie ta operacja, którą przejmujący chciałby wykonać.
-	 *
-	 * <p>
-	 * <b>Odwołujemy wszystkie sesje, łącznie z bieżącą.</b> Zmiana hasła po
-	 * kradzieży, która zostawia złodziejowi ważny refresh token, nie jest zmianą
-	 * hasła — jest złudzeniem bezpieczeństwa. Bieżącej sesji nie da się zresztą
-	 * oszczędzić: access token nie niesie identyfikatora sesji, więc nie wiemy,
-	 * która z nich należy do pytającego. Użytkownik loguje się ponownie wszędzie,
-	 * co jest zachowaniem oczekiwanym po zmianie hasła.
-	 *
-	 * <p>
-	 * Czego to <b>nie</b> robi: wydane access tokeny żyją dalej aż do wygaśnięcia
-	 * (domyślnie 15 minut), bo JWT jest bezstanowy z założenia (§6). Zamknięcie
-	 * tego okna wymagałoby sprawdzania sesji przy każdym żądaniu, czyli oddania
-	 * właśnie tej bezstanowości. Rewokacja odcina odnawianie, a nie trwającą minutę
-	 * resztkę ważności.
-	 */
 	@Transactional
 	void changePassword(UUID userId, String currentPassword, String newPassword) {
 		User user = userRepository.findById(userId).orElseThrow(InvalidCredentialsException::new);
@@ -224,29 +133,16 @@ class AuthService {
 		user.changePassword(passwordEncoder.encode(newPassword));
 		int revoked = sessionRepository.revokeAllForUser(userId, Instant.now());
 		eventPublisher.publishEvent(new UserSessionsRevokedEvent(userId));
-		// Oczekujący link resetujący traci ważność razem ze starym hasłem. Zwykle
-		// jest tam dlatego, że ktoś obcy zamówił reset — zostawienie go żywego przez
-		// pół godziny po tym, jak właściciel zareagował zmianą hasła, znaczyłoby, że
-		// reakcja niczego nie zamknęła.
 		passwordResetTokenRepository.deleteByUserId(userId);
 		log.info("Zmiana hasła konta {}, odwołane sesje: {}", userId, revoked);
 	}
 
-	/**
-	 * Wymaga ponownego podania hasła — sam ważny access token nie wystarcza na
-	 * akcję nieodwracalną (Claude.md §9, RODO — prawo do usunięcia konta). Samo
-	 * kasowanie robi {@link AccountEraser}, wspólny z drogą przez link z maila (ADR
-	 * 0043).
-	 */
 	@Transactional
 	void deleteAccount(UUID userId, String password) {
 		User user = userRepository.findById(userId).orElseThrow(InvalidCredentialsException::new);
 		if (!passwordEncoder.matches(password, user.getPasswordHash())) {
 			throw new InvalidCredentialsException();
 		}
-		// Nieodwracalna operacja obejmująca wszystkie moduły — jeśli kiedyś trzeba
-		// będzie odpowiedzieć na pytanie "co się stało z tym kontem", to jest jedyny
-		// ślad, jaki po niej zostaje.
 		log.warn("Usuwanie konta {} na żądanie użytkownika (RODO)", userId);
 		accountEraser.erase(user);
 	}

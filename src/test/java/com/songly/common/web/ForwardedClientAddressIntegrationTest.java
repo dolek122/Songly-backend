@@ -14,15 +14,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.TestPropertySource;
 
-/**
- * Adres klienta za proxy Rendera (ADR 0051). Prawdziwy Tomcat, bo
- * {@code RemoteIpValve} nie działa pod MockMvc.
- *
- * <p>
- * Test łączy się z {@code 127.0.0.1}, czyli z adresu, który Tomcat uznaje za
- * wewnętrzne proxy — dokładnie jak proxy Rendera. Klient wpisuje do nagłówków,
- * co chce, a proxy dopisuje prawdziwy adres na końcu {@code X-Forwarded-For}.
- */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(properties = {"server.forward-headers-strategy=native", "songly.security.rate-limit.limit=2"})
 class ForwardedClientAddressIntegrationTest extends AbstractIntegrationTest {
@@ -32,10 +23,6 @@ class ForwardedClientAddressIntegrationTest extends AbstractIntegrationTest {
 	@LocalServerPort
 	private int port;
 
-	/**
-	 * Przy {@code framework} każde żądanie ze zmyślonym adresem po lewej (albo w
-	 * {@code Forwarded}) dostawało świeże okno limitu.
-	 */
 	@Test
 	void spoofedAddresses_doNotOpenFreshRateLimitWindows() throws Exception {
 		List<Integer> statuses = new ArrayList<>();
@@ -46,7 +33,6 @@ class ForwardedClientAddressIntegrationTest extends AbstractIntegrationTest {
 		assertThat(statuses).containsExactly(401, 401, 429);
 	}
 
-	/** Przy {@code none} wszyscy klienci za proxy dzieliliby jedno okno. */
 	@Test
 	void clientsBehindProxy_haveSeparateWindows() throws Exception {
 		assertThat(refreshFrom("203.0.113.20", null)).isEqualTo(401);

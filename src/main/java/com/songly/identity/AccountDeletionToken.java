@@ -7,15 +7,6 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Jednorazowy token z linku „usuń moje konto" (ADR 0043), przechowywany
- * wyłącznie jako skrót — dokładnie jak token resetu hasła.
- *
- * <p>
- * Bez pola „zużyty", z tego samego powodu co {@link PasswordResetToken}: użycie
- * tokenu kasuje konto, a razem z nim wszystkie jego tokeny, więc ponowne
- * kliknięcie po prostu nie znajduje wiersza.
- */
 @Entity
 @Table(name = "account_deletion_tokens")
 class AccountDeletionToken {

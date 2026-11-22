@@ -190,12 +190,6 @@ class CommunityServiceTest {
 		verify(memberRepository, never()).delete(any(CommunityMember.class));
 	}
 
-	/**
-	 * Regresja na najłatwiejszą do przeoczenia „optymalizację": powrót do masowego
-	 * {@code deleteByOwnerId} omija cykl życia encji, więc nie poszłoby ani jedno
-	 * {@link CommunityDeletedEvent} — i posty w tych społecznościach zostałyby z
-	 * wiszącym kluczem obcym, wywalając usuwanie konta na błędzie FK.
-	 */
 	@Test
 	void deleteAccountData_announcesEveryOwnedCommunity() {
 		Community first = community();
@@ -218,8 +212,6 @@ class CommunityServiceTest {
 		communityService.delete(community.getId(), ownerId);
 
 		InOrder order = inOrder(eventPublisher, communityRepository);
-		// Kolejność jest istotna, nie kosmetyczna: posts.community_id ma FK do
-		// communities, więc content musi posprzątać przed samym DELETE-em.
 		order.verify(eventPublisher).publishEvent(new CommunityDeletedEvent(community.getId()));
 		order.verify(communityRepository).delete(community);
 	}

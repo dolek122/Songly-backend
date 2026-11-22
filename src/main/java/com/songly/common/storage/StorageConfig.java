@@ -23,9 +23,6 @@ class StorageConfig {
 						S3Configuration.builder().pathStyleAccessEnabled(properties.isPathStyleAccess()).build())
 				.credentialsProvider(StaticCredentialsProvider
 						.create(AwsBasicCredentials.create(properties.getAccessKey(), properties.getSecretKey())));
-		// Pusty endpoint znaczy prawdziwe AWS — SDK złoży adres z regionu sam. Nie da
-		// się tego wyrazić przez URI.create(""), stąd warunek zamiast wartości
-		// domyślnej.
 		if (!properties.getEndpoint().isBlank()) {
 			builder.endpointOverride(URI.create(properties.getEndpoint()));
 		}

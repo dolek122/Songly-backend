@@ -30,21 +30,12 @@ public class JwtService {
 		this.productionSecretsRequired = productionSecretsRequired;
 	}
 
-	/**
-	 * Sekret deweloperski z repo odpada tam, gdzie wymagane są prawdziwe sekrety: z
-	 * nim każdy podpisałby token dowolnego konta, także administratora.
-	 */
 	@PostConstruct
 	void init() {
 		DevSecrets.rejectDevValue(productionSecretsRequired, properties.getSecret(), "JWT_SECRET");
 		this.key = Keys.hmacShaKeyFor(properties.getSecret().getBytes(StandardCharsets.UTF_8));
 	}
 
-	/**
-	 * Sam identyfikator w {@code sub}, bez adresu e-mail. Serwer go z tokenu nie
-	 * czytał, a token ląduje w nagłówkach, logach proxy i raportach awarii klienta
-	 * — każdy z nich niósł przy tym adres (Claude.md §13, ADR 0046).
-	 */
 	public String generateAccessToken(UUID userId) {
 		Instant now = Instant.now();
 		return Jwts.builder().subject(userId.toString()).issuedAt(Date.from(now))

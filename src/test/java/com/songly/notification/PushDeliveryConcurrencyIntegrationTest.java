@@ -22,20 +22,6 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Wolny serwer pushy nie może trzymać połączeń z bazą (ADR 0051). Push wychodzi
- * z listenera {@code AFTER_COMMIT}, zanim żądanie odda swoje połączenia, więc
- * przy wysyłce w wątku żądania każde polubienie trzymało dwa połączenia przez
- * cały czas rozmowy z FCM. Pula ma tu 4 połączenia, a czekanie na nie jest
- * skrócone do 1 s, żeby wyczerpanie puli kończyło się błędem, a nie tylko
- * wolnym testem.
- *
- * <p>
- * Polubień naraz jest mniej niż połączeń w puli, i to celowo: przy większej
- * liczbie żądania zakleszczają się na zapisie do skrzynki ({@code REQUIRES_NEW}
- * z {@code AFTER_COMMIT}) bez względu na pushe. Przed tym chroni rozmiar puli
- * względem liczby wątków, nie ta klasa ({@code ConnectionPoolSizingTest}).
- */
 @TestPropertySource(properties = {"songly.notification.push.async-delivery=true",
 		"spring.datasource.hikari.connection-timeout=1000", "songly.security.rate-limit.enabled=false"})
 class PushDeliveryConcurrencyIntegrationTest extends AbstractIntegrationTest {
@@ -74,7 +60,6 @@ class PushDeliveryConcurrencyIntegrationTest extends AbstractIntegrationTest {
 		List<Integer> statuses = likeInParallel(postId, likers);
 
 		assertThat(statuses).as("statusy polubień").containsOnly(204);
-		// Pushe wychodzą w tle, ale wychodzą wszystkie.
 		long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
 		while (pushes.sentTo(phone).size() < LIKERS && System.nanoTime() < deadline) {
 			Thread.sleep(100);

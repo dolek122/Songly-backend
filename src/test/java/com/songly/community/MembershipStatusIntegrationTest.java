@@ -21,11 +21,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Własny status w społeczności (ADR 0015) — w tym jedyne miejsce, w którym
- * zbanowany widzi powód i termin swojego bana. Do tej pory powód czytali
- * wyłącznie moderatorzy (lista banów), a zbanowany dostawał sam fakt.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class MembershipStatusIntegrationTest extends AbstractIntegrationTest {
 
@@ -86,11 +81,6 @@ class MembershipStatusIntegrationTest extends AbstractIntegrationTest {
 		assertThat(status.get("ban").isNull()).isTrue();
 	}
 
-	/**
-	 * Sedno ADR 0015: zbanowany widzi powód i termin. Wcześniej powód czytali
-	 * wyłącznie moderatorzy, a decyzja docierała do adresata bez uzasadnienia —
-	 * czyli nie dało się jej ani zrozumieć, ani zakwestionować.
-	 */
 	@Test
 	void bannedUserSeesReasonAndTerm() throws Exception {
 		TestUser owner = user("memstatus-ban-owner@songly.io");
@@ -111,9 +101,6 @@ class MembershipStatusIntegrationTest extends AbstractIntegrationTest {
 		assertThat(ban.get("expiresAt").isNull()).isFalse();
 	}
 
-	/**
-	 * Ban bez powodu i bezterminowy: status jest, pola są nullami — nie 500-tką.
-	 */
 	@Test
 	void banWithoutReasonOrTermReadsAsBannedWithNulls() throws Exception {
 		TestUser owner = user("memstatus-noreason-owner@songly.io");
@@ -142,11 +129,6 @@ class MembershipStatusIntegrationTest extends AbstractIntegrationTest {
 		assertThat(status.get("ban").isNull()).isTrue();
 	}
 
-	/**
-	 * Wygasły ban czyta się jak NONE — spójnie z „wygasły ban nie liczy się
-	 * nigdzie" (ADR 0014). Pokazywanie go dalej jako BANNED myliłoby klienta,
-	 * któremu dołączenie właśnie zaczęło przechodzić.
-	 */
 	@Test
 	void expiredBanReadsAsNone() throws Exception {
 		TestUser owner = user("memstatus-exp-owner@songly.io");
@@ -165,8 +147,6 @@ class MembershipStatusIntegrationTest extends AbstractIntegrationTest {
 		assertThat(status.get("status").asText()).isEqualTo("NONE");
 		assertThat(status.get("ban").isNull()).isTrue();
 
-		// ...a po powrocie opisuje członkostwo, mimo że wygasły wiersz banu leży
-		// w tabeli dalej.
 		join(troll, communityId);
 		assertThat(membershipStatus(troll, communityId).get("status").asText()).isEqualTo("MEMBER");
 	}

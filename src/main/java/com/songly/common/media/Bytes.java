@@ -3,7 +3,6 @@ package com.songly.common.media;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-/** Odczyt liczb i nazw z kontenerów obrazów, wspólny dla trzech formatów. */
 final class Bytes {
 
 	private Bytes() {
@@ -26,7 +25,6 @@ final class Bytes {
 		return new String(data, at, length, StandardCharsets.US_ASCII);
 	}
 
-	/** Czy {@code data[from..to)} zaczyna się od {@code prefix}. */
 	static boolean startsWith(byte[] data, int from, int to, byte[] prefix) {
 		return to - from >= prefix.length && Arrays.equals(data, from, from + prefix.length, prefix, 0, prefix.length);
 	}

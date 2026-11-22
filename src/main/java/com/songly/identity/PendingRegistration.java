@@ -7,17 +7,6 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Rejestracja czekająca na potwierdzenie adresu e-mail. Konto powstaje dopiero
- * przy weryfikacji — do tego czasu żaden moduł poza {@code identity} nie wie o
- * istnieniu tego zgłoszenia.
- *
- * <p>
- * Hasło leży tu już zahaszowane bcryptem, tak samo jak w {@link User}. Odłożona
- * rejestracja nie może być miejscem, w którym hasło jest chronione słabiej niż
- * w koncie docelowym — użytkownik podał je raz i nie ma pojęcia, że przez
- * chwilę mieszka gdzie indziej.
- */
 @Entity
 @Table(name = "pending_registrations")
 class PendingRegistration {
@@ -69,16 +58,6 @@ class PendingRegistration {
 		return !now.isBefore(expiresAt);
 	}
 
-	/**
-	 * Ponowna rejestracja na ten sam adres wydaje nowy link i unieważnia poprzedni.
-	 *
-	 * <p>
-	 * Hasła celowo <b>nie</b> podmieniamy. Gdyby podmieniała, ktoś obcy mógłby
-	 * wstrzelić własne hasło w cudze, jeszcze niepotwierdzone zgłoszenie i czekać,
-	 * aż prawowity właściciel skrzynki kliknie najnowszy link — konto powstałoby z
-	 * hasłem napastnika. Kto pomylił się przy pierwszej rejestracji, potwierdza
-	 * adres i zmienia hasło zwykłą drogą.
-	 */
 	void reissue(String newTokenHash, Instant now, Instant newExpiresAt) {
 		this.tokenHash = newTokenHash;
 		this.createdAt = now;

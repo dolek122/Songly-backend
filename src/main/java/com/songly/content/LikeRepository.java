@@ -11,7 +11,6 @@ interface LikeRepository extends JpaRepository<Like, LikeId> {
 
 	long countByPostId(UUID postId);
 
-	/** Zliczenia dla całej strony postów jednym zapytaniem (bez N+1). */
 	@Query("select l.postId as postId, count(l) as likeCount from Like l where l.postId in :postIds group by l.postId")
 	List<PostIdCount> countByPostIdIn(@Param("postIds") Collection<UUID> postIds);
 

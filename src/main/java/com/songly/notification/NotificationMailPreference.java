@@ -7,12 +7,6 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Preferencje kanału e-mail per użytkownik (ADR 0020). Wiersz zapisujemy
- * dopiero przy pierwszej zmianie — brak wiersza znaczy „obie kategorie
- * włączone", więc nie trzeba zakładać rekordu przy rejestracji (ten sam wzorzec
- * co {@code NowPlayingPreference}).
- */
 @Entity
 @Table(name = "notification_mail_preferences")
 class NotificationMailPreference {

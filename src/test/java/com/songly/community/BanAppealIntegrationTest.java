@@ -23,11 +23,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Ścieżka odwoławcza od bana (ADR 0017). Zamyka ostatnią lukę z konsekwencji
- * ADR 0012: zbanowany znał już powód i termin (ADR 0015), ale nie miał żadnej
- * drogi, żeby decyzję zakwestionować.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class BanAppealIntegrationTest extends AbstractIntegrationTest {
 
@@ -103,11 +98,6 @@ class BanAppealIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
 	}
 
-	/**
-	 * Pełna droga w jedną stronę: odwołanie → wszyscy moderatorzy zawiadomieni
-	 * (skrzynka + mail bez treści odwołania) → treść czeka na liście banów → status
-	 * widoczny dla odwołującego.
-	 */
 	@Test
 	void appealReachesModeratorsAndItsTextStaysInThePullChannel() throws Exception {
 		TestUser owner = user("appeal-flow-owner@songly.io");
@@ -126,13 +116,9 @@ class BanAppealIntegrationTest extends AbstractIntegrationTest {
 
 		assertThat(countOfType(owner, "BAN_APPEAL_SUBMITTED")).isEqualTo(1);
 		assertThat(countOfType(moderator, "BAN_APPEAL_SUBMITTED")).isEqualTo(1);
-		// Mail mówi, że jest po co zajrzeć — ale nie niesie treści odwołania:
-		// tekst od użytkownika nie jedzie kanałem push (ta sama zasada co powód
-		// bana w ADR 0015).
 		assertThat(mails.lastTo(owner.email()).subject()).contains("odwołanie");
 		assertThat(mails.lastTo(owner.email()).body()).doesNotContain("nieporozumienie");
 
-		// Treść czyta moderacja na liście banów...
 		JsonNode ban = objectMapper.readTree(mockMvc
 				.perform(get("/api/v1/communities/" + communityId + "/bans").header("Authorization",
 						"Bearer " + owner.token()))
@@ -140,13 +126,11 @@ class BanAppealIntegrationTest extends AbstractIntegrationTest {
 		assertThat(ban.get("appealText").asText()).isEqualTo("to bylo nieporozumienie");
 		assertThat(ban.get("appealStatus").asText()).isEqualTo("PENDING");
 
-		// ...a odwołujący widzi stan sprawy w statusie członkostwa.
 		JsonNode ownBan = membershipStatus(troll, communityId).get("ban");
 		assertThat(ownBan.get("appealStatus").asText()).isEqualTo("PENDING");
 		assertThat(ownBan.get("appealedAt").isNull()).isFalse();
 	}
 
-	/** Jedno odwołanie na ban — drugie kończy się 409, a nie drugą wiadomością. */
 	@Test
 	void secondAppealIsRejectedWithConflict() throws Exception {
 		TestUser owner = user("appeal-once-owner@songly.io");
@@ -171,13 +155,11 @@ class BanAppealIntegrationTest extends AbstractIntegrationTest {
 		String communityId = createCommunity(owner, "Appeal-bezbana");
 		join(member, communityId);
 
-		// Bez bana w ogóle...
 		mockMvc.perform(post("/api/v1/communities/" + communityId + "/ban-appeal")
 				.header("Authorization", "Bearer " + member.token()).contentType(MediaType.APPLICATION_JSON).content("""
 						{"text":"od czego ja sie odwoluje"}""")).andExpect(status().isConflict())
 				.andExpect(jsonPath("$.code").value("NO_BAN_TO_APPEAL"));
 
-		// ...i z banem wygasłym: wygasły ban to brak bana (ADR 0014).
 		ban(owner, communityId, member);
 		OffsetDateTime past = Instant.now().minus(1, ChronoUnit.HOURS).atOffset(ZoneOffset.UTC);
 		jdbcTemplate.update("UPDATE community_bans SET expires_at = ? WHERE community_id = ? AND user_id = ?", past,
@@ -188,10 +170,6 @@ class BanAppealIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.code").value("NO_BAN_TO_APPEAL"));
 	}
 
-	/**
-	 * Uznanie odwołania to unban — bez osobnego endpointu. Odwołujący dostaje
-	 * powiadomienie i mail, a droga powrotna naprawdę działa.
-	 */
 	@Test
 	void unbanWithPendingAppealAcceptsItAndLetsTheUserReturn() throws Exception {
 		TestUser owner = user("appeal-acc-owner@songly.io");
@@ -211,11 +189,6 @@ class BanAppealIntegrationTest extends AbstractIntegrationTest {
 		assertThat(membershipStatus(troll, communityId).get("status").asText()).isEqualTo("MEMBER");
 	}
 
-	/**
-	 * Odrzucenie: ban zostaje, sprawa zamknięta, odwołujący zawiadomiony — a
-	 * powiadomienie przechodzi mimo blokady moderatora (MODERATION): nie można
-	 * odmówić odpowiedzi na własną petycję.
-	 */
 	@Test
 	void rejectionNotifiesTheAppellantEvenAcrossABlock() throws Exception {
 		TestUser owner = user("appeal-rej-owner@songly.io");
@@ -224,7 +197,6 @@ class BanAppealIntegrationTest extends AbstractIntegrationTest {
 		join(troll, communityId);
 		ban(owner, communityId, troll);
 		appeal(troll, communityId, "nie zgadzam sie");
-		// Troll blokuje właściciela jeszcze przed decyzją.
 		mockMvc.perform(put("/api/v1/blocks/" + owner.userId()).header("Authorization", "Bearer " + troll.token()))
 				.andExpect(status().isNoContent());
 
@@ -234,13 +206,11 @@ class BanAppealIntegrationTest extends AbstractIntegrationTest {
 		assertThat(countOfType(troll, "BAN_APPEAL_REJECTED")).isEqualTo(1);
 		assertThat(membershipStatus(troll, communityId).get("ban").get("appealStatus").asText()).isEqualTo("REJECTED");
 
-		// Drugie odrzucenie nie ma czego odrzucić.
 		mockMvc.perform(post("/api/v1/communities/" + communityId + "/bans/" + troll.userId() + "/appeal/rejection")
 				.header("Authorization", "Bearer " + owner.token())).andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.code").value("BAN_APPEAL_NOT_FOUND"));
 	}
 
-	/** Odrzucać może moderacja, nie dowolny członek. */
 	@Test
 	void rejectionRequiresModerator() throws Exception {
 		TestUser owner = user("appeal-perm-owner@songly.io");
@@ -256,10 +226,6 @@ class BanAppealIntegrationTest extends AbstractIntegrationTest {
 				.header("Authorization", "Bearer " + bystander.token())).andExpect(status().isForbidden());
 	}
 
-	/**
-	 * Nowy ban po wygaśnięciu poprzedniego czyści odwołanie — nowa sprawa daje
-	 * świeże prawo do odwołania, nawet po wcześniejszym odrzuceniu.
-	 */
 	@Test
 	void reimposedBanGrantsAFreshAppealRight() throws Exception {
 		TestUser owner = user("appeal-fresh-owner@songly.io");

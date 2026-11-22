@@ -48,17 +48,6 @@ class MatchingServiceTest {
 				new MatchingProperties());
 	}
 
-	/**
-	 * Wszystkie gatunki równie popularne, czyli o tej samej wadze.
-	 *
-	 * <p>
-	 * Do ADR 0033 pozwalało to asertować dokładne liczby, bo wagi skracały się w
-	 * ułamku i wychodził surowy Jaccard. Teraz nie wychodzi: stała pewności w
-	 * mianowniku nie skraca się z niczym, a waga to logarytm, więc nie ma
-	 * popularności dającej okrągły wynik. Testy sprawdzają więc kolejność,
-	 * przedziały i różnice — a nie magiczne stałe, które trzeba by przeliczać przy
-	 * każdej zmianie {@code confidence-prior}.
-	 */
 	private void allGenresEquallyPopular() {
 		when(profileDirectory.genreUserCounts(anyCollection()))
 				.thenAnswer(invocation -> ((java.util.Collection<?>) invocation.getArgument(0)).stream()
@@ -91,7 +80,6 @@ class MatchingServiceTest {
 
 		Page<MatchResponse> page = matchingService.matches(me, Pageable.unpaged());
 
-		// similar dzieli dwa gatunki z czterech w złączeniu, lessSimilar jeden z trzech
 		assertThat(page.getContent()).hasSize(2);
 		assertThat(page.getContent().get(0).userId()).isEqualTo(similar);
 		assertThat(page.getContent().get(0).sharedGenreIds()).containsExactlyInAnyOrder(g1, g2);
@@ -116,8 +104,6 @@ class MatchingServiceTest {
 		Page<MatchResponse> page = matchingService.matches(me, Pageable.unpaged());
 
 		assertThat(page.getContent()).extracting(MatchResponse::userId).containsExactly(candidate);
-		// Identyczne gusta to już nie 1.0 (ADR 0033): jeden wspólny gatunek na obu
-		// profilach jest jednym punktem danych, a nie dowodem bliźniactwa.
 		assertThat(page.getContent().get(0).score()).isGreaterThan(0.0).isLessThan(1.0);
 	}
 
@@ -136,16 +122,10 @@ class MatchingServiceTest {
 
 		assertThat(page.getTotalElements()).isEqualTo(1);
 		assertThat(page.getContent()).isEmpty();
-		// Nazwy i awatary tylko dla strony, którą zwracamy — pusta strona nie pyta o
-		// nic, choć kandydat jest.
 		verify(profileDirectory, never()).displayNames(anyCollection());
 		verify(profileDirectory, never()).avatarUrls(anyCollection());
 	}
 
-	/**
-	 * Kandydatów bywa tysiące (każdy, kto wskazał „Pop"), a strona ma ich
-	 * dwadzieścia. Nazwy i awatary są potrzebne tylko tym dwudziestu.
-	 */
 	@Test
 	void matches_looksUpNamesOnlyForTheReturnedPage() {
 		UUID best = UUID.randomUUID();
@@ -181,11 +161,6 @@ class MatchingServiceTest {
 		assertThat(page.getContent()).isEmpty();
 	}
 
-	/**
-	 * Sedno ADR 0029: przy <b>tej samej</b> liczbie wspólnych gatunków i tym samym
-	 * rozmiarze zbiorów wyżej trafia ten, z którym dzielimy gatunek <b>niszowy</b>.
-	 * Surowy Jaccard dawał tu remis, więc kolejność rozstrzygał identyfikator.
-	 */
 	@Test
 	void matches_ranksRareSharedGenreAboveMainstreamOne() {
 		UUID nicheTwin = UUID.randomUUID();
@@ -199,7 +174,6 @@ class MatchingServiceTest {
 		when(suspendedAccounts.suspendedUserIds()).thenReturn(Set.of());
 		when(profileDirectory.favoriteGenreIdsByUser(Set.of(nicheTwin, mainstreamTwin)))
 				.thenReturn(Map.of(nicheTwin, Set.of(niche, g3), mainstreamTwin, Set.of(mainstream, g4)));
-		// „Dark Ambient" wybrały 2 osoby, „Pop" — 900 z tysiąca; g3 i g4 mają po 10.
 		when(profileDirectory.genreUserCounts(anyCollection()))
 				.thenReturn(Map.of(niche, 2L, mainstream, 900L, g3, 10L, g4, 10L));
 		when(profileDirectory.usersWithAnyGenreCount()).thenReturn(1000L);
@@ -210,23 +184,13 @@ class MatchingServiceTest {
 
 		assertThat(page.getContent()).extracting(MatchResponse::userId).containsExactly(nicheTwin, mainstreamTwin);
 		assertThat(page.getContent().get(0).score()).isGreaterThan(page.getContent().get(1).score());
-		// Wynik zostaje w (0, 1) — od ADR 0033 jedynka jest nieosiągalna, bo o niczyim
-		// guście nie wiemy wszystkiego.
 		assertThat(page.getContent()).allSatisfy(match -> assertThat(match.score()).isGreaterThan(0.0).isLessThan(1.0));
 	}
 
-	/**
-	 * Sedno ADR 0033: bogatszy profil z <b>mniejszą</b> proporcją pokrycia bije
-	 * ubogi z pokryciem pełnym. Przed tą zmianą było odwrotnie — dwie osoby z
-	 * jednym wspólnym gatunkiem dostawały 1.0, czyli wynik doskonały z jednego
-	 * punktu danych, i stały ponad kimś, kto dzieli trzy gatunki z czterech.
-	 */
 	@Test
 	void matches_rankRicherProfileAboveTinyIdenticalOne() {
 		UUID twin = UUID.randomUUID();
 		UUID richCandidate = UUID.randomUUID();
-		// Pytający ma cztery gatunki, więc złączenie z twinem (jeden gatunek) jest
-		// małe, a z richCandidate duże.
 		when(profileDirectory.favoriteGenreIdsByUser(Set.of(me))).thenReturn(Map.of(me, Set.of(g1)));
 		when(profileDirectory.userIdsWithAnyGenre(anyCollection())).thenReturn(Set.of(me, twin, richCandidate));
 		when(socialGraph.friendIds(me)).thenReturn(Set.of());
@@ -240,23 +204,14 @@ class MatchingServiceTest {
 
 		Page<MatchResponse> page = matchingService.matches(me, Pageable.unpaged());
 
-		// twin: pokrycie 1/1, richCandidate: 1/4 — a jednak twin nie wygrywa tak
-		// pewnie, jak wynikałoby z samej proporcji.
 		assertThat(page.getContent()).extracting(MatchResponse::confidence)
 				.allSatisfy(confidence -> assertThat(confidence).isGreaterThan(0.0).isLessThan(1.0));
 		MatchResponse twinMatch = matchOf(page, twin);
 		MatchResponse richMatch = matchOf(page, richCandidate);
 		assertThat(richMatch.confidence()).isGreaterThan(twinMatch.confidence());
-		// Ubogie złączenie zjada większość wyniku: pełne pokrycie na jednym gatunku
-		// nie daje nawet 0.6.
 		assertThat(twinMatch.score()).isLessThan(0.6);
 	}
 
-	/**
-	 * Pewność rośnie z ilością danych, nie z jakością dopasowania — dlatego liczy
-	 * <b>złączenie</b>, a nie część wspólną (ADR 0033). „Mam cztery gatunki, ty
-	 * cztery, wspólny jeden" to dużo danych i słaby wynik, a nie mało danych.
-	 */
 	@Test
 	void matches_confidenceFollowsHowMuchBothSidesTold() {
 		UUID poorlyKnown = UUID.randomUUID();
@@ -274,11 +229,7 @@ class MatchingServiceTest {
 
 		Page<MatchResponse> page = matchingService.matches(me, Pageable.unpaged());
 
-		// Obaj dzielą z pytającym dokładnie jedną pozycję, ale wellKnown powiedział o
-		// sobie więcej, więc o jego wyniku wiemy więcej — pewność wyższa.
 		assertThat(matchOf(page, wellKnown).confidence()).isGreaterThan(matchOf(page, poorlyKnown).confidence());
-		// ...i jednocześnie NIŻSZY, bo ta sama jedna wspólna pozycja mniej znaczy przy
-		// większym złączeniu. Pewność i wynik to dwie różne rzeczy.
 		assertThat(matchOf(page, wellKnown).score()).isLessThan(matchOf(page, poorlyKnown).score());
 	}
 
@@ -287,10 +238,6 @@ class MatchingServiceTest {
 				.orElseThrow(() -> new AssertionError("brak dopasowania do " + userId));
 	}
 
-	/**
-	 * Zawieszone konta nie są proponowane (ADR 0029): dopasowanie jest zaproszeniem
-	 * do kontaktu, a zawieszenie bierze się zwykle z nękania.
-	 */
 	@Test
 	void matches_excludesSuspendedAccounts() {
 		UUID suspended = UUID.randomUUID();

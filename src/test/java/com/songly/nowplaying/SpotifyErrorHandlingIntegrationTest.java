@@ -30,29 +30,12 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.web.util.UriComponentsBuilder;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Zachowanie przy błędach Spotify na pełnej ścieżce: kontroler → serwis →
- * provider → HTTP → baza. Podstawiamy prawdziwy serwer HTTP zamiast mocka
- * providera, bo sprawdzamy między innymi to, czego mock repozytorium nie
- * udowodni — że skasowanie martwego linku faktycznie <b>commituje się</b> mimo
- * wyjątku lecącego z metody transakcyjnej.
- *
- * <p>
- * Przy okazji jest to jedyne miejsce, które przechodzi całe udane łączenie
- * OAuth (state → callback z biletem → dokończenie w aplikacji → wymiana kodu →
- * zapis zaszyfrowanych tokenów), więc tu siedzą też testy podesłanego linku z
- * ADR 0050.
- */
 @TestPropertySource(properties = {"songly.security.rate-limit.enabled=false", "songly.now-playing.poll.enabled=false",
 		"songly.now-playing.stream.heartbeat.enabled=false"})
 class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 
 	private static final HttpServer SPOTIFY = fakeSpotify();
 
-	/**
-	 * Domyślne {@code expires_in=0} sprawia, że kolejne wywołanie od razu idzie
-	 * ścieżką odświeżania tokenu — to ta ścieżka nas tu interesuje.
-	 */
 	private static final Responder FRESHLY_EXPIRING_TOKEN = json(200, """
 			{"access_token":"access","refresh_token":"refresh","expires_in":0}""");
 
@@ -117,11 +100,6 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 	@Autowired
 	private TokenEncryptor tokenEncryptor;
 
-	/**
-	 * Fałszywy Spotify jest statyczny (jeden na klasę), więc bez resetu odpowiedź
-	 * ustawiona przez jeden test psułaby fazę przygotowania kolejnego — a kolejność
-	 * metod w JUnit nie jest gwarantowana.
-	 */
 	@BeforeEach
 	void resetFakeSpotify() {
 		tokenResponder = FRESHLY_EXPIRING_TOKEN;
@@ -142,7 +120,6 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 		return new ConnectedUser(accessToken, userId);
 	}
 
-	/** {@code POST /connect} — zwraca state z adresu autoryzacji. */
 	private String beginConnect(ConnectedUser user) throws Exception {
 		MvcResult connect = mockMvc.perform(
 				post("/api/v1/now-playing/spotify/connect").header("Authorization", "Bearer " + user.accessToken()))
@@ -152,9 +129,6 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 		return UriComponentsBuilder.fromUriString(authorizeUrl).build().getQueryParams().getFirst("state");
 	}
 
-	/**
-	 * Powrót przeglądarki ze Spotify — zwraca bilet z przekierowania do aplikacji.
-	 */
 	private String callback(String state, String code) throws Exception {
 		MvcResult callback = mockMvc
 				.perform(get("/api/v1/now-playing/spotify/callback").param("code", code).param("state", state))
@@ -171,24 +145,16 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 						{"ticket":"%s"}""".formatted(ticket)));
 	}
 
-	/** Rejestracja + pełne przejście OAuth: callback i dokończenie w aplikacji. */
 	private ConnectedUser connectSpotify(String email) throws Exception {
 		ConnectedUser user = register(email);
 		String ticket = callback(beginConnect(user), "auth-code");
 
-		// Sam powrót z przeglądarki niczego nie przypina (ADR 0050).
 		assertThat(linkRepository.findByUserIdAndProvider(user.userId(), SpotifyProvider.NAME)).isEmpty();
 		complete(user, ticket).andExpect(status().isNoContent());
 		assertThat(linkRepository.findByUserIdAndProvider(user.userId(), SpotifyProvider.NAME)).isPresent();
 		return user;
 	}
 
-	/**
-	 * Sedno ADR 0050. Autor linku zaczyna łączenie na własnym koncie i podsyła
-	 * adres autoryzacji ofierze; jej przeglądarka wraca z jej kodem. Wcześniej
-	 * callback przypinał wtedy Spotify ofiary do konta autora linku, który czytał
-	 * potem, czego ofiara słucha.
-	 */
 	@Test
 	void linkSentByAnotherAccount_attachesNothing() throws Exception {
 		ConnectedUser author = register("spotify-csrf-author@songly.io");
@@ -196,11 +162,8 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 		String authorsState = beginConnect(author);
 
 		String ticket = callback(authorsState, "victims-code");
-		// Bilet trafia do aplikacji ofiary, zalogowanej na jej konto.
 		complete(victim, ticket).andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("INVALID_CONNECT_TICKET"));
-		// Autor linku zna tylko state, a state biletem nie jest. Bilet z kolei
-		// zginął przy pierwszej próbie, więc nawet przechwycony już nie zadziała.
 		complete(author, authorsState).andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("INVALID_CONNECT_TICKET"));
 		complete(author, ticket).andExpect(status().isBadRequest())
@@ -237,8 +200,6 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.code").value("PROVIDER_REAUTHORIZATION_REQUIRED"));
 
-		// Sedno: gdyby wyjątek wycofał transakcję, link zostałby w bazie i poller
-		// dobijałby się do Spotify z tym samym martwym tokenem w kółko.
 		assertThat(linkRepository.findByUserIdAndProvider(user.userId(), SpotifyProvider.NAME)).isEmpty();
 	}
 
@@ -255,11 +216,6 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 		assertThat(linkRepository.findByUserIdAndProvider(user.userId(), SpotifyProvider.NAME)).isPresent();
 	}
 
-	/**
-	 * Token odświeżony tuż przed nieudanym wywołaniem API jest prawdziwy i musi
-	 * przetrwać (ADR 0049). Rollback go wyrzucał: przy zrotowanym refresh tokenie w
-	 * bazie zostawał stary, a następne odświeżenie mogło skasować zdrowy link.
-	 */
 	@Test
 	void tokenRefreshedBeforeProviderFailure_isKept() throws Exception {
 		ConnectedUser user = connectSpotify("spotify-refresh-kept@songly.io");
@@ -275,10 +231,6 @@ class SpotifyErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 		assertThat(tokenEncryptor.decrypt(link.getRefreshTokenEncrypted())).isEqualTo("rotated-refresh");
 	}
 
-	/**
-	 * Kod wymieniamy dopiero przy dokończeniu, więc jego błąd wraca jako zwykła
-	 * odpowiedź API do aplikacji, a nie przez przekierowanie przeglądarki.
-	 */
 	@Test
 	void staleAuthorizationCode_returnsBadRequest() throws Exception {
 		ConnectedUser user = register("spotify-stale-code@songly.io");

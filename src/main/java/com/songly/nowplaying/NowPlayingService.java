@@ -31,13 +31,6 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Status "co teraz gra" cache'owany w Redis (Claude.md §7): Spotify nie ma
- * webhooków, więc bez cache każdy odczyt feedu biłby w ich API i rate limity.
- * Ręcznie ustawiony status (fallback dla serwisów bez integracji, np. Apple
- * Music/Tidal — Claude.md §7) żyje w osobnym kluczu z własnym, dłuższym TTL i
- * ma pierwszeństwo przed providerem, dopóki nie wygaśnie.
- */
 @Service
 @EnableConfigurationProperties(NowPlayingProperties.class)
 class NowPlayingService {
@@ -88,18 +81,6 @@ class NowPlayingService {
 		return musicProvider.buildAuthorizeUrl(state);
 	}
 
-	/**
-	 * Powrót z providera <b>nie łączy konta</b>, tylko odkłada kod pod nowym,
-	 * jednorazowym biletem, z którym przeglądarka wraca do aplikacji (ADR 0050).
-	 *
-	 * <p>
-	 * State nie wystarcza do dokończenia, bo zna go także ten, kto zaczął łączenie.
-	 * Ktoś mógł wywołać {@code /connect} na własnym koncie i podesłać link ofierze:
-	 * jej przeglądarka wracała tu z jej kodem, a callback przypinał jej Spotify do
-	 * cudzego konta, które potem czytało, czego ofiara słucha. Bilet powstaje
-	 * dopiero tutaj i trafia wyłącznie do przeglądarki, która przeszła przez
-	 * Spotify, więc autor podesłanego linku go nie zna.
-	 */
 	String acceptAuthorization(String state, String authorizationCode) {
 		String userId = redisTemplate.opsForValue().getAndDelete(STATE_KEY_PREFIX + state);
 		if (userId == null) {
@@ -112,12 +93,6 @@ class NowPlayingService {
 		return ticket;
 	}
 
-	/**
-	 * Kończy łączenie wyłącznie na koncie, które je zaczęło. W scenariuszu z
-	 * podesłanym linkiem bilet trafia do aplikacji ofiary, zalogowanej na jej
-	 * konto, więc porównanie z właścicielem state'u go odrzuca. Bilet ginie przy
-	 * pierwszej próbie, także nieudanej.
-	 */
 	void completeConnect(UUID userId, String ticket) {
 		String value = redisTemplate.opsForValue().getAndDelete(TICKET_KEY_PREFIX + ticket);
 		if (value == null) {
@@ -132,10 +107,6 @@ class NowPlayingService {
 		musicProvider.connect(userId, pending.code());
 	}
 
-	/**
-	 * Kod autoryzacyjny w Redisie bez szyfrowania jest tu w porządku: bez client
-	 * secretu nie da się go wymienić na tokeny.
-	 */
 	private record PendingConnection(String userId, String code) {
 	}
 
@@ -145,11 +116,6 @@ class NowPlayingService {
 		return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
 	}
 
-	/**
-	 * Provider wrócił bez kodu (odmowa zgody albo jego błąd). State zużywamy od
-	 * razu, żeby nie dało się go jeszcze raz podstawić do callbacku przez resztę
-	 * TTL.
-	 */
 	void abandonConnect(String state) {
 		redisTemplate.delete(STATE_KEY_PREFIX + state);
 	}
@@ -158,20 +124,11 @@ class NowPlayingService {
 	void disconnect(UUID userId) {
 		linkRepository.deleteByUserIdAndProvider(userId, musicProvider.name());
 		redisTemplate.delete(CACHE_KEY_PREFIX + userId);
-		// Ręczny status ma pierwszeństwo i zostaje po odłączeniu providera, więc
-		// wtedy użytkownik nadal coś "gra" — "przestał słuchać" byłoby kłamstwem.
 		if (!Boolean.TRUE.equals(redisTemplate.hasKey(MANUAL_KEY_PREFIX + userId))) {
 			statusPublisher.publishStopped(userId);
 		}
 	}
 
-	/**
-	 * Wiersze w transakcji usunięcia konta, Redis <b>po jej commicie</b> i bez
-	 * prawa do wywrócenia go (ADR 0049). Wcześniej awaria Redisa wycofywała całe
-	 * usunięcie konta, czyli blokowała prawo z RODO z powodu cache'a, którego
-	 * klucze i tak wygasają same. Przy okazji „przestał słuchać” nie wychodzi już
-	 * przed commitem usunięcia, które mogło się jeszcze wycofać.
-	 */
 	@Transactional
 	void deleteAccountData(UUID userId) {
 		linkRepository.deleteByUserId(userId);
@@ -192,8 +149,6 @@ class NowPlayingService {
 		try {
 			redisTemplate.delete(CACHE_KEY_PREFIX + userId);
 			redisTemplate.delete(MANUAL_KEY_PREFIX + userId);
-			// Bez tego znajomi z otwartym strumieniem widzieliby status konta, którego
-			// już nie ma — aż do własnego reconnectu.
 			statusPublisher.publishStopped(userId);
 		} catch (RuntimeException ex) {
 			log.warn("Nie udało się wyczyścić statusu usuniętego konta {} w Redisie — wygaśnie sam: {}", userId,
@@ -206,18 +161,6 @@ class NowPlayingService {
 		return new NowPlayingSettingsResponse(!preferenceRepository.existsByUserIdAndShareWithFriendsFalse(userId));
 	}
 
-	/**
-	 * Statusu z cache'a nie kasujemy — jest filtrowany na każdej ścieżce wyjścia
-	 * (Claude.md §9), a własny status w {@code /me} ma zostać widoczny dla
-	 * właściciela.
-	 *
-	 * <p>
-	 * Samo przestawienie flagi nie wystarcza: znajomy z <b>otwartym</b> strumieniem
-	 * nie dostaje już żadnego pushu, więc widziałby ostatni status w nieskończoność
-	 * (aż do własnego reconnectu). Dlatego wyłączenie wypycha „przestał słuchać", a
-	 * włączenie — aktualny status, żeby wrócił na listę od razu, nie przy
-	 * najbliższej zmianie utworu.
-	 */
 	@Transactional
 	void updateSettings(UUID userId, UpdateNowPlayingSettingsRequest request) {
 		Instant now = Instant.now();
@@ -231,28 +174,12 @@ class NowPlayingService {
 		}
 	}
 
-	/**
-	 * Czy status użytkownika może opuścić serwer: zgadza się go pokazywać (ADR
-	 * 0007, Etap 4) i nie jest zawieszony (ADR 0049). Sprawdzane przy <b>każdym</b>
-	 * pushu, nie tylko przy otwarciu strumienia — oba stany mogą się zmienić w
-	 * trakcie trwania połączenia.
-	 *
-	 * <p>
-	 * Zawieszenie jest tu, a nie osobnym filtrem na każdej ścieżce, z tego samego
-	 * powodu co widoczność: jedno miejsce obejmuje listę znajomych, push i dobór do
-	 * polla. ADR 0026 zakładał, że zawieszony „nie odświeży” statusu, ale odświeża
-	 * go serwer — poll działa na zapisanych tokenach Spotify.
-	 */
 	@Transactional(readOnly = true)
 	boolean sharesStatus(UUID userId) {
 		return !preferenceRepository.existsByUserIdAndShareWithFriendsFalse(userId)
 				&& !suspendedAccounts.suspendedUserIds().contains(userId);
 	}
 
-	/**
-	 * Z podanych użytkowników ci, których status może opuścić serwer — patrz
-	 * {@link #sharesStatus}.
-	 */
 	@Transactional(readOnly = true)
 	Set<UUID> sharingUserIds(Set<UUID> candidates) {
 		if (candidates.isEmpty()) {
@@ -264,26 +191,6 @@ class NowPlayingService {
 				.collect(Collectors.toSet());
 	}
 
-	/**
-	 * Wysyła „przestał słuchać", gdy status użytkownika zniknął sam z siebie —
-	 * przez wygaśnięcie TTL, nie przez żadną jego akcję (ADR 0007).
-	 *
-	 * <p>
-	 * Bez tego ręcznie ustawiony status (TTL liczony w godzinach) wisiałby na
-	 * ekranie znajomego w nieskończoność: użytkownik bez podłączonego providera nie
-	 * jest odpytywany, więc nic nie zauważa jego zniknięcia. Redis nie mówi nam o
-	 * wygaśnięciu klucza — zamiast włączać keyspace notifications (konfiguracja
-	 * serwera, kolejny kanał do utrzymania) sprawdzamy to w przebiegu polla, który
-	 * i tak przechodzi po obserwowanych użytkownikach.
-	 *
-	 * <p>
-	 * Znacznik z {@link NowPlayingStatusPublisher} odróżnia „status wygasł" od
-	 * „nigdy nic nie grał" — bez niego wysyłalibyśmy „przestał słuchać" w kółko dla
-	 * wszystkich milczących użytkowników. Przy wielu instancjach może się zdarzyć
-	 * podwójna publikacja (obie sprawdzą znacznik zanim któraś go skasuje); to
-	 * nieszkodliwe, bo klient po prostu drugi raz zdejmuje wpis, którego już nie
-	 * ma.
-	 */
 	void publishStoppedIfStatusExpired(UUID userId) {
 		if (!Boolean.TRUE.equals(redisTemplate.hasKey(NowPlayingStatusPublisher.ANNOUNCED_KEY_PREFIX + userId))) {
 			return;
@@ -294,29 +201,15 @@ class NowPlayingService {
 		statusPublisher.publishStopped(userId);
 	}
 
-	/**
-	 * Krótki lock w Redis, żeby przy wielu instancjach tego samego obserwowanego
-	 * użytkownika odpytywał w danym cyklu tylko jeden węzeł (ADR 0007, Etap 4) —
-	 * inaczej ruch do Spotify rósłby liniowo z liczbą instancji. Nieodebrany lock
-	 * nie boli: zmianę i tak rozniesie kanał presence do wszystkich instancji.
-	 */
 	boolean tryAcquirePollLock(UUID userId) {
 		return Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(POLL_LOCK_KEY_PREFIX + userId, "1",
 				properties.getPoll().getLockTtl()));
 	}
 
-	/**
-	 * Czy Spotify kazało nam ostatnio przestać pytać. Rate limit Spotify jest per
-	 * client ID, czyli wspólny dla wszystkich naszych instancji i wszystkich
-	 * użytkowników — dlatego znacznik siedzi w Redisie pod jednym kluczem, a nie w
-	 * pamięci procesu. Instancja, która dostała 429, wycisza w ten sposób również
-	 * pozostałe.
-	 */
 	boolean isProviderBackoffActive() {
 		return Boolean.TRUE.equals(redisTemplate.hasKey(PROVIDER_BACKOFF_KEY));
 	}
 
-	/** TTL klucza <i>jest</i> backoffem — nie trzeba trzymać nigdzie daty końca. */
 	void applyProviderBackoff(Duration duration) {
 		redisTemplate.opsForValue().set(PROVIDER_BACKOFF_KEY, "1", duration);
 	}
@@ -334,24 +227,12 @@ class NowPlayingService {
 
 	void clearManualStatus(UUID userId) {
 		redisTemplate.delete(MANUAL_KEY_PREFIX + userId);
-		// Gdy pod spodem jest świeży status z providera, to on staje się aktualny —
-		// "przestał słuchać" wysyłamy tylko wtedy, gdy nie zostało nic do pokazania.
 		String providerCached = redisTemplate.opsForValue().get(CACHE_KEY_PREFIX + userId);
 		if (providerCached == null || CACHE_NOTHING_PLAYING.equals(providerCached)) {
 			statusPublisher.publishStopped(userId);
 		}
 	}
 
-	/**
-	 * Statusy "co teraz gra" znajomych — wyłącznie z cache'a (manual > provider),
-	 * bez odpytywania Spotify per znajomy: jeden request nie może wywołać N zapytań
-	 * do providera i pobić rate limitów (Claude.md §7). Cache zapełnia się, gdy
-	 * znajomi odczytują własny status, oraz z serwerowego polla obserwowanych
-	 * użytkowników ({@link NowPlayingPoller}). Pomija znajomych bez aktualnego
-	 * statusu. Granice modułów przez publiczne interfejsy {@link SocialGraph} i
-	 * {@link ProfileDirectory} — bez dostępu do encji innych modułów (Claude.md
-	 * §2).
-	 */
 	@Transactional(readOnly = true)
 	List<FriendNowPlayingResponse> friendsNowPlaying(UUID userId) {
 		Set<UUID> friendIds = sharingUserIds(socialGraph.friendIds(userId));
@@ -369,11 +250,6 @@ class NowPlayingService {
 				.toList();
 	}
 
-	/**
-	 * Statusy wielu użytkowników dwoma zapytaniami zamiast dwóch na osobę — lista
-	 * znajomych potrafi mieć setki pozycji, a każdy odczyt to osobna runda do
-	 * Redisa. Pomija tych, którzy nic nie grają.
-	 */
 	private Map<UUID, NowPlayingStatusResponse> cachedStatuses(List<UUID> userIds) {
 		List<String> manualRaw = redisTemplate.opsForValue()
 				.multiGet(userIds.stream().map(id -> MANUAL_KEY_PREFIX + id).toList());
@@ -381,8 +257,6 @@ class NowPlayingService {
 				.multiGet(userIds.stream().map(id -> CACHE_KEY_PREFIX + id).toList());
 		Map<UUID, NowPlayingStatusResponse> statuses = new LinkedHashMap<>();
 		for (int i = 0; i < userIds.size(); i++) {
-			// Ręczny status ma pierwszeństwo przed providerem — tak samo jak w
-			// odczycie pojedynczego użytkownika (Claude.md §7).
 			String manual = valueAt(manualRaw, i);
 			String provider = valueAt(providerRaw, i);
 			String raw = manual != null ? manual : provider;
@@ -394,14 +268,10 @@ class NowPlayingService {
 		return statuses;
 	}
 
-	/** {@code MGET} zwraca listę z {@code null} na brakujących kluczach. */
 	private String valueAt(List<String> values, int index) {
 		return values == null || index >= values.size() ? null : values.get(index);
 	}
 
-	/**
-	 * Status tylko z cache'a Redis (manual > provider), bez fallbacku do providera.
-	 */
 	Optional<NowPlayingStatusResponse> getCachedStatus(UUID userId) {
 		String manual = redisTemplate.opsForValue().get(MANUAL_KEY_PREFIX + userId);
 		if (manual != null) {
@@ -414,14 +284,6 @@ class NowPlayingService {
 		return Optional.empty();
 	}
 
-	/**
-	 * Brak podłączonego serwisu to „nic nie gra" (204), a nie błąd. Tak wygląda
-	 * każde nowe konto, a 404 {@code PROVIDER_NOT_CONNECTED}, które tu wcześniej
-	 * wychodziło, nie było opisane w OpenAPI — klient mobilny brał je za awarię i
-	 * zasłaniał ekran, łącznie z formularzem ręcznego statusu, czyli jedyną drogą
-	 * wyjścia z tego stanu. Sprawdzamy to przed providerem i bez cache'a: wpis „nic
-	 * nie gra" chowałby świeżo podłączone Spotify na cały TTL.
-	 */
 	Optional<NowPlayingStatusResponse> getStatus(UUID userId) {
 		String manual = redisTemplate.opsForValue().get(MANUAL_KEY_PREFIX + userId);
 		if (manual != null) {
@@ -439,34 +301,14 @@ class NowPlayingService {
 		return fetchAndCache(userId);
 	}
 
-	/**
-	 * Z podanych użytkowników ci, którzy mają podłączonego providera — jedno
-	 * zapytanie zamiast N sprawdzeń. Serwerowy poll (ADR 0007, Etap 1b) leci co
-	 * kilkadziesiąt sekund po wszystkich obserwowanych, więc nie może płacić
-	 * zapytaniem (ani wyjątkiem {@link ProviderNotConnectedException}) za każdego
-	 * użytkownika bez integracji — a tych jest większość.
-	 */
 	@Transactional(readOnly = true)
 	Set<UUID> pollableUserIds(Set<UUID> candidates) {
 		if (candidates.isEmpty()) {
 			return Set.of();
 		}
-		// Kto wyłączył widoczność, tego nie ma sensu (ani prawa) odpytywać — jego
-		// status i tak nie opuściłby serwera.
 		return sharingUserIds(linkRepository.findUserIdsByProviderAndUserIdIn(musicProvider.name(), candidates));
 	}
 
-	/**
-	 * Odpytuje providera i odświeża cache <b>pomijając</b> cache'owaną wartość —
-	 * inaczej niż {@link #getStatus}, bo to poll ma cache zapełniać, a nie z niego
-	 * czytać (ADR 0007, Etap 1b). Zdarzenie leci tylko przy realnej zmianie utworu:
-	 * bez tego każdy przebieg polla pushowałby przez SSE ten sam status.
-	 *
-	 * <p>
-	 * Ręcznie ustawiony status ma pierwszeństwo przed providerem, więc dla takich
-	 * użytkowników poll jest pomijany — odpytanie Spotify i tak nie zmieniłoby
-	 * tego, co widzą znajomi.
-	 */
 	void refreshFromProvider(UUID userId) {
 		if (Boolean.TRUE.equals(redisTemplate.hasKey(MANUAL_KEY_PREFIX + userId))) {
 			return;
@@ -498,10 +340,6 @@ class NowPlayingService {
 		return Optional.of(response);
 	}
 
-	/**
-	 * Porównanie po samym utworze — {@code fetchedAt} zmienia się przy każdym
-	 * odczycie, więc równość całych rekordów uznałaby każdy poll za zmianę.
-	 */
 	private boolean isDifferentTrack(String previousJson, NowPlayingStatusResponse fresh) {
 		if (previousJson == null || CACHE_NOTHING_PLAYING.equals(previousJson)) {
 			return true;

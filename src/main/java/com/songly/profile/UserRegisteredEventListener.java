@@ -5,11 +5,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-/**
- * Reakcja na rejestrację w module identity: zakłada domyślny profil (User 1—1
- * Profile) bez sięgania po encję {@code User} spoza modułu identity — jedyny
- * kontakt to zdarzenie Springa.
- */
 @Component
 class UserRegisteredEventListener {
 

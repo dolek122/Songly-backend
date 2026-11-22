@@ -23,19 +23,11 @@ class RestAccessDeniedHandler implements AccessDeniedHandler {
 		this.objectMapper = objectMapper;
 	}
 
-	/**
-	 * Zawieszone konto dostaje <b>własny kod</b>, nie ogólne {@code FORBIDDEN} (ADR
-	 * 0022). Inaczej klient nie ma jak odróżnić „nie masz dostępu do tego zasobu"
-	 * od „twoje konto jest zawieszone", a zawieszony widziałby aplikację, w której
-	 * losowo wszystko przestało działać — czyli decyzję wyglądającą jak awaria,
-	 * dokładnie to, od czego zaczął się ADR 0012.
-	 */
 	@Override
 	public void handle(HttpServletRequest request, HttpServletResponse response,
 			AccessDeniedException accessDeniedException) throws IOException {
 		response.setStatus(HttpServletResponse.SC_FORBIDDEN);
 		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-		// Ten sam powód co w TooManyRequestsResponse: bez tego ISO-8859-1 (ADR 0051).
 		response.setCharacterEncoding(StandardCharsets.UTF_8.name());
 		ApiError error = suspended()
 				? new ApiError("ACCOUNT_SUSPENDED",

@@ -29,14 +29,6 @@ services:
       timeout: 5s
       retries: 10
 
-  # S3-kompatybilny magazyn plików (ADR 0010). Ten sam protokół co produkcyjne
-  # R2/S3, więc lokalnie i na produkcji działa dokładnie ten sam kod.
-  #
-  # Obraz Chainguard, nie oficjalny: MinIO wycofało minio/minio i minio/mc z
-  # Docker Huba, a potem zamknęło anonimowe pobieranie także z quay.io (401).
-  # cgr.dev/chainguard/minio to ten sam serwer MinIO i ma w sobie mc oraz sh,
-  # więc minio-init używa tego samego obrazu (osobny minio-client nie ma
-  # powłoki). Darmowy Chainguard publikuje wyłącznie :latest.
   minio:
     image: cgr.dev/chainguard/minio:latest
     container_name: songly-minio
@@ -55,9 +47,6 @@ services:
       timeout: 5s
       retries: 10
 
-  # Zakłada bucket i otwiera go do odczytu. Avatary i zdjęcia w postach są
-  # publiczne z założenia — leci do nich klient wprost, bez naszego pośrednictwa.
-  # Kontener kończy pracę po wykonaniu zadania.
   minio-init:
     image: cgr.dev/chainguard/minio:latest
     container_name: songly-minio-init

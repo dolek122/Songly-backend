@@ -15,16 +15,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Zmiana hasła i jej właściwy skutek: unieważnienie wszystkich sesji.
- *
- * <p>
- * Test integracyjny, bo sedno tej zmiany leży poza samym serwisem — w tym, czy
- * <b>refresh token wydany przed zmianą hasła naprawdę przestaje działać</b>.
- * Test jednostkowy pokazałby tylko, że zawołaliśmy metodę repozytorium; masowy
- * UPDATE omija kontekst persystencji, więc dopiero prawdziwa baza odpowiada na
- * pytanie, czy sesja jest po tym odwołana.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class PasswordChangeIntegrationTest extends AbstractIntegrationTest {
 
@@ -68,11 +58,6 @@ class PasswordChangeIntegrationTest extends AbstractIntegrationTest {
 				{"refreshToken":"%s"}""".formatted(refreshToken))).andExpect(status().isUnauthorized());
 	}
 
-	/**
-	 * Sedno całej zmiany: sesje z <b>obu</b> urządzeń giną, a nie tylko ta, z
-	 * której przyszło żądanie. Zmiana hasła, która zostawia złodziejowi ważny
-	 * refresh token, jest złudzeniem bezpieczeństwa, nie zmianą hasła.
-	 */
 	@Test
 	void changingPassword_killsSessionsFromEveryDevice() throws Exception {
 		Tokens phone = register("pwd-change@songly.io", "password123");
@@ -95,10 +80,6 @@ class PasswordChangeIntegrationTest extends AbstractIntegrationTest {
 		login("pwd-newonly@songly.io", "brand-new-password");
 	}
 
-	/**
-	 * Sam ważny access token nie wystarcza — inaczej jego przejęcie pozwalałoby
-	 * przejąć konto na stałe, bo złodziej ustawiłby własne hasło.
-	 */
 	@Test
 	void wrongCurrentPassword_changesNothingAndLeavesSessionsAlive() throws Exception {
 		Tokens tokens = register("pwd-wrong@songly.io", "password123");
@@ -137,12 +118,6 @@ class PasswordChangeIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isUnauthorized());
 	}
 
-	/**
-	 * Access token żyje dalej do swojego wygaśnięcia — JWT jest bezstanowy z
-	 * założenia (§6), więc rewokacja odcina odnawianie, a nie trwającą resztkę
-	 * ważności. Test utrwala tę granicę, żeby nikt nie uznał jej za lukę bez
-	 * przeczytania decyzji.
-	 */
 	@Test
 	void accessTokenStaysValidUntilExpiry_byDesign() throws Exception {
 		Tokens tokens = register("pwd-access@songly.io", "password123");

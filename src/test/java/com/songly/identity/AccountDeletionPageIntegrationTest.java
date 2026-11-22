@@ -19,10 +19,6 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Usuwanie konta przez stronę WWW, bez aplikacji (ADR 0043) — ścieżka, której
- * Google Play wymaga od każdej aplikacji z kontami.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class AccountDeletionPageIntegrationTest extends AbstractIntegrationTest {
 
@@ -49,10 +45,6 @@ class AccountDeletionPageIntegrationTest extends AbstractIntegrationTest {
 				{"email":"%s","password":"password123"}""".formatted(email))).andExpect(status().is(expectedStatus));
 	}
 
-	/**
-	 * Strona jest publiczna i nie da się jej osadzić w cudzej ramce ani zmusić do
-	 * wysłania formularza gdzie indziej.
-	 */
 	@Test
 	void startPage_isPublicHtmlWithRestrictiveHeaders() throws Exception {
 		mockMvc.perform(get("/account-deletion")).andExpect(status().isOk())
@@ -71,8 +63,6 @@ class AccountDeletionPageIntegrationTest extends AbstractIntegrationTest {
 
 		String token = requestLinkAndReadToken(email);
 
-		// Otwarcie linku (tak robią też skanery poczty) pokazuje przycisk, nic nie
-		// usuwa.
 		mockMvc.perform(get("/account-deletion/confirm").param("token", token)).andExpect(status().isOk())
 				.andExpect(content().string(containsString("Usuń konto na stałe")));
 		expectLogin(email, 200);
@@ -82,11 +72,9 @@ class AccountDeletionPageIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(content().string(containsString("Konto usunięte")));
 
 		expectLogin(email, 401);
-		// Link jest jednorazowy — konto i jego tokeny zniknęły razem.
 		mockMvc.perform(get("/account-deletion/confirm").param("token", token)).andExpect(status().isNotFound());
 	}
 
-	/** Ta sama odpowiedź dla adresu z kontem i bez — strona nie jest listą kont. */
 	@Test
 	void unknownAddress_getsTheSamePageAndNoMail() throws Exception {
 		String existing = "web-deletion-existing@songly.io";
@@ -121,10 +109,6 @@ class AccountDeletionPageIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(content().string(containsString("Ten link jest nieważny")));
 	}
 
-	/**
-	 * Niewykorzystany link nie może blokować usunięcia z aplikacji — tokeny mają
-	 * klucz obcy do {@code users}, więc kasowanie musi je zabrać.
-	 */
 	@Test
 	void pendingLink_doesNotBlockDeletionFromTheApp() throws Exception {
 		String email = "web-deletion-app@songly.io";

@@ -15,12 +15,6 @@ interface PendingRegistrationRepository extends JpaRepository<PendingRegistratio
 
 	Optional<PendingRegistration> findByTokenHash(String tokenHash);
 
-	/**
-	 * Kasuje zgłoszenia po terminie — patrz {@link PendingRegistrationCleanupJob}.
-	 * Masowo, bo na tej encji nie wisi żaden cykl życia, a {@code @Transactional}
-	 * tutaj z tego samego powodu co przy sprzątaniu sesji: job nie otwiera
-	 * transakcji sam.
-	 */
 	@Modifying
 	@Transactional
 	@Query("delete from PendingRegistration p where p.expiresAt < :now")

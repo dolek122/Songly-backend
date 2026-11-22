@@ -7,10 +7,6 @@ class PushProperties {
 
 	private String provider = "log";
 
-	/**
-	 * Treść JSON klucza konta serwisowego Firebase (nie ścieżka — na Render łatwiej
-	 * o zmienną).
-	 */
 	private String fcmCredentialsJson;
 
 	private String fcmBaseUrl = "https://fcm.googleapis.com";

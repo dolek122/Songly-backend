@@ -13,11 +13,6 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Hasło mieszczące się w 72 znakach, ale nie w 72 bajtach (bcrypt), dostaje 400
- * zamiast 500. 40 razy „ą” to 40 znaków i 80 bajtów UTF-8 — do tej pory
- * przechodziło przez {@code @Size} i wywracało się dopiero w bcrypcie.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class PasswordByteLimitIntegrationTest extends AbstractIntegrationTest {
 

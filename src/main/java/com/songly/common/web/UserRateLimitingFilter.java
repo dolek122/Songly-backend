@@ -23,29 +23,12 @@ import org.springframework.web.util.pattern.PathPattern;
 import org.springframework.web.util.pattern.PathPatternParser;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Limit zapisów per użytkownik na ścieżkach za JWT (ADR 0034) — druga połowa
- * {@link RateLimitingFilter}, który liczy per IP i działa przed
- * uwierzytelnieniem. Ten stoi <b>za</b> filtrem JWT, więc wie już, kto pyta, i
- * kluczuje tożsamością z kontekstu bezpieczeństwa. Nie zna przy tym domeny:
- * bierze wyłącznie {@link Authentication#getName()}, więc {@code common} dalej
- * jest infrastrukturą pod modułami (§3, reguła 3).
- *
- * <p>
- * Żądania bez uwierzytelnienia przepuszcza bez liczenia — publiczne ścieżki
- * pilnuje limit per IP, a resztę i tak odrzuci autoryzacja.
- */
 @Component
 @EnableConfigurationProperties(UserRateLimitProperties.class)
 public class UserRateLimitingFilter extends OncePerRequestFilter {
 
 	private static final Logger log = LoggerFactory.getLogger(UserRateLimitingFilter.class);
 
-	/**
-	 * Osobna nazwa, nie tag na {@code songly.rate.limit.rejected}: Prometheus
-	 * wymaga tych samych kluczy tagów w obrębie jednej metryki, a tamta ma
-	 * {@code path}, ta {@code rule}.
-	 */
 	private static final String REJECTED_METRIC = "songly.rate.limit.user.rejected";
 
 	private final FixedWindowCounter counter;
@@ -85,22 +68,15 @@ public class UserRateLimitingFilter extends OncePerRequestFilter {
 			if (!rule.matches(request.getMethod(), path)) {
 				continue;
 			}
-			// Licznik pod nazwą reguły, nie pod ścieżką: cała grupa ścieżek dzieli
-			// jeden budżet, inaczej rozłożenie zasypywania na kilka endpointów
-			// mnożyłoby limit.
 			String key = "rate-limit:user:" + rule.definition().getName() + ":" + userId;
 			Long count = counter.increment(key, rule.definition().getWindow());
-			// null = Redis nie odpowiada: fail-open, jak limit per IP (§9).
 			if (count != null && count > rule.definition().getLimit()) {
 				rejectedBy = rejectedBy == null ? rule.definition().getName() : rejectedBy;
-				// Przy kilku przekroczonych regułach czekać trzeba na najpóźniejszą —
-				// krótszy Retry-After obiecywałby powrót, który skończy się kolejnym 429.
 				retryAfter = Math.max(retryAfter, counter.retryAfterSeconds(key, rule.definition().getWindow()));
 			}
 		}
 
 		if (rejectedBy != null) {
-			// userId trafia do logu z MDC (JwtAuthenticationFilter) — tu tylko reguła.
 			meterRegistry.counter(REJECTED_METRIC, "rule", rejectedBy).increment();
 			log.warn("Limit zapisów użytkownika przekroczony: {} {} (reguła {})", request.getMethod(),
 					request.getRequestURI(), rejectedBy);

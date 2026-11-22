@@ -31,20 +31,11 @@ class RateLimitingIntegrationTest extends AbstractIntegrationTest {
 		mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
 				{"email":"rate-limit-3@songly.io","password":"password123"}""")).andExpect(status().isTooManyRequests())
 				.andExpect(jsonPath("$.code").value("RATE_LIMIT_EXCEEDED"))
-				// Bez tego klient nie wie, kiedy wolno spróbować, więc dobija się w kółko —
-				// czyli dokładnie to, przed czym limit ma chronić.
 				.andExpect(header().exists(HttpHeaders.RETRY_AFTER))
-				// Odpowiedź piszemy poza Springiem MVC, więc kodowanie trzeba ustawić samemu —
-				// inaczej ISO-8859-1 i „Zbyt wiele ??da?" w aplikacji (ADR 0051).
 				.andExpect(header().string(HttpHeaders.CONTENT_TYPE, "application/json;charset=UTF-8"))
 				.andExpect(jsonPath("$.message").value("Zbyt wiele żądań, spróbuj ponownie później"));
 	}
 
-	/**
-	 * {@code /refresh} jest publiczny (nie wymaga access tokenu), więc bez limitu
-	 * daje się zgadywać refresh tokeny w nieskończoność. Wcześniej lista
-	 * chronionych ścieżek obejmowała tylko rejestrację i logowanie.
-	 */
 	@Test
 	void refresh_isRateLimitedToo() throws Exception {
 		for (int i = 0; i < 2; i++) {
@@ -57,10 +48,6 @@ class RateLimitingIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.code").value("RATE_LIMIT_EXCEEDED"));
 	}
 
-	/**
-	 * Liczniki są per ścieżka, więc wyczerpanie limitu na jednym publicznym
-	 * endpoincie nie może zablokować pozostałych.
-	 */
 	@Test
 	void limitOnOnePath_doesNotBlockAnother() throws Exception {
 		for (int i = 0; i < 3; i++) {
@@ -68,8 +55,6 @@ class RateLimitingIntegrationTest extends AbstractIntegrationTest {
 					{"email":"nie-ma@songly.io","password":"password123"}"""));
 		}
 
-		// Wylogowanie jest idempotentne, więc nieznany token to normalne 204 — byle
-		// nie 429 odziedziczone po sąsiednim endpoincie.
 		mockMvc.perform(post("/api/v1/auth/logout").contentType(MediaType.APPLICATION_JSON).content("""
 				{"refreshToken":"nie-istnieje"}""")).andExpect(status().isNoContent());
 	}

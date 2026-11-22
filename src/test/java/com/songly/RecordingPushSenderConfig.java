@@ -12,12 +12,6 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
-/**
- * Atrapa kanału push, z której testy odczytują realnie wysłane wiadomości (ADR
- * 0040). Ten sam układ co {@link RecordingMailSenderConfig}: {@code @Primary},
- * więc produkcyjny bean z {@code PushConfig} nadal musi dać się utworzyć, i
- * wpięte globalnie, żeby nie mnożyć kontekstów Springa.
- */
 @TestConfiguration
 public class RecordingPushSenderConfig {
 
@@ -42,12 +36,10 @@ public class RecordingPushSenderConfig {
 			return sent.stream().filter(message -> message.token().equals(token)).toList();
 		}
 
-		/** Udaje FCM, który przestał znać ten token. */
 		public void markUnregistered(String token) {
 			unregistered.add(token);
 		}
 
-		/** Udaje wolny serwer FCM. Test, który to ustawia, musi przywrócić zero. */
 		public void delayEachSendBy(Duration delay) {
 			this.delay = delay;
 		}

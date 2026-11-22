@@ -14,10 +14,6 @@ interface MusicProviderLinkRepository extends JpaRepository<MusicProviderLink, U
 
 	boolean existsByUserIdAndProvider(UUID userId, String provider);
 
-	/**
-	 * Same identyfikatory, bez ładowania encji z tokenami — serwerowy poll (ADR
-	 * 0007, Etap 1b) potrzebuje tylko wiedzieć, kogo w ogóle da się odpytać.
-	 */
 	@Query("select l.userId from MusicProviderLink l where l.provider = :provider and l.userId in :userIds")
 	Set<UUID> findUserIdsByProviderAndUserIdIn(@Param("provider") String provider,
 			@Param("userIds") Collection<UUID> userIds);

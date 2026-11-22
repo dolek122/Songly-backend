@@ -14,15 +14,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 
-/**
- * Mapowanie odpowiedzi FCM na wyjątki (ADR 0040) na prawdziwym HTTP, bez
- * Google'a: lokalny serwer udaje endpoint {@code messages:send}.
- *
- * <p>
- * Najważniejsza jest granica między „tokenu już nie ma" (wołający kasuje
- * urządzenie) a każdą inną porażką: pomyłka w tę stronę odpinałaby po cichu
- * zdrowe telefony.
- */
 class FcmPushSenderTest {
 
 	private HttpServer server;
@@ -67,8 +58,6 @@ class FcmPushSenderTest {
 		assertThat(lastAuth.get()).isEqualTo("Bearer access-token");
 		assertThat(lastBody.get()).contains("\"token\":\"device-token\"").contains("\"type\":\"POST_LIKED\"")
 				.contains("\"priority\":\"high\"").contains("\"alert\"").contains("\"title\":\"Ola\"")
-				// Blok "notification" FCM sprawiłby, że Android w tle pokazałby push sam,
-				// z pominięciem kanału i akcji aplikacji.
 				.doesNotContain("\"notification\"");
 	}
 
@@ -88,10 +77,6 @@ class FcmPushSenderTest {
 		assertThatThrownBy(() -> sender().send(message())).isInstanceOf(InvalidPushTokenException.class);
 	}
 
-	/**
-	 * 404 bez {@code UNREGISTERED} to zwykle błąd konfiguracji (zły adres albo
-	 * projekt) — gdyby kasował token, jedna pomyłka odpięłaby wszystkie telefony.
-	 */
 	@Test
 	void notFoundWithoutUnregisteredIsAnOrdinaryFailure() {
 		status = 404;
@@ -101,10 +86,6 @@ class FcmPushSenderTest {
 				.isNotInstanceOf(InvalidPushTokenException.class);
 	}
 
-	/**
-	 * INVALID_ARGUMENT bywa błędem żądania — nie wolno na tej podstawie kasować
-	 * urządzenia.
-	 */
 	@Test
 	void invalidArgumentIsAnOrdinaryFailure() {
 		status = 400;

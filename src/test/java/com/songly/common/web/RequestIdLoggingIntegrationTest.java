@@ -18,11 +18,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
-/**
- * Identyfikator żądania jest wart tyle, ile jego obecność w logach — więc
- * sprawdzamy nie samo pole w MDC, ale to, że dociera do zdarzenia logowania
- * wyprodukowanego głęboko w obsłudze żądania (Claude.md §13).
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class RequestIdLoggingIntegrationTest extends AbstractIntegrationTest {
 
@@ -61,8 +56,6 @@ class RequestIdLoggingIntegrationTest extends AbstractIntegrationTest {
 
 		assertThat(appender.list).singleElement().satisfies(event -> {
 			assertThat(event.getFormattedMessage()).contains("Nieudane logowanie");
-			// To jest właściwa asercja: linia logu z głębi obsługi żądania niesie
-			// identyfikator, więc da się po nim zebrać wszystkie linie jednego żądania.
 			assertThat(event.getMDCPropertyMap()).containsKey(RequestIdFilter.REQUEST_ID_KEY);
 		});
 	}
@@ -75,11 +68,6 @@ class RequestIdLoggingIntegrationTest extends AbstractIntegrationTest {
 				.containsEntry(RequestIdFilter.REQUEST_ID_KEY, "mobile-abc-123"));
 	}
 
-	/**
-	 * Nagłówek jest spod kontroli klienta, a ląduje w każdej linii logu — bez
-	 * sanityzacji dałoby się wstrzyknąć do logów dowolną treść, w tym znaki nowej
-	 * linii udające kolejne wpisy.
-	 */
 	@Test
 	void hostileRequestId_isSanitized() throws Exception {
 		failedLogin("abc\ndef ERROR wstrzykniete<>");

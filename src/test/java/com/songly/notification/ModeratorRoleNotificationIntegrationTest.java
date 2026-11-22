@@ -15,12 +15,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Powiadomienia o zmianie roli moderatora (ADR 0016). ADR 0012 świadomie je
- * pominął („nowy moderator zobaczy kolejkę, gdy wejdzie do społeczności") — ale
- * odebranie roli objawiało się wyłącznie 403-kami na kolejce, czyli decyzja
- * wyglądała jak awaria.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class ModeratorRoleNotificationIntegrationTest extends AbstractIntegrationTest {
 
@@ -93,11 +87,6 @@ class ModeratorRoleNotificationIntegrationTest extends AbstractIntegrationTest {
 		assertThat(countOfType(member, "COMMUNITY_MODERATOR_REVOKED")).isEqualTo(1);
 	}
 
-	/**
-	 * Ustawienie roli, którą członek już ma, nie jest zmianą — ta sama zasada co
-	 * „tylko nowy ban" (ADR 0014): powtórzone kliknięcie właściciela nie dokłada
-	 * powiadomień o tym samym.
-	 */
 	@Test
 	void settingTheSameRoleAgainDoesNotNotify() throws Exception {
 		TestUser owner = user("rolenotif-idem-owner@songly.io");
@@ -112,12 +101,6 @@ class ModeratorRoleNotificationIntegrationTest extends AbstractIntegrationTest {
 		assertThat(countOfType(member, "COMMUNITY_MODERATOR_GRANTED")).isEqualTo(1);
 	}
 
-	/**
-	 * Zmiana roli to zwykłe powiadomienie, nie MODERATION (ADR 0016): nadaje albo
-	 * odbiera uprawnienia, ale niczego nie ogranicza w zwykłym uczestnictwie.
-	 * Podlega więc filtrowi blokad — kto zablokował właściciela, nie widzi od niego
-	 * także tego — i nie wychodzi mailem.
-	 */
 	@Test
 	void roleChangeIsHiddenByBlockAndSendsNoMail() throws Exception {
 		TestUser owner = user("rolenotif-block-owner@songly.io");

@@ -15,12 +15,6 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Access token usuniętego konta przestaje działać od razu (ADR 0052), a nie po
- * wygaśnięciu. Filtr i tak czyta konto z bazy przy każdym żądaniu (ADR 0006), a
- * brak wiersza traktował jak zwykłego użytkownika: feed, wyszukiwarka, ręczny
- * status i strumień SSE działały jeszcze do 15 minut po usunięciu.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class DeletedAccountTokenIntegrationTest extends AbstractIntegrationTest {
 

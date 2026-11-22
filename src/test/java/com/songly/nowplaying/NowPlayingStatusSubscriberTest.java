@@ -19,9 +19,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.connection.Message;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Odbiór wiadomości z kanału Redis (ADR 0007, Etap 2).
- */
 @ExtendWith(MockitoExtension.class)
 class NowPlayingStatusSubscriberTest {
 
@@ -55,11 +52,6 @@ class NowPlayingStatusSubscriberTest {
 		assertThat(received.getValue().status().title()).isEqualTo("Bohemian Rhapsody");
 	}
 
-	/**
-	 * Wiadomość w nieznanym kształcie (np. ze starszej instancji w trakcie rolling
-	 * deployu) nie może wywrócić kontenera nasłuchującego — presence jest ulotne,
-	 * więc porzucenie jednej zmiany jest nieszkodliwe.
-	 */
 	@Test
 	void swallowsUnreadableMessage() {
 		when(message.getBody()).thenReturn("{nie-json".getBytes(StandardCharsets.UTF_8));

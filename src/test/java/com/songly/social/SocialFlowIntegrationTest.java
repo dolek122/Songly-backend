@@ -151,11 +151,6 @@ class SocialFlowIntegrationTest extends AbstractIntegrationTest {
 						{"addresseeId":"%s"}""".formatted(ada.userId()))).andExpect(status().isCreated());
 	}
 
-	/**
-	 * Stan blokady widzi tylko blokujący. Zablokowany dostaje „nie blokujesz” —
-	 * czyli prawdę o własnej decyzji — a nie informację, że ktoś zablokował jego
-	 * (ADR 0039).
-	 */
 	@Test
 	void blockStatus_isVisibleOnlyInBlockersDirection() throws Exception {
 		TestUser ada = registerUser("social-status-ada@songly.io");
@@ -186,8 +181,6 @@ class SocialFlowIntegrationTest extends AbstractIntegrationTest {
 
 		String requestId = sendRequest(ada, bono);
 
-		// Adresat nie może anulować cudzego zaproszenia — tylko nadawca; dla adresata
-		// zaproszenie jest "niewidoczne" (404), żeby nie ujawniać relacji.
 		mockMvc.perform(
 				delete("/api/v1/friends/requests/" + requestId).header("Authorization", "Bearer " + bono.accessToken()))
 				.andExpect(status().isNotFound());
@@ -196,7 +189,6 @@ class SocialFlowIntegrationTest extends AbstractIntegrationTest {
 				delete("/api/v1/friends/requests/" + requestId).header("Authorization", "Bearer " + ada.accessToken()))
 				.andExpect(status().isNoContent());
 
-		// Po anulowaniu znika z listy wychodzących nadawcy i przychodzących adresata.
 		mockMvc.perform(get("/api/v1/friends/requests?direction=OUTGOING").header("Authorization",
 				"Bearer " + ada.accessToken())).andExpect(status().isOk())
 				.andExpect(jsonPath("$.content.length()").value(0));
@@ -204,8 +196,6 @@ class SocialFlowIntegrationTest extends AbstractIntegrationTest {
 				"Bearer " + bono.accessToken())).andExpect(status().isOk())
 				.andExpect(jsonPath("$.content.length()").value(0));
 
-		// Naprawdę usunięte, nie tylko ukryte — to samo zaproszenie można wysłać od
-		// nowa.
 		mockMvc.perform(post("/api/v1/friends/requests").header("Authorization", "Bearer " + ada.accessToken())
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"addresseeId":"%s"}""".formatted(bono.userId()))).andExpect(status().isCreated());

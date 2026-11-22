@@ -17,11 +17,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Moderatorzy usuwają komentarze w swojej społeczności. Wcześniej jedyną
- * odpowiedzią na komentarz trolla było skasowanie całego posta, czyli ukaranie
- * jego autora za cudzą treść.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class CommentModerationIntegrationTest extends AbstractIntegrationTest {
 
@@ -87,8 +82,6 @@ class CommentModerationIntegrationTest extends AbstractIntegrationTest {
 						{"role":"MODERATOR"}""")).andExpect(status().isNoContent());
 		String postId = createPost(author, "/api/v1/communities/" + communityId + "/posts");
 		String commentId = comment(troll, postId);
-		// Ten sam moderator zostawia też zwykły ślad u autora komentarza — jego nazwa
-		// trafia wtedy na tę samą stronę skrzynki i nie może przeciec do decyzji.
 		String trollsOwnPost = createPost(troll, "/api/v1/posts");
 		mockMvc.perform(
 				put("/api/v1/posts/" + trollsOwnPost + "/likes").header("Authorization", "Bearer " + moderator.token()))
@@ -104,7 +97,6 @@ class CommentModerationIntegrationTest extends AbstractIntegrationTest {
 		JsonNode removal = inbox.get(0);
 		assertThat(removal.get("type").asText()).isEqualTo("COMMUNITY_COMMENT_REMOVED");
 		assertThat(removal.get("resourceId").asText()).isEqualTo(postId);
-		// Decyzja należy do społeczności, nie do osoby (ADR 0015).
 		assertThat(removal.get("actorDisplayName").isNull()).isTrue();
 		assertThat(removal.get("actorAvatarUrl").isNull()).isTrue();
 		JsonNode like = inbox.get(1);
@@ -130,10 +122,6 @@ class CommentModerationIntegrationTest extends AbstractIntegrationTest {
 		deleteComment(other, postId, commentId, 403);
 	}
 
-	/**
-	 * Uprawnienia moderatora nie wychodzą poza jego społeczność — pod zwykłym
-	 * postem chroni wyłącznie autorstwo (§8).
-	 */
 	@Test
 	void moderationDoesNotReachCommentsUnderRegularPosts() throws Exception {
 		TestUser owner = user("comment-mod-regular-owner@songly.io");
@@ -145,7 +133,6 @@ class CommentModerationIntegrationTest extends AbstractIntegrationTest {
 		deleteComment(owner, postId, commentId, 403);
 	}
 
-	/** Skasowanie własnego komentarza nie jest decyzją moderacyjną. */
 	@Test
 	void removingOwnCommentNotifiesNobody() throws Exception {
 		TestUser owner = user("comment-mod-own-owner@songly.io");

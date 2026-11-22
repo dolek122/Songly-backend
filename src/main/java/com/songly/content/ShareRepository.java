@@ -9,7 +9,6 @@ import org.springframework.data.repository.query.Param;
 
 interface ShareRepository extends JpaRepository<Share, ShareId> {
 
-	/** Zliczenia dla całej strony postów jednym zapytaniem (bez N+1). */
 	@Query("select s.postId as postId, count(s) as shareCount from Share s where s.postId in :postIds group by s.postId")
 	List<PostIdCount> countByPostIdIn(@Param("postIds") Collection<UUID> postIds);
 

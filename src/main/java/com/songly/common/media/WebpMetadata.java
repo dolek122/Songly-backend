@@ -6,17 +6,6 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
 
-/**
- * Usuwa metadane z WebP, przepisując kontener RIFF blok po bloku, bez
- * dekodowania obrazu.
- *
- * <p>
- * Lista dozwolonych: obraz ({@code VP8 }, {@code VP8L}, {@code ALPH}),
- * animacja, profil kolorów i nagłówek {@code VP8X}. Giną {@code EXIF} (poza
- * orientacją), {@code XMP } i bloki nieznane. Nagłówek {@code VP8X} deklaruje
- * flagami, które bloki są w pliku, więc po ich usunięciu flagi trzeba poprawić
- * — inaczej plik obiecywałby metadane, których nie ma.
- */
 final class WebpMetadata {
 
 	private static final byte[] RIFF = {'R', 'I', 'F', 'F'};
@@ -38,7 +27,6 @@ final class WebpMetadata {
 		if (riffSize < 4 || riffSize > in.length - 8) {
 			throw new UnsupportedImageException();
 		}
-		// Rozmiar z nagłówka wyznacza koniec pliku — to, co doklejono za nim, ginie.
 		int end = 8 + (int) riffSize;
 		ByteArrayOutputStream chunks = new ByteArrayOutputStream(in.length);
 		int vp8xFlagsAt = -1;
@@ -73,7 +61,6 @@ final class WebpMetadata {
 			} else if (KEPT.contains(fourCc)) {
 				writeChunk(chunks, fourCc, in, payload, (int) size);
 			}
-			// Blok o nieparzystym rozmiarze ma bajt wyrównania; ostatniemu bywa go brak.
 			pos = (int) Math.min(end, payload + size + (size & 1));
 		}
 		byte[] body = chunks.toByteArray();

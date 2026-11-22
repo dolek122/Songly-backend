@@ -11,18 +11,6 @@ import org.springframework.data.repository.query.Param;
 
 interface PostRepository extends JpaRepository<Post, UUID> {
 
-	/**
-	 * Wszystkie odczyty „osi czasu" pomijają posty społecznościowe: te należą do
-	 * swojej społeczności, nie do publicznej listy ani profilu autora. Stąd
-	 * {@code CommunityIdIsNull} w nazwach — bez tego post z niszowej społeczności
-	 * wypływałby na wierzch u ludzi, którzy do niej nie należą.
-	 *
-	 * <p>
-	 * {@code AuthorIdNotIn} wycina autorów zablokowanych w którymkolwiek kierunku.
-	 * Filtr jest w zapytaniu, a nie po stronie Javy, bo odsianie wierszy po
-	 * pobraniu strony psułoby paginację: strona o rozmiarze 20 potrafiłaby wrócić z
-	 * 15 wynikami, a {@code totalElements} liczyłby też ukryte posty.
-	 */
 	Page<Post> findByCommunityIdIsNullAndAuthorIdNotInOrderByCreatedAtDesc(Collection<UUID> excludedAuthorIds,
 			Pageable pageable);
 
@@ -35,33 +23,12 @@ interface PostRepository extends JpaRepository<Post, UUID> {
 
 	void deleteByCommunityId(UUID communityId);
 
-	/**
-	 * Klucze zdjęć do posprzątania po wsadowym kasowaniu postów. Odczyt musi się
-	 * wydarzyć PRZED kasowaniem — potem nie ma już skąd wziąć tych wartości, a plik
-	 * bez wiersza jest nie do odnalezienia.
-	 */
 	@Query("select p.imageKey from Post p where p.authorId = :authorId and p.imageKey is not null")
 	List<String> findImageKeysByAuthorId(@Param("authorId") UUID authorId);
 
 	@Query("select p.imageKey from Post p where p.communityId = :communityId and p.imageKey is not null")
 	List<String> findImageKeysByCommunityId(@Param("communityId") UUID communityId);
 
-	/**
-	 * Feed: posty napisane albo udostępnione przez podanych użytkowników, bez
-	 * postów społecznościowych.
-	 *
-	 * <p>
-	 * Warunek na {@code communityId} dotyczy posta, nie udostępnienia — inaczej
-	 * udostępnienie posta ze społeczności przemycałoby go do feedu osób, które jej
-	 * nie widzą.
-	 *
-	 * <p>
-	 * {@code excludedAuthorIds} jest osobnym warunkiem od {@code userIds}, bo
-	 * blokada nie usuwa posta z feedu „sama z siebie": zerwanie znajomości wyklucza
-	 * zablokowanego z {@code userIds} tylko jako autora, ale jego post nadal
-	 * wchodzi do feedu <b>udostępniony przez wspólnego znajomego</b>. To jedyna
-	 * droga, którą treść zablokowanego wracała do oczu blokującego.
-	 */
 	@Query(value = "select p from Post p where p.communityId is null and p.authorId not in :excludedAuthorIds "
 			+ "and (p.authorId in :userIds "
 			+ "or exists (select 1 from Share s where s.postId = p.id and s.userId in :userIds)) "

@@ -5,12 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
-/**
- * Odmowa startu z sekretem deweloperskim (Claude.md §9) sprawdzana na
- * prawdziwym kontekście Springa — tylko tak widać, że flaga dociera przez
- * {@code @Value} i że sprawdzenie odpala się przy starcie, a nie dopiero przy
- * pierwszym tokenie.
- */
 class JwtServiceSecretTest {
 
 	private static final String DEV_SECRET = "dev-only-secret-change-me-in-every-real-environment-32bytes+";

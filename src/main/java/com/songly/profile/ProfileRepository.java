@@ -18,19 +18,6 @@ interface ProfileRepository extends JpaRepository<Profile, UUID> {
 
 	List<Profile> findByUserIdIn(Collection<UUID> userIds);
 
-	/**
-	 * Wyszukiwanie po fragmencie nazwy (case-insensitive) z pominięciem podanych
-	 * identyfikatorów: pytającego i kont zawieszonych (ADR 0026).
-	 *
-	 * <p>
-	 * Jedno {@code not in} zamiast dwóch warunków, bo wołający i tak musi zbudować
-	 * ten zbiór — a przy rozdzieleniu łatwo dopisać filtr w jednym miejscu i
-	 * zapomnieć o drugim.
-	 *
-	 * <p>
-	 * {@code displayName} musi przyjść już z escapowanymi {@code \}, {@code %} i
-	 * {@code _} — patrz {@code ProfileService#searchUsers}.
-	 */
 	@Query("""
 			select p from Profile p
 			where lower(p.displayName) like lower(concat('%', :displayName, '%')) escape '\\'

@@ -35,10 +35,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
-/**
- * Właściwości kanału e-mail, których test integracyjny nie wymusi wprost:
- * odporność na awarię wysyłki i ciche pomijanie adresatów bez konta.
- */
 @ExtendWith(MockitoExtension.class)
 class ModerationNotificationMailerTest {
 
@@ -83,15 +79,11 @@ class ModerationNotificationMailerTest {
 				adminDirectory, suspendedAccounts);
 	}
 
-	/** Domyślnie okno wolne — wyciszanie sprawdzają osobne testy. */
 	private void mailSlotFree() {
 		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 		when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true);
 	}
 
-	/**
-	 * Nikt nie wypisał się z poczty — filtr preferencji (ADR 0020) ma osobne testy.
-	 */
 	private void allRecipientsAllowed() {
 		when(mailPreferences.allowedRecipients(anySet(), any(MailCategory.class)))
 				.thenAnswer(invocation -> invocation.getArgument(0));
@@ -101,10 +93,6 @@ class ModerationNotificationMailerTest {
 		return new PostReportedEvent(communityId, UUID.randomUUID(), reporterId, Instant.now());
 	}
 
-	/**
-	 * Jeden niedoręczalny adres nie może zatrzymać maili do pozostałych moderatorów
-	 * — a błąd wysyłki nie ma prawa wylecieć z listenera.
-	 */
 	@Test
 	void deliveryFailureForOneModeratorDoesNotStopTheOthers() {
 		mailSlotFree();
@@ -123,10 +111,6 @@ class ModerationNotificationMailerTest {
 		verify(mailSender).send(eq("second@songly.io"), anyString(), anyString());
 	}
 
-	/**
-	 * Zgłaszający będący moderatorem odpada <b>przed</b> pytaniem o adresy — ta
-	 * sama reguła „nikt nie zawiadamia siebie" co w {@code NotificationService}.
-	 */
 	@Test
 	void reportingModeratorIsFilteredOutBeforeEmailLookup() {
 		mailSlotFree();
@@ -142,10 +126,6 @@ class ModerationNotificationMailerTest {
 		verify(mailSender).send(eq("mod@songly.io"), anyString(), anyString());
 	}
 
-	/**
-	 * Zawieszony moderator nie otworzy kolejki, do której ten mail wzywa (ADR 0022,
-	 * 0049) — wypada z adresatów, pozostali dostają wiadomość jak dotąd.
-	 */
 	@Test
 	void suspendedModeratorIsLeftOutOfQueueMail() {
 		mailSlotFree();
@@ -163,9 +143,6 @@ class ModerationNotificationMailerTest {
 		verify(mailSender).send(eq("mod@songly.io"), anyString(), anyString());
 	}
 
-	/**
-	 * Konto usunięte między decyzją a wysyłką: brak adresu, brak maila, brak błędu.
-	 */
 	@Test
 	void recipientWithoutAccountIsSkippedSilently() {
 		mailSlotFree();
@@ -180,11 +157,6 @@ class ModerationNotificationMailerTest {
 		verify(mailSender, never()).send(anyString(), anyString(), anyString());
 	}
 
-	/**
-	 * Odstęp wyciszający (ADR 0018): drugi mail do moderatorów tej samej
-	 * społeczności w oknie przepada, i to <b>przed</b> pytaniem o adresatów —
-	 * wyciszamy wysyłkę, a nie doręczenie.
-	 */
 	@Test
 	void secondModeratorMailWithinTheIntervalIsSuppressed() {
 		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
@@ -195,15 +167,9 @@ class ModerationNotificationMailerTest {
 
 		verify(communityMembership, never()).moderatorIds(any());
 		verify(mailSender, never()).send(anyString(), anyString(), anyString());
-		// Wyciszenie musi być widoczne w metrykach — z zewnątrz wygląda identycznie
-		// jak brak spraw (ADR 0019).
 		assertThat(meterRegistry.counter("songly.moderation.mail.suppressed", "kind", "report").count()).isEqualTo(1);
 	}
 
-	/**
-	 * Fail-open jak rate limiter (Claude.md §9): awaria Redisa nie może uciszyć
-	 * kolejki moderacji, więc mail wychodzi.
-	 */
 	@Test
 	void redisFailureLetsTheMailThrough() {
 		allRecipientsAllowed();
@@ -218,7 +184,6 @@ class ModerationNotificationMailerTest {
 		verify(mailSender).send(eq("mod@songly.io"), anyString(), anyString());
 	}
 
-	/** Usunięta społeczność nie wywraca wysyłki — treść dostaje tekst zastępczy. */
 	@Test
 	void deletedCommunityDoesNotBreakTheMail() {
 		mailSlotFree();

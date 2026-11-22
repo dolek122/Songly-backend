@@ -2,9 +2,6 @@ package com.songly.common.web;
 
 import org.springframework.http.HttpStatus;
 
-/**
- * Bazowa wyjątek domenowy niosący status HTTP i kod błędu do {@link ApiError}.
- */
 public abstract class ApiException extends RuntimeException {
 
 	private final HttpStatus status;
@@ -24,11 +21,6 @@ public abstract class ApiException extends RuntimeException {
 		return code;
 	}
 
-	/**
-	 * Za ile sekund wolno spróbować ponownie, dla odpowiedzi 429. {@code null} =
-	 * bez nagłówka {@code Retry-After}. Bez niego klient nie wie, kiedy wrócić, i
-	 * dobija się w kółko — czyli robi to, przed czym limit ma chronić.
-	 */
 	public Long getRetryAfterSeconds() {
 		return null;
 	}

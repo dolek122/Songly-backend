@@ -31,10 +31,6 @@ class SanitizedImageTest {
 		assertThat(image.content()).isEqualTo(jpeg);
 	}
 
-	/**
-	 * Sedno: z bloku EXIF nie przechodzi nic poza orientacją — a ta przechodzi, bo
-	 * bez niej portret z telefonu leżałby bokiem.
-	 */
 	@Test
 	void jpegExif_isReducedToOrientation() throws IOException {
 		SanitizedImage image = SanitizedImage.from(TestImages.jpegWithExif(6));
@@ -51,10 +47,6 @@ class SanitizedImageTest {
 		assertThat(SanitizedImage.from(TestImages.jpegWithExif(1)).content()).isEqualTo(TestImages.jpeg());
 	}
 
-	/**
-	 * XMP, IPTC (APP13), komentarz, blok MPF i to, co telefon dokleja za EOI —
-	 * każde z nich potrafi nieść położenie albo drugi obraz.
-	 */
 	@Test
 	void jpegMetadataSegmentsAndTrailer_areRemoved() {
 		byte[] jpeg = TestImages.jpeg();
@@ -66,7 +58,6 @@ class SanitizedImageTest {
 		assertThat(SanitizedImage.from(withMetadata).content()).isEqualTo(jpeg);
 	}
 
-	/** Profil kolorów zmienia wygląd zdjęcia, więc zostaje. */
 	@Test
 	void jpegIccProfile_isKept() {
 		byte[] jpeg = TestImages.jpeg();
@@ -76,10 +67,6 @@ class SanitizedImageTest {
 		assertThat(SanitizedImage.from(withIcc).content()).isEqualTo(withIcc);
 	}
 
-	/**
-	 * Same magiczne bajty to za mało: plik, którego struktury nie da się
-	 * przeczytać, nie może przejść bez zmian, bo przeszłyby też jego metadane.
-	 */
 	@Test
 	void malformedFiles_areRejected() {
 		byte[] jpeg = TestImages.jpeg();
@@ -129,9 +116,6 @@ class SanitizedImageTest {
 		assertThat(decode(stripped).getWidth()).isEqualTo(2);
 	}
 
-	/**
-	 * Prosty WebP nie ma gdzie trzymać metadanych, więc nic się w nim nie zmienia.
-	 */
 	@Test
 	void simpleWebp_passesUnchanged() {
 		byte[] webp = webp(chunk("VP8L", new byte[]{0x2F, 1, 2, 3, 4}));
@@ -142,10 +126,6 @@ class SanitizedImageTest {
 		assertThat(image.content()).isEqualTo(webp);
 	}
 
-	/**
-	 * Flagi w VP8X muszą iść za blokami: plik bez XMP nie może go deklarować, a
-	 * blok EXIF z samą orientacją — tak.
-	 */
 	@Test
 	void extendedWebp_losesXmpAndExif_exceptOrientation_andFlagsFollow() {
 		byte[] vp8x = new byte[10];

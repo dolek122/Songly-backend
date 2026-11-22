@@ -10,11 +10,6 @@ import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 
-/**
- * Błąd kasowania wychodzi z magazynu (ADR 0049). Połknięty w środku nie dawał
- * wołającemu wyboru: sprzątanie porzuconych zdjęć brało cichą porażkę za sukces
- * i kasowało kolejne wiersze, zostawiając pliki bez śladu.
- */
 class S3ObjectStorageTest {
 
 	@Test

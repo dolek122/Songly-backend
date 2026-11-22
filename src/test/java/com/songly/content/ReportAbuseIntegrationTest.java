@@ -17,15 +17,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Nadużycia kanału zgłoszeń (ADR 0018).
- *
- * <p>
- * Bramki z ADR 0012 („jedno zgłoszenie na parę post–zgłaszający", „powiadamiamy
- * tylko przy pierwszym zgłoszeniu posta") liczą <b>per post</b>, więc żadna nie
- * ogranicza jednego konta w poprzek wielu postów. Od ADR 0013 kosztem był nie
- * tylko zapchany widok kolejki, ale i poczta wysyłana każdemu moderatorowi.
- */
 @TestPropertySource(properties = {"songly.security.rate-limit.enabled=false", "songly.content.report.limit=2"})
 class ReportAbuseIntegrationTest extends AbstractIntegrationTest {
 
@@ -41,9 +32,6 @@ class ReportAbuseIntegrationTest extends AbstractIntegrationTest {
 	private record TestUser(String token, String userId, String email) {
 	}
 
-	/**
-	 * Rejestr jest współdzielony w kontekście, więc liczy się delta, nie wartość.
-	 */
 	private double rejectionCount(String reason) {
 		return meterRegistry.counter("songly.moderation.report.rejected", "reason", reason).count();
 	}
@@ -105,11 +93,6 @@ class ReportAbuseIntegrationTest extends AbstractIntegrationTest {
 		return count;
 	}
 
-	/**
-	 * Ban odcina ścieżki docierające do ludzi, a zostawia czyste liczby (Claude.md
-	 * §8). Zgłoszenie niesie tożsamość i tekst wprost do moderatorów — a od ADR
-	 * 0013 także maila — więc zbanowany traci tę drogę razem z pisaniem.
-	 */
 	@Test
 	void bannedUserCannotReport() throws Exception {
 		TestUser owner = user("reportabuse-ban-owner@songly.io");
@@ -127,10 +110,6 @@ class ReportAbuseIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.code").value("BANNED_FROM_COMMUNITY"));
 	}
 
-	/**
-	 * Limit liczy zgłoszenia jednej osoby w poprzek <b>różnych</b> postów — czyli
-	 * dokładnie to, czego bramki per post nie widzą.
-	 */
 	@Test
 	void oneReporterIsCappedAcrossDifferentPosts() throws Exception {
 		TestUser owner = user("reportabuse-cap-owner@songly.io");
@@ -149,24 +128,13 @@ class ReportAbuseIntegrationTest extends AbstractIntegrationTest {
 		double rejectionsBefore = rejectionCount("rate-limit");
 		report(reporter, third).andExpect(status().isTooManyRequests())
 				.andExpect(jsonPath("$.code").value("REPORT_RATE_LIMIT_EXCEEDED"));
-		// Odrzucenie musi zostawić ślad w metrykach, inaczej zasypywanie kolejki jest
-		// z zewnątrz niewidoczne (ADR 0019).
 		assertThat(rejectionCount("rate-limit")).isEqualTo(rejectionsBefore + 1);
 
-		// Limit jest per osoba: ktoś inny zgłasza normalnie, bo to jego pierwsze
-		// zgłoszenie — a nie trzecie w cudzym oknie.
 		TestUser someoneElse = user("reportabuse-cap-other@songly.io");
 		join(someoneElse, communityId);
 		report(someoneElse, third).andExpect(status().isAccepted());
 	}
 
-	/**
-	 * Sedno ADR 0018: wyciszamy <b>pocztę</b>, a nie kolejkę. Dwoje różnych
-	 * zgłaszających omija limit per osoba, więc bez odstępu per społeczność każde
-	 * zgłoszenie nowego posta to kolejny mail do każdego moderatora. Powiadomienia
-	 * w aplikacji i wpisy w kolejce zostają nietknięte — tam leży treść i tam
-	 * moderator i tak musi przyjść.
-	 */
 	@Test
 	void moderatorMailIsThrottledWhileQueueAndInboxAreNot() throws Exception {
 		TestUser owner = user("reportabuse-mail-owner@songly.io");

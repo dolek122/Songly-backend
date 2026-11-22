@@ -17,8 +17,6 @@ services:
     plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    # Grupa readiness: stan aplikacji i baza, bez Redisa i poczty, bo obie są
-    # fail-open i ich awaria nie może zdejmować instancji z ruchu (ADR 0051).
     healthCheckPath: /actuator/health/readiness
     envVars:
       - key: DB_HOST
@@ -46,19 +44,8 @@ services:
           type: keyvalue
           name: songly-redis
           property: connectionString
-      # Render terminuje ruch na swoim proxy, więc bez tego rate limiter widziałby
-      # jeden adres dla wszystkich klientów i odcinał ich wspólnym limitem.
-      # "native", nie "framework" (ADR 0051): adres klienta to pierwszy od prawej
-      # wpis X-Forwarded-For spoza sieci wewnętrznej, czyli dopisany przez proxy
-      # Rendera. "framework" ufał lewemu wpisowi i nagłówkowi Forwarded, które
-      # podaje sam klient. Założenie: proxy Rendera łączy się z adresu prywatnego
-      # i dopisuje adres klienta na końcu. Gdyby dopisywał jeszcze coś po nim,
-      # limit liczyłby za grubo (wspólny kubełek), ale nie dałby się obejść.
       - key: FORWARD_HEADERS_STRATEGY
         value: native
-      # Bez prawdziwych JWT_SECRET i NOW_PLAYING_TOKEN_KEY aplikacja nie wstanie:
-      # wartości domyślne z application.properties są publiczne (leżą w repo), a z
-      # nimi każdy podpisałby token admina i odszyfrował tokeny Spotify.
       - key: PRODUCTION_SECRETS_REQUIRED
         value: "true"
       - key: JWT_SECRET
@@ -71,20 +58,10 @@ services:
         sync: false
       - key: SPOTIFY_REDIRECT_URI
         sync: false
-      # Powrót z OAuth do aplikacji (ADR 0038). Domyślnie songly://now-playing/spotify —
-      # pozostaw puste, chyba że celowo odsyłasz gdzie indziej.
       - key: SPOTIFY_CONNECT_RESULT_URL
         sync: false
-      # Kanał e-mail (ADR 0008). Bez MAIL_PROVIDER=smtp instancja startuje z
-      # domyślnym "log", czyli wypisuje token resetu hasła do logów zamiast go
-      # wysłać — na produkcji to nie jest brak funkcji, tylko dziura: każdy z
-      # dostępem do logów mógłby przejmować konta.
       - key: MAIL_PROVIDER
         value: smtp
-      # SPRING_MAIL_HOST celowo nie ma tu wartości domyślnej — "smtp" bez hosta
-      # wywala start aplikacji, i o to chodzi. Instancja, która tylko wygląda,
-      # jakby wysyłała maile, byłaby awarią niezauważalną aż do pierwszego
-      # zgłoszenia "nie dostałem linku".
       - key: SPRING_MAIL_HOST
         sync: false
       - key: SPRING_MAIL_USERNAME
@@ -93,28 +70,16 @@ services:
         sync: false
       - key: MAIL_FROM
         sync: false
-      # Kanał push (ADR 0040). Bez PUSH_PROVIDER=fcm pushe są tylko logowane.
-      # FCM_CREDENTIALS_JSON to cała treść klucza konta serwisowego Firebase
-      # (JSON) — "fcm" bez niej celowo wywala start.
       - key: PUSH_PROVIDER
         sync: false
       - key: FCM_CREDENTIALS_JSON
         sync: false
-      # Link prowadzi do aplikacji klienckiej (formularz nowego hasła), nie do
-      # backendu, który nie ma żadnego UI. Domyślnie songly://… (ADR 0037) —
-      # pozostaw puste, chyba że celowo kierujesz linki gdzie indziej.
       - key: PASSWORD_RESET_URL
         sync: false
       - key: EMAIL_VERIFICATION_URL
         sync: false
-      # Link z maila do potwierdzenia usunięcia konta (ADR 0043). Musi wskazywać
-      # TEN backend po HTTPS — strona /account-deletion jest dla ludzi bez
-      # aplikacji, więc songly:// tu nie zadziała. Przy innej domenie (prod)
-      # zmień adres razem z wpisem w formularzu Google Play.
       - key: ACCOUNT_DELETION_CONFIRM_URL
         value: https://songly-backend-q7zm.onrender.com/account-deletion/confirm?token={token}
-      # Magazyn plików (ADR 0010) — Cloudflare R2 albo S3. Bez tego aplikacja
-      # wystartuje, ale każdy upload skończy się 502 STORAGE_ERROR.
       - key: STORAGE_ENDPOINT
         sync: false
       - key: STORAGE_BUCKET
@@ -123,7 +88,5 @@ services:
         sync: false
       - key: STORAGE_SECRET_KEY
         sync: false
-      # Domena, spod której pliki czytają klienci — przy R2/CDN inna niż
-      # STORAGE_ENDPOINT, pod który wgrywamy.
       - key: STORAGE_PUBLIC_BASE_URL
         sync: false

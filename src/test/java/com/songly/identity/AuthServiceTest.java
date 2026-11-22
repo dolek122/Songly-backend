@@ -54,7 +54,6 @@ class AuthServiceTest {
 
 	private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
-	/** Prawdziwy rejestr, nie mock — pozwala sprawdzić, ile faktycznie zliczył. */
 	private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
 
 	private AuthService authService;
@@ -65,10 +64,6 @@ class AuthServiceTest {
 				tokenIssuer, eventPublisher, meterRegistry, eraser(), loginAttemptLimiter);
 	}
 
-	/**
-	 * Prawdziwy, na tych samych mockach — kasowanie jest częścią kontraktu
-	 * deleteAccount.
-	 */
 	private AccountEraser eraser() {
 		return new AccountEraser(userRepository, sessionRepository, passwordResetTokenRepository,
 				accountDeletionTokenRepository, eventPublisher);
@@ -82,11 +77,6 @@ class AuthServiceTest {
 		return meterRegistry.counter("songly.auth.refresh.attempts", "outcome", outcome).count();
 	}
 
-	/**
-	 * Wydawanie sesji przeniosło się do {@link TokenIssuer}, gdy drugim miejscem
-	 * wydającym tokeny stała się weryfikacja adresu (ADR 0009). Tu interesuje nas
-	 * już tylko to, <b>czy</b> serwis o nią poprosił, a nie jak wygląda w środku.
-	 */
 	private AuthTokensResponse tokensWithAccess(String accessToken) {
 		return new AuthTokensResponse(accessToken, "refresh-token", "Bearer", 900);
 	}
@@ -103,11 +93,6 @@ class AuthServiceTest {
 		assertThat(loginAttempts("success")).isEqualTo(1);
 	}
 
-	/**
-	 * Oba rodzaje niepowodzenia muszą zliczać się jednakowo. Rozdzielenie ich w
-	 * metryce podpowiadałoby atakującemu, które adresy istnieją — a do wykrycia
-	 * brute-force'u wystarczy sam wzrost liczby porażek.
-	 */
 	@Test
 	void login_throws_whenUserNotFound() {
 		when(userRepository.findByEmail("missing@songly.io")).thenReturn(Optional.empty());
@@ -119,10 +104,6 @@ class AuthServiceTest {
 		assertThat(loginAttempts("success")).isZero();
 	}
 
-	/**
-	 * Nieznane konto kosztuje tyle samo co błędne hasło (ADR 0041) — bez bcrypta w
-	 * tej gałęzi czas odpowiedzi zdradzałby, czy pod adresem jest konto.
-	 */
 	@Test
 	void login_spendsBcrypt_evenWhenUserNotFound() {
 		PasswordEncoder spyEncoder = spy(new BCryptPasswordEncoder());
@@ -172,11 +153,6 @@ class AuthServiceTest {
 				.isInstanceOf(InvalidRefreshTokenException.class);
 	}
 
-	/**
-	 * Wygaśnięcie to zwykły upływ czasu, nie sygnał kradzieży — nie wolno go
-	 * traktować jak nadużycia, bo wylogowywałoby ze wszystkich urządzeń każdego,
-	 * kto wrócił do aplikacji po dłuższej przerwie.
-	 */
 	@Test
 	void refresh_throws_whenSessionExpired_withoutTreatingItAsReuse() {
 		Session expired = new Session(UUID.randomUUID(), UUID.randomUUID(), "hash", Instant.now().minusSeconds(7200),
@@ -192,10 +168,6 @@ class AuthServiceTest {
 		assertThat(refreshAttempts("reuse")).isZero();
 	}
 
-	/**
-	 * Sedno wykrywania: token po rotacji wolno użyć raz, więc drugie użycie znaczy,
-	 * że krąży kopia. Nie wiadomo po której stronie, dlatego giną wszystkie sesje.
-	 */
 	@Test
 	void refresh_revokesEverySession_whenRevokedTokenIsReplayed() {
 		UUID userId = UUID.randomUUID();
@@ -211,10 +183,6 @@ class AuthServiceTest {
 		assertThat(refreshAttempts("reuse")).isEqualTo(1);
 	}
 
-	/**
-	 * Odpowiedź musi być nieodróżnialna od zwykłego złego tokenu — inaczej
-	 * atakujący dowiadywałby się, że jego kopia została wykryta.
-	 */
 	@Test
 	void reuseDetection_isIndistinguishableFromAnOrdinaryBadToken() {
 		Session revoked = new Session(UUID.randomUUID(), UUID.randomUUID(), "hash", Instant.now(),
@@ -301,10 +269,6 @@ class AuthServiceTest {
 		verify(sessionRepository).revokeAllForUser(eq(userId), any(Instant.class));
 	}
 
-	/**
-	 * Błędne obecne hasło nie może przejść — inaczej przejęty access token
-	 * wystarczałby do przejęcia konta na stałe.
-	 */
 	@Test
 	void changePassword_throwsAndChangesNothing_whenCurrentPasswordWrong() {
 		UUID userId = UUID.randomUUID();
@@ -319,10 +283,6 @@ class AuthServiceTest {
 		verify(sessionRepository, never()).revokeAllForUser(any(), any());
 	}
 
-	/**
-	 * Zmiana na to samo hasło nie może przejść po cichu: nie zmieniłaby niczego
-	 * poza wylogowaniem użytkownika ze wszystkich urządzeń.
-	 */
 	@Test
 	void changePassword_rejectsNewPasswordIdenticalToCurrent() {
 		UUID userId = UUID.randomUUID();

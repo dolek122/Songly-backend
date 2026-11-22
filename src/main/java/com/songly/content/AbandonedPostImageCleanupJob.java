@@ -7,7 +7,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** Usuwa zdjęcia, które wgrano, ale nigdy nie przypięto do posta (ADR 0048). */
 @Component
 @ConditionalOnProperty(name = "songly.content.post-image.cleanup-enabled", havingValue = "true", matchIfMissing = true)
 class AbandonedPostImageCleanupJob {
@@ -28,7 +27,6 @@ class AbandonedPostImageCleanupJob {
 				log.info("Usunięto {} porzuconych zdjęć postów", removed);
 			}
 		} catch (RuntimeException ex) {
-			// Higiena, nie ścieżka krytyczna — tak samo jak sprzątanie sesji.
 			log.warn("Sprzątanie porzuconych zdjęć postów nie powiodło się: {}", ex.toString());
 		}
 	}

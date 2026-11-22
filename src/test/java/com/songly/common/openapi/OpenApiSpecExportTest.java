@@ -17,27 +17,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
-/**
- * Utrzymuje żywy kontrakt OpenAPI w {@code docs/api/openapi.json}, żeby zespół
- * mobilny (KMP, Claude.md §14) mógł generować z niego klienta/modele bez
- * odpalania backendu.
- *
- * <p>
- * Dwa tryby:
- * <ul>
- * <li><b>Weryfikacja (domyślny, tak działa CI):</b> generuje spec ze świeżo
- * zbootowanego kontekstu i porównuje z zacommitowanym plikiem. Rozjazd = błąd —
- * ktoś zmienił API i nie odświeżył kontraktu, więc mobilka pracowałaby na
- * nieaktualnym pliku.</li>
- * <li><b>Regeneracja:</b> uruchom z {@code -Dopenapi.export=true}, żeby
- * nadpisać plik świeżym specem, a potem zacommituj wynik.</li>
- * </ul>
- *
- * <p>
- * Spec bierze się z realnie zarejestrowanych kontrolerów (springdoc na pełnym
- * kontekście, te same Testcontainers co reszta testów integracyjnych), a nie z
- * ręcznie utrzymywanej kopii.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class OpenApiSpecExportTest extends AbstractIntegrationTest {
 
@@ -55,8 +34,6 @@ class OpenApiSpecExportTest extends AbstractIntegrationTest {
 		String rawSpec = mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse()
 				.getContentAsString(StandardCharsets.UTF_8);
 
-		// Pretty-print z posortowanymi kluczami, żeby diff między odświeżeniami
-		// był stabilny (springdoc nie gwarantuje kolejności pól w JSON-ie).
 		ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT)
 				.enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 		Object tree = mapper.readValue(rawSpec, Object.class);
@@ -73,13 +50,6 @@ class OpenApiSpecExportTest extends AbstractIntegrationTest {
 		assertThat(committed).as(REGENERATE_HINT).isEqualTo(expected);
 	}
 
-	/**
-	 * Domyślny pretty printer Jacksona łamie linie {@code System.lineSeparator()},
-	 * więc na Windows generowałby CRLF i rozjeżdżał się z plikiem trzymanym w
-	 * repozytorium z LF — test padałby lokalnie mimo braku jakiejkolwiek zmiany w
-	 * API. Wcięcia tablic zostawiamy domyślne (inline), żeby nie przeformatować
-	 * całego kontraktu.
-	 */
 	private static DefaultPrettyPrinter lineFeedPrettyPrinter() {
 		DefaultPrettyPrinter printer = new DefaultPrettyPrinter();
 		printer.indentObjectsWith(new DefaultIndenter("  ", "\n"));

@@ -19,11 +19,6 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Limit per użytkownik (ADR 0034) na małych liczbach: budżet zapisów 6, budżet
- * interakcji 2. Każdy test zakłada własne konta, więc liczniki w Redisie
- * (kluczowane identyfikatorem użytkownika) nie przeciekają między testami.
- */
 @TestPropertySource(properties = {"songly.security.rate-limit.enabled=false",
 		"songly.security.user-rate-limit.enabled=true", "songly.security.user-rate-limit.rules[0].name=writes",
 		"songly.security.user-rate-limit.rules[0].paths[0]=/api/**", "songly.security.user-rate-limit.rules[0].limit=6",
@@ -63,11 +58,6 @@ class UserRateLimitingIntegrationTest extends AbstractIntegrationTest {
 						{"content":"zaczepka"}"""));
 	}
 
-	/**
-	 * Lajk i komentarz dzielą jeden budżet — inaczej rozłożenie zasypywania na dwa
-	 * endpointy podwajałoby limit, a u ofiary kończy się to tak samo:
-	 * powiadomieniem.
-	 */
 	@Test
 	void interactionsShareOneBudget_acrossEndpoints() throws Exception {
 		String author = accessToken("user-limit-author-1@songly.io");
@@ -82,9 +72,6 @@ class UserRateLimitingIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(header().exists(HttpHeaders.RETRY_AFTER));
 	}
 
-	/**
-	 * Licznik należy do osoby, nie do posta ani do adresu IP (MockMvc ma jeden).
-	 */
 	@Test
 	void limitIsPerUser() throws Exception {
 		String author = accessToken("user-limit-author-2@songly.io");
@@ -99,11 +86,6 @@ class UserRateLimitingIntegrationTest extends AbstractIntegrationTest {
 		like(bystander, postId).andExpect(status().isNoContent());
 	}
 
-	/**
-	 * Cofnięcie własnego śladu nie jest interakcją i nie może zależeć od limitu —
-	 * ta sama zasada, z której cofnięcie lajka nie sprawdza blokady (§9). Odczyty
-	 * nie są limitowane wcale.
-	 */
 	@Test
 	void withdrawingAndReading_stillWork_afterInteractionBudgetIsSpent() throws Exception {
 		String author = accessToken("user-limit-author-3@songly.io");
@@ -122,17 +104,10 @@ class UserRateLimitingIntegrationTest extends AbstractIntegrationTest {
 		}
 	}
 
-	/**
-	 * Budżet zapisów obejmuje cały prefiks, więc endpoint, którego nikt nie wypisał
-	 * w żadnej regule, i tak jest limitowany — nowe endpointy dostają ochronę
-	 * domyślnie.
-	 */
 	@Test
 	void writeBudget_coversEndpointsNotListedAnywhere() throws Exception {
 		String user = accessToken("user-limit-writer-4@songly.io");
 
-		// Budżet to 6, ale jeden zapis zużył już pomocnik rejestracji: nadaje kontu
-		// nazwę wyświetlaną przez PUT /profiles/me (AbstractIntegrationTest).
 		for (int i = 0; i < 5; i++) {
 			mockMvc.perform(post("/api/v1/notifications/read-all").header("Authorization", "Bearer " + user))
 					.andExpect(status().isNoContent());

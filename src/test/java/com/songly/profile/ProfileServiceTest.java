@@ -66,7 +66,6 @@ class ProfileServiceTest {
 
 		ArgumentCaptor<Profile> captor = ArgumentCaptor.forClass(Profile.class);
 		verify(profileRepository).save(captor.capture());
-		// Nie część adresu e-mail (ADR 0046) — ta była publiczna i wyszukiwalna.
 		assertThat(captor.getValue().getDisplayName()).matches("Użytkownik \\d{6}");
 		assertThat(captor.getValue().getUserId()).isEqualTo(userId);
 	}
@@ -111,8 +110,6 @@ class ProfileServiceTest {
 
 		assertThat(response.displayName()).isEqualTo("New");
 		assertThat(response.bio()).isEqualTo("new bio");
-		// Avatara nie da się już podmienić edycją profilu — ustawia go wyłącznie
-		// upload pliku (ADR 0010).
 		assertThat(response.avatarUrl()).isNull();
 	}
 

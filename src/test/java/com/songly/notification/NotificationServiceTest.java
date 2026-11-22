@@ -62,7 +62,6 @@ class NotificationServiceTest {
 		verify(notificationRepository, never()).save(any());
 	}
 
-	/** Pętla unlike/like (ADR 0035): przywrócony stan to nie nowa wiadomość. */
 	@Test
 	void record_skipsRepeatedStateNotification_forSameActorAndResource() {
 		UUID postId = UUID.randomUUID();
@@ -74,7 +73,6 @@ class NotificationServiceTest {
 		verify(notificationRepository, never()).save(any());
 	}
 
-	/** Każdy komentarz to nowa treść — nie podlega deduplikacji. */
 	@Test
 	void record_neverDeduplicatesComments() {
 		notificationService.record(recipientId, actorId, NotificationType.POST_COMMENTED, UUID.randomUUID(),
@@ -161,10 +159,6 @@ class NotificationServiceTest {
 		assertThat(second.getReadAt()).isNotNull();
 	}
 
-	/**
-	 * „Oznacz wszystkie" nie może sięgać do ukrytych — inaczej po odblokowaniu
-	 * wracałyby przeczytane, mimo że nikt ich nigdy nie zobaczył.
-	 */
 	@Test
 	void markAllRead_leavesNotificationsFromBlockedUsersUntouched() {
 		UUID blockedId = UUID.randomUUID();

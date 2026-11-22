@@ -60,11 +60,6 @@ class NotificationController {
 		return ResponseEntity.noContent().build();
 	}
 
-	/**
-	 * Preferencje dotyczą <b>wyłącznie poczty</b> (ADR 0020) — stąd
-	 * {@code mail-preferences}, a nie {@code preferences}. Skrzynki w aplikacji nie
-	 * da się wyłączyć i nazwa endpointu ma to mówić wprost.
-	 */
 	@GetMapping("/mail-preferences")
 	MailPreferencesResponse mailPreferences(Authentication authentication) {
 		return mailPreferenceService.settings(currentUserId(authentication));
@@ -78,10 +73,6 @@ class NotificationController {
 		return ResponseEntity.noContent().build();
 	}
 
-	/**
-	 * Rejestracja urządzenia push (ADR 0040). Idempotentna — klient woła ją przy
-	 * każdym starcie i przy każdej wymianie tokenu przez FCM.
-	 */
 	@PutMapping("/push-devices")
 	ResponseEntity<Void> registerPushDevice(Authentication authentication,
 			@Valid @RequestBody RegisterPushDeviceRequest request) {
@@ -89,12 +80,6 @@ class NotificationController {
 		return ResponseEntity.noContent().build();
 	}
 
-	/**
-	 * Wyrejestrowanie przed wylogowaniem. {@code POST .../removal}, nie
-	 * {@code DELETE} — token jedzie w ciele (patrz
-	 * {@link RemovePushDeviceRequest}), a {@code DELETE} z ciałem bywa gubiony
-	 * przez proxy. Cudzy albo nieznany token też daje 204.
-	 */
 	@PostMapping("/push-devices/removal")
 	ResponseEntity<Void> removePushDevice(Authentication authentication,
 			@Valid @RequestBody RemovePushDeviceRequest request) {

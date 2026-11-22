@@ -45,11 +45,6 @@ class TokenEncryptorTest {
 				.isInstanceOf(IllegalStateException.class);
 	}
 
-	/**
-	 * Klucz z repo jest publiczny — z nim zrzut bazy oddaje tokeny Spotify
-	 * wszystkich użytkowników. Środowisko z prawdziwymi sekretami nie może z nim
-	 * wstać.
-	 */
 	@Test
 	void constructor_rejectsDevKey_whereProductionSecretsAreRequired() {
 		assertThatThrownBy(() -> new TokenEncryptor(propertiesWithKey(DEV_KEY), true))

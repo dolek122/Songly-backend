@@ -11,16 +11,6 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Preferencje kanału e-mail (ADR 0020).
- *
- * <p>
- * ADR 0013 zostawił świadomy brak opt-outu i wskazał mailer jako jedyne miejsce
- * do podpięcia, gdy preferencje powstaną. Powstały — i rządzą <b>wyłącznie
- * pocztą</b>: skrzynka w aplikacji zostaje kompletna, bo decyzji moderacyjnej
- * nie da się odmówić (ADR 0012), a ścieżka odwoławcza (ADR 0017) traciłaby
- * sens, gdyby dało się nie dowiedzieć o własnym banie.
- */
 @Service
 class NotificationMailPreferenceService {
 
@@ -30,16 +20,6 @@ class NotificationMailPreferenceService {
 		this.repository = repository;
 	}
 
-	/**
-	 * Odsiewa adresatów, którzy tej kategorii maili nie chcą. Brak wiersza to zgoda
-	 * — ustawienie jest opt-outem, bo te maile są konsekwencją korzystania z
-	 * usługi, nie marketingiem (ADR 0013).
-	 *
-	 * <p>
-	 * Filtrowanie jest <b>per adresat</b>, a nie „wyślij albo nie": mail o
-	 * zgłoszeniu idzie do wszystkich moderatorów naraz, więc jeden wypisany nie
-	 * może wyciszyć wysyłki pozostałym.
-	 */
 	@Transactional(readOnly = true)
 	Set<UUID> allowedRecipients(Collection<UUID> userIds, MailCategory category) {
 		if (userIds.isEmpty()) {
@@ -53,9 +33,6 @@ class NotificationMailPreferenceService {
 		}).collect(Collectors.toSet());
 	}
 
-	/**
-	 * Brak wiersza czytamy jako domyślne „oba włączone", bez zapisu przy odczycie.
-	 */
 	@Transactional(readOnly = true)
 	MailPreferencesResponse settings(UUID userId) {
 		return repository.findById(userId)
@@ -72,10 +49,6 @@ class NotificationMailPreferenceService {
 				() -> repository.save(new NotificationMailPreference(userId, decisionsAboutMe, moderationQueue, now)));
 	}
 
-	/**
-	 * Tabela ma FK do {@code users}, więc kasowanie konta musi ją posprzątać —
-	 * inaczej {@code DELETE} na użytkowniku odbija się o klucz obcy (Claude.md §9).
-	 */
 	@Transactional
 	void deleteAccountData(UUID userId) {
 		repository.deleteByUserId(userId);

@@ -20,15 +20,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Fail-open cache'a popularności gatunków (ADR 0032): awaria Redisa nie może
- * wywrócić dopasowań, bo cache jest optymalizacją, nie warunkiem poprawności.
- *
- * <p>
- * Test jest tu dlatego, że tego jednego zachowania nie sprawdzi żaden test
- * integracyjny — Redis w Testcontainers działa, a psucie go w trakcie testu
- * (zatrzymanie kontenera) rozwaliłoby resztę suity, bo kontenery są wspólne.
- */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class GenrePopularityCacheTest {
@@ -51,7 +42,6 @@ class GenrePopularityCacheTest {
 		assertThat(cache().read()).isEmpty();
 	}
 
-	/** Uszkodzony wpis czyta się jak brak wpisu — policzymy z bazy i nadpiszemy. */
 	@Test
 	void read_returnsEmpty_whenCachedValueIsGarbage() {
 		when(valueOperations.get(anyString())).thenReturn("{to nie jest JSON");
@@ -78,7 +68,6 @@ class GenrePopularityCacheTest {
 		assertThatCode(() -> cache.write(new GenrePopularityCache.Snapshot(Map.of(), 0L))).doesNotThrowAnyException();
 	}
 
-	/** Nieudane unieważnienie znaczy tylko, że obraz dożyje swojego TTL. */
 	@Test
 	void evict_doesNotPropagate_whenRedisIsDown() {
 		when(redisTemplate.delete(anyString())).thenThrow(new RedisConnectionFailureException("padło"));

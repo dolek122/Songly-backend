@@ -9,33 +9,14 @@ class StorageProperties {
 
 	private String region = "auto";
 
-	/**
-	 * Adres API magazynu. Puste znaczy „prawdziwe AWS S3" — SDK sam złoży wtedy
-	 * endpoint z regionu. Lokalnie i w testach wskazuje na MinIO, na produkcji na
-	 * Cloudflare R2.
-	 */
 	private String endpoint = "";
 
 	private String accessKey = "";
 
 	private String secretKey = "";
 
-	/**
-	 * Prefiks publicznych adresów plików, bez końcowego ukośnika.
-	 *
-	 * <p>
-	 * Celowo osobny od {@link #endpoint}: przy R2 czy CloudFroncie klienci czytają
-	 * przez domenę CDN-u, a my wgrywamy przez API. Sklejanie jednego z drugiego
-	 * działałoby tylko w konfiguracji deweloperskiej i wysypało się dokładnie tam,
-	 * gdzie sprawdzenie jest najtrudniejsze.
-	 */
 	private String publicBaseUrl = "http://localhost:9000/songly-media";
 
-	/**
-	 * Wymuszenie „path style" ({@code host/bucket/klucz}) zamiast wirtualnych
-	 * hostów ({@code bucket.host/klucz}). MinIO lokalnie nie ma wildcardowego DNS,
-	 * więc bez tego nie da się go w ogóle użyć.
-	 */
 	private boolean pathStyleAccess = true;
 
 	String getBucket() {

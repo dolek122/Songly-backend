@@ -12,10 +12,5 @@ interface CommunityRepository extends JpaRepository<Community, UUID> {
 
 	boolean existsByNameIgnoreCase(String name);
 
-	/**
-	 * Encje, nie masowy {@code deleteByOwnerId}: kasowanie każdej osobno pozwala
-	 * opublikować {@link CommunityDeletedEvent}, bez którego posty w tych
-	 * społecznościach zostałyby z wiszącym kluczem obcym.
-	 */
 	List<Community> findByOwnerId(UUID ownerId);
 }

@@ -17,11 +17,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Usunięcie konta zamyka jego otwarte strumienie SSE po commicie (ADR 0052).
- * Bez tego strumień wisiał do swojego timeoutu (30 minut), choć konta już nie
- * było.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class NowPlayingStreamAccountDeletionIntegrationTest extends AbstractIntegrationTest {
 

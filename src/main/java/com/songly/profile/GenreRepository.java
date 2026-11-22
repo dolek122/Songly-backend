@@ -10,10 +10,5 @@ interface GenreRepository extends JpaRepository<Genre, UUID> {
 
 	long countByIdIn(Collection<UUID> ids);
 
-	/**
-	 * Kolejność w nazwie metody, nie w {@code Pageable}: sortowanie od klienta jest
-	 * ignorowane (ADR 0051), a {@code findAll(pageable)} bez sortowania dawał
-	 * kolejność, jaką akurat zwróci Postgres, czyli strony mogły się nakładać.
-	 */
 	Page<Genre> findAllByOrderByNameAsc(Pageable pageable);
 }

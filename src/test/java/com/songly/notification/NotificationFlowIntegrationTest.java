@@ -45,7 +45,6 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 		TestUser ada = registerUser("notif-ada@songly.io");
 		TestUser bono = registerUser("notif-bono@songly.io");
 
-		// zaproszenie: powiadomienie dla adresata
 		MvcResult requestResult = mockMvc
 				.perform(post("/api/v1/friends/requests").header("Authorization", "Bearer " + ada.accessToken())
 						.contentType(MediaType.APPLICATION_JSON).content("""
@@ -61,14 +60,12 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.content[0].actorId").value(ada.userId()))
 				.andExpect(jsonPath("$.content[0].actorDisplayName").value("notif-ada"));
 
-		// akceptacja: powiadomienie dla wysyłającego
 		mockMvc.perform(post("/api/v1/friends/requests/%s/accept".formatted(requestId)).header("Authorization",
 				"Bearer " + bono.accessToken())).andExpect(status().isOk());
 		mockMvc.perform(get("/api/v1/notifications").header("Authorization", "Bearer " + ada.accessToken()))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.content[0].type").value("FRIEND_REQUEST_ACCEPTED"))
 				.andExpect(jsonPath("$.content[0].actorId").value(bono.userId()));
 
-		// lajk i komentarz: powiadomienia dla autora posta
 		MvcResult postResult = mockMvc
 				.perform(post("/api/v1/posts").header("Authorization", "Bearer " + ada.accessToken())
 						.contentType(MediaType.APPLICATION_JSON).content("""
@@ -85,7 +82,6 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 								{"content":"świetne"}"""))
 				.andExpect(status().isCreated());
 
-		// własny lajk nie generuje powiadomienia
 		mockMvc.perform(
 				put("/api/v1/posts/" + postId + "/likes").header("Authorization", "Bearer " + ada.accessToken()))
 				.andExpect(status().isNoContent());
@@ -94,7 +90,6 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 				get("/api/v1/notifications/unread-count").header("Authorization", "Bearer " + ada.accessToken()))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.count").value(3));
 
-		// oznaczanie jako przeczytane
 		MvcResult listResult = mockMvc
 				.perform(get("/api/v1/notifications").header("Authorization", "Bearer " + ada.accessToken()))
 				.andExpect(status().isOk()).andReturn();
@@ -136,7 +131,6 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isOk()).andExpect(jsonPath("$.content[0].type").value("COMMUNITY_MEMBER_JOINED"))
 				.andExpect(jsonPath("$.content[0].actorId").value(joiner.userId()));
 
-		// ponowne dołączenie (idempotentne) nie generuje kolejnego powiadomienia
 		mockMvc.perform(put("/api/v1/communities/" + communityId + "/membership").header("Authorization",
 				"Bearer " + joiner.accessToken())).andExpect(status().isNoContent());
 		mockMvc.perform(
@@ -165,11 +159,6 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.content[0].actorId").value(sharer.userId()));
 	}
 
-	/**
-	 * ADR 0035: pętla cofnij/przywróć na lajku, udostępnieniu i członkostwie
-	 * zostawia w skrzynce adresata po jednym powiadomieniu — także gdy adresat
-	 * zdążył je przeczytać.
-	 */
 	@Test
 	void undoRedoLoops_leaveOneNotificationPerActorAndResource() throws Exception {
 		TestUser author = registerUser("notif-loop-author@songly.io");
@@ -203,7 +192,6 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 					"Bearer " + looper.accessToken())).andExpect(status().isNoContent());
 			mockMvc.perform(delete("/api/v1/communities/" + communityId + "/membership").header("Authorization",
 					"Bearer " + looper.accessToken())).andExpect(status().isNoContent());
-			// przeczytanie nie otwiera furtki na kolejne powiadomienie
 			mockMvc.perform(
 					post("/api/v1/notifications/read-all").header("Authorization", "Bearer " + author.accessToken()))
 					.andExpect(status().isNoContent());
@@ -216,11 +204,6 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.content[?(@.type == 'COMMUNITY_MEMBER_JOINED')]", hasSize(1)));
 	}
 
-	/**
-	 * Zaproszenia zwijają się do jednego tylko do przeczytania (ADR 0035): pętla
-	 * wyślij/anuluj daje jedno nieprzeczytane wskazujące ostatnie zaproszenie, a
-	 * nowe zaproszenie po przeczytaniu jest nową wiadomością.
-	 */
 	@Test
 	void friendRequestLoop_collapsesWhileUnread_andPointsAtPendingRequest() throws Exception {
 		TestUser addressee = registerUser("notif-req-addressee@songly.io");

@@ -19,13 +19,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Konto usuwane przez usera z danymi w każdym module naraz — najbardziej
- * prawdopodobne miejsce, gdzie źle uporządkowany DELETE w kaskadzie
- * event-driven ({@link UserAccountDeletionRequestedEvent}) wywali się o FK bez
- * ON DELETE CASCADE. Sam sukces requestu (204, nie 500) jest tu głównym asercją
- * integralności.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class AccountDeletionFlowIntegrationTest extends AbstractIntegrationTest {
 
@@ -64,7 +57,6 @@ class AccountDeletionFlowIntegrationTest extends AbstractIntegrationTest {
 		TestUser staying = registerUser("staying-user@songly.io");
 		TestUser stranger = registerUser("stranger-user@songly.io");
 
-		// profile: ulubione gatunki
 		MvcResult genresResult = mockMvc
 				.perform(get("/api/v1/genres?size=2").header("Authorization", "Bearer " + leaving.accessToken()))
 				.andExpect(status().isOk()).andReturn();
@@ -74,7 +66,6 @@ class AccountDeletionFlowIntegrationTest extends AbstractIntegrationTest {
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"genreIds":["%s"]}""".formatted(genreId))).andExpect(status().isNoContent());
 
-		// content: własny post + aktywność (lajk/komentarz/share) na cudzym poście
 		String ownPostId = createPost(leaving, "post usera, ktory zaraz zniknie");
 		String otherPostId = createPost(staying, "post kogos innego");
 		mockMvc.perform(put("/api/v1/posts/" + otherPostId + "/likes").header("Authorization",
@@ -85,13 +76,10 @@ class AccountDeletionFlowIntegrationTest extends AbstractIntegrationTest {
 						{"content":"komentarz przed usunieciem konta"}""")).andExpect(status().isCreated());
 		mockMvc.perform(put("/api/v1/posts/" + otherPostId + "/shares").header("Authorization",
 				"Bearer " + leaving.accessToken())).andExpect(status().isNoContent());
-		// odwrotnie: staying lajkuje/komentuje post leaving -> notyfikacja z actorId =
-		// staying, nie usera usuwanego
 		mockMvc.perform(
 				put("/api/v1/posts/" + ownPostId + "/likes").header("Authorization", "Bearer " + staying.accessToken()))
 				.andExpect(status().isNoContent());
 
-		// social: znajomość + oczekujące zaproszenie do trzeciej osoby
 		String requestId = objectMapper
 				.readTree(mockMvc
 						.perform(post("/api/v1/friends/requests")
@@ -106,7 +94,6 @@ class AccountDeletionFlowIntegrationTest extends AbstractIntegrationTest {
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"addresseeId":"%s"}""".formatted(stranger.userId()))).andExpect(status().isCreated());
 
-		// community: leaving jest ownerem, staying dolacza jako member
 		String communityId = objectMapper
 				.readTree(mockMvc
 						.perform(post("/api/v1/communities").header("Authorization", "Bearer " + leaving.accessToken())
@@ -117,31 +104,21 @@ class AccountDeletionFlowIntegrationTest extends AbstractIntegrationTest {
 		mockMvc.perform(put("/api/v1/communities/" + communityId + "/membership").header("Authorization",
 				"Bearer " + staying.accessToken())).andExpect(status().isNoContent());
 
-		// now-playing: ustawienie widocznosci to jedyny wiersz tego modulu z FK do
-		// users, wiec bez niego kasowanie konta nigdy by o ten klucz nie zahaczylo
 		mockMvc.perform(put("/api/v1/now-playing/settings").header("Authorization", "Bearer " + leaving.accessToken())
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"shareWithFriends":false}""")).andExpect(status().isNoContent());
 
-		// notification: preferencje poczty (ADR 0020) to drugi wiersz tego modulu z FK
-		// do users — wiersz powstaje dopiero przy zmianie ustawienia, wiec bez tego
-		// zadania kasowanie konta nigdy by o ten klucz nie zahaczylo
 		mockMvc.perform(
 				put("/api/v1/notifications/mail-preferences").header("Authorization", "Bearer " + leaving.accessToken())
 						.contentType(MediaType.APPLICATION_JSON).content("""
 								{"decisionsAboutMe":false,"moderationQueue":false}"""))
 				.andExpect(status().isNoContent());
-		// notification: urzadzenie push (ADR 0040) - trzecia tabela modulu z FK do
-		// users
 		mockMvc.perform(
 				put("/api/v1/notifications/push-devices").header("Authorization", "Bearer " + leaving.accessToken())
 						.contentType(MediaType.APPLICATION_JSON).content("""
 								{"token":"leaving-user-device","platform":"ANDROID"}"""))
 				.andExpect(status().isNoContent());
 
-		// moderacja: ban NALOZONY przez leaving (przezywa go, traci tylko autora) oraz
-		// zgloszenie ZLOZONE przez leaving (znika razem z nim). Oba maja FK do users
-		// bez CASCADE, wiec bez sprzatania kasowanie konta wywali sie o klucz obcy.
 		mockMvc.perform(put("/api/v1/communities/" + communityId + "/bans/" + stranger.userId())
 				.header("Authorization", "Bearer " + leaving.accessToken()).contentType(MediaType.APPLICATION_JSON)
 				.content("""
@@ -157,19 +134,13 @@ class AccountDeletionFlowIntegrationTest extends AbstractIntegrationTest {
 				.content("""
 						{"reason":"SPAM"}""")).andExpect(status().isAccepted());
 
-		// content: zdjecie wgrane, ale nieprzypiete do posta (ADR 0048) - wiersz w
-		// rejestrze wgran ma FK do users
 		mockMvc.perform(multipart("/api/v1/posts/image")
 				.file(new MockMultipartFile("file", "porzucone.png", MediaType.IMAGE_PNG_VALUE, TestImages.png()))
 				.header("Authorization", "Bearer " + leaving.accessToken())).andExpect(status().isOk());
 
-		// identity: niewykorzystany token resetu hasla ma FK do users bez CASCADE,
-		// wiec konto z oczekujacym linkiem nie dalo by sie usunac, gdyby deleteAccount
-		// o nim zapomnial
 		mockMvc.perform(post("/api/v1/auth/password/reset-request").contentType(MediaType.APPLICATION_JSON).content("""
 				{"email":"leaving-user@songly.io"}""")).andExpect(status().isAccepted());
 
-		// usuniecie konta wymaga poprawnego hasla
 		mockMvc.perform(delete("/api/v1/auth/me").header("Authorization", "Bearer " + leaving.accessToken())
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"password":"zle-haslo"}""")).andExpect(status().isUnauthorized())
@@ -179,12 +150,9 @@ class AccountDeletionFlowIntegrationTest extends AbstractIntegrationTest {
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"password":"password123"}""")).andExpect(status().isNoContent());
 
-		// konto realnie zniknelo
 		mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content("""
 				{"email":"leaving-user@songly.io","password":"password123"}""")).andExpect(status().isUnauthorized());
 
-		// dane usunietego usera znikly u pozostalych, bez wywalenia integralnosci ich
-		// danych
 		mockMvc.perform(get("/api/v1/friends").header("Authorization", "Bearer " + staying.accessToken()))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(0));
 		mockMvc.perform(get("/api/v1/friends/requests?direction=INCOMING").header("Authorization",

@@ -17,16 +17,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Powiadomienia o decyzjach moderacyjnych (ADR 0012).
- *
- * <p>
- * ADR 0011 dał narzędzia, ale zostawił obie strony w ciemności: zbanowany
- * dowiadywał się o banie dopiero przy próbie napisania czegokolwiek (czyli
- * decyzja wyglądała jak awaria aplikacji), a zgłaszający nie dostawał żadnej
- * informacji zwrotnej. Kolejka zgłoszeń działała tylko wtedy, gdy moderator sam
- * do niej zajrzał.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class ModerationNotificationIntegrationTest extends AbstractIntegrationTest {
 
@@ -92,9 +82,6 @@ class ModerationNotificationIntegrationTest extends AbstractIntegrationTest {
 		return count;
 	}
 
-	/**
-	 * Zbanowany dowiaduje się o banie od razu, a nie przy próbie napisania czegoś.
-	 */
 	@Test
 	void bannedUserIsNotified() throws Exception {
 		TestUser owner = user("modnotif-ban-owner@songly.io");
@@ -112,10 +99,6 @@ class ModerationNotificationIntegrationTest extends AbstractIntegrationTest {
 		assertThat(first.get("actorId").asText()).isEqualTo(owner.userId());
 	}
 
-	/**
-	 * Ban jest idempotentny, więc powtórzone kliknięcie moderatora nie może
-	 * dokładać kolejnych powiadomień o tym samym.
-	 */
 	@Test
 	void repeatedBan_doesNotRepeatTheNotification() throws Exception {
 		TestUser owner = user("modnotif-reban-owner@songly.io");
@@ -152,11 +135,6 @@ class ModerationNotificationIntegrationTest extends AbstractIntegrationTest {
 		assertThat(countOfType(author, "COMMUNITY_POST_REMOVED")).isEqualTo(1);
 	}
 
-	/**
-	 * To jest ta połowa moderacji, której sama kolejka nie załatwia: kolejka
-	 * wymaga, żeby ktoś do niej zajrzał, a powiadomienie mówi, że jest po co.
-	 * Dostają je <b>wszyscy</b> moderatorzy.
-	 */
 	@Test
 	void allModeratorsAreNotifiedAboutTheFirstReport() throws Exception {
 		TestUser owner = user("modnotif-rep-owner@songly.io");
@@ -180,12 +158,8 @@ class ModerationNotificationIntegrationTest extends AbstractIntegrationTest {
 
 		assertThat(countOfType(owner, "COMMUNITY_POST_REPORTED")).isEqualTo(1);
 		assertThat(countOfType(moderator, "COMMUNITY_POST_REPORTED")).isEqualTo(1);
-		// Autor zgłoszonego posta nie dostaje nic — zgłoszenie nie jest wiadomością
-		// do niego.
 		assertThat(countOfType(author, "COMMUNITY_POST_REPORTED")).isZero();
 
-		// Drugie zgłoszenie tego samego posta nie zasypuje moderatorów ponownie —
-		// niesie je licznik w kolejce, nie kolejne powiadomienie.
 		mockMvc.perform(
 				post("/api/v1/posts/" + postId + "/reports").header("Authorization", "Bearer " + secondReporter.token())
 						.contentType(MediaType.APPLICATION_JSON).content("""
@@ -221,11 +195,6 @@ class ModerationNotificationIntegrationTest extends AbstractIntegrationTest {
 		assertThat(first.get("resourceId").asText()).isEqualTo(postId);
 	}
 
-	/**
-	 * „Pierwsze zgłoszenie” znaczy „pierwsze w kolejce” (ADR 0049). Po odrzuceniu
-	 * poprzednich zgłoszeń kolejka jest dla tego posta pusta, więc nowe zgłoszenie
-	 * znów musi zawołać moderatorów — wcześniej czekało w niej bez żadnego sygnału.
-	 */
 	@Test
 	void reportAfterDismissal_notifiesModeratorsAgain() throws Exception {
 		TestUser owner = user("modnotif-redo-owner@songly.io");
@@ -257,14 +226,6 @@ class ModerationNotificationIntegrationTest extends AbstractIntegrationTest {
 		assertThat(countOfType(owner, "COMMUNITY_POST_REPORTED")).isEqualTo(2);
 	}
 
-	/**
-	 * Sedno tej zmiany od strony bezpieczeństwa: powiadomienie o decyzji
-	 * moderacyjnej <b>przechodzi mimo blokady</b>. Reszta skrzynki znika, gdy
-	 * nadawca jest zablokowany (§9) — i tak ma być, bo blokada odcina od zaczepek.
-	 * Ale decyzji moderacyjnej nie da się odmówić: gdyby podlegała temu filtrowi,
-	 * wystarczyłoby zablokować moderatora, żeby nigdy nie zobaczyć informacji o
-	 * własnym banie.
-	 */
 	@Test
 	void moderationNotificationSurvivesBlockingTheModerator() throws Exception {
 		TestUser owner = user("modnotif-block-owner@songly.io");
@@ -272,8 +233,6 @@ class ModerationNotificationIntegrationTest extends AbstractIntegrationTest {
 		String communityId = createCommunity(owner, "Notif-blokada");
 		join(troll, communityId);
 
-		// Zwykłe powiadomienie od tej samej osoby, dla kontrastu: właściciel lajkuje
-		// post trolla poza społecznością.
 		String plainPostId = objectMapper.readTree(mockMvc
 				.perform(post("/api/v1/posts").header("Authorization", "Bearer " + troll.token())
 						.contentType(MediaType.APPLICATION_JSON).content("""
@@ -288,19 +247,13 @@ class ModerationNotificationIntegrationTest extends AbstractIntegrationTest {
 				.header("Authorization", "Bearer " + owner.token()).contentType(MediaType.APPLICATION_JSON).content("""
 						{"reason":"spam"}""")).andExpect(status().isNoContent());
 
-		// Troll blokuje moderatora — po tym zwykłe powiadomienia od niego znikają...
 		mockMvc.perform(put("/api/v1/blocks/" + owner.userId()).header("Authorization", "Bearer " + troll.token()))
 				.andExpect(status().isNoContent());
 
 		assertThat(countOfType(troll, "POST_LIKED")).isZero();
-		// ...ale informacja o banie zostaje.
 		assertThat(countOfType(troll, "COMMUNITY_BANNED")).isEqualTo(1);
 	}
 
-	/**
-	 * Licznik nieprzeczytanych musi liczyć to samo, co widać na liście — inaczej
-	 * plakietka pokazywałaby liczbę, której nie da się zbić.
-	 */
 	@Test
 	void unreadCountMatchesWhatIsVisible() throws Exception {
 		TestUser owner = user("modnotif-count-owner@songly.io");

@@ -17,12 +17,6 @@ import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Wyszukiwarka użytkowników (GET /api/v1/profiles/search) — umożliwia
- * znalezienie osób do dodania do znajomych. Domyślna nazwa wyświetlana bierze
- * się z lokalnej części adresu e-mail (np. searchable-alice@songly.io ->
- * "searchable-alice").
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class UserSearchIntegrationTest extends AbstractIntegrationTest {
 
@@ -43,7 +37,6 @@ class UserSearchIntegrationTest extends AbstractIntegrationTest {
 		registerAndGetAccessToken("searchable-melomanka@songly.io");
 		registerAndGetAccessToken("searchable-meloman@songly.io");
 
-		// "MELOMAN" pasuje do obu (case-insensitive), ale nie do szukającego.
 		mockMvc.perform(get("/api/v1/profiles/search").header("Authorization", "Bearer " + searcherToken).param("query",
 				"MELOMAN")).andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(2))
 				.andExpect(jsonPath("$.content[0].userId").exists())
@@ -66,11 +59,6 @@ class UserSearchIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(0));
 	}
 
-	/**
-	 * {@code %} i {@code _} to zwykłe znaki, nie wzorce LIKE. Bez escapowania
-	 * zapytanie „%" zwracało wszystkich użytkowników po kolei, czyli obchodziło
-	 * regułę „pusty query nie wysypuje wszystkich" jednym znakiem.
-	 */
 	@Test
 	void search_treatsLikeWildcardsAsLiterals() throws Exception {
 		String searcherToken = registerAndGetAccessToken("searchable-wildcard-searcher@songly.io");

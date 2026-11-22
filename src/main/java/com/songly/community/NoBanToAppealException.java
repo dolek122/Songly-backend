@@ -3,7 +3,6 @@ package com.songly.community;
 import com.songly.common.web.ApiException;
 import org.springframework.http.HttpStatus;
 
-/** Odwołać się może wyłącznie osoba z banem aktywnym — wygasły to brak bana. */
 class NoBanToAppealException extends ApiException {
 
 	NoBanToAppealException() {

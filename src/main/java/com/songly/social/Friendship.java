@@ -33,7 +33,6 @@ class Friendship {
 		this.createdAt = createdAt;
 	}
 
-	/** Zawsze przez porządek kanoniczny z {@link FriendshipId#of}. */
 	static Friendship between(UUID first, UUID second, Instant createdAt) {
 		return first.toString().compareTo(second.toString()) < 0
 				? new Friendship(first, second, createdAt)
@@ -48,7 +47,6 @@ class Friendship {
 		return userBId;
 	}
 
-	/** Drugi koniec znajomości z perspektywy {@code userId}. */
 	UUID otherThan(UUID userId) {
 		return userAId.equals(userId) ? userBId : userAId;
 	}

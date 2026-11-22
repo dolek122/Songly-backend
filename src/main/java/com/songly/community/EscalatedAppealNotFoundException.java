@@ -3,7 +3,6 @@ package com.songly.community;
 import com.songly.common.web.ApiException;
 import org.springframework.http.HttpStatus;
 
-/** Brak sprawy oczekującej na drugą instancję (ADR 0028). */
 class EscalatedAppealNotFoundException extends ApiException {
 
 	EscalatedAppealNotFoundException() {

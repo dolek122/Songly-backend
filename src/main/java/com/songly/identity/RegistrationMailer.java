@@ -7,19 +7,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-/**
- * Dwie wiadomości, które może wywołać jedno żądanie rejestracji — i to, która z
- * nich pójdzie, jest jedyną różnicą między adresem wolnym a zajętym. Sama
- * odpowiedź HTTP jest w obu przypadkach identyczna (202), bo inaczej endpoint
- * byłby listą istniejących kont.
- *
- * <p>
- * Obie wysyłki są {@code AFTER_COMMIT} i obie łykają błąd wysyłki, dokładnie z
- * tego samego powodu co {@link PasswordResetMailer}: wyjątek zamieniłby
- * odpowiedź w 500, a 500 zdarzałoby się tylko w jednym z dwóch przypadków —
- * czyli awaria poczty odtworzyłaby wyrocznię, którą reszta tego przepływu
- * likwiduje.
- */
 @Component
 class RegistrationMailer {
 
@@ -58,12 +45,6 @@ class RegistrationMailer {
 				Zespół Songly""".formatted(link, properties.getTtl().toHours()), null);
 	}
 
-	/**
-	 * Wiadomość do właściciela istniejącego konta. Kieruje go do <b>resetu
-	 * hasła</b>, a nie do rejestracji: jeśli to on sam zapomniał, że ma już konto,
-	 * to właśnie resetu potrzebuje, a jeśli to ktoś obcy — reset jest jedyną
-	 * sensowną reakcją, którą i tak sam kontroluje.
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onRegistrationOnExistingAccount(RegistrationAttemptedOnExistingAccountEvent event) {
 		send(event.email(), EXISTING_ACCOUNT_SUBJECT, """
@@ -84,8 +65,6 @@ class RegistrationMailer {
 		try {
 			mailSender.send(recipient, subject, body);
 		} catch (RuntimeException ex) {
-			// Bez adresu e-mail w logu (Claude.md §9). Przy zgłoszeniu na wolny adres
-			// nie mamy nawet czym go zastąpić — i tak nie ma jeszcze konta.
 			log.error("Nie udało się wysłać wiadomości rejestracyjnej, konto: {}", accountId, ex);
 		}
 	}

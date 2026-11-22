@@ -8,23 +8,12 @@ import org.springframework.boot.mail.autoconfigure.MailSenderAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.mail.javamail.JavaMailSender;
 
-/**
- * Wybór kanału poczty razem z autokonfiguracją Boota, czyli tak, jak na
- * produkcji. Testy integracyjne podmieniają kanał na nagrywający, więc ścieżki
- * {@code smtp} nie dotykają wcale (ADR 0051).
- */
 class MailConfigTest {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
 			.withConfiguration(AutoConfigurations.of(MailSenderAutoConfiguration.class))
 			.withUserConfiguration(MailConfig.class);
 
-	/**
-	 * Boot rejestruje swój {@code JavaMailSender} pod nazwą {@code mailSender}, gdy
-	 * tylko jest {@code spring.mail.host}. Nasz bean nazywał się tak samo, a
-	 * nadpisywanie definicji jest wyłączone, więc instancja z prawdziwym SMTP nie
-	 * wstawała w ogóle.
-	 */
 	@Test
 	void smtpWithHost_startsAndWrapsBootSender() {
 		contextRunner.withPropertyValues("songly.mail.provider=smtp", "spring.mail.host=smtp.example.test")

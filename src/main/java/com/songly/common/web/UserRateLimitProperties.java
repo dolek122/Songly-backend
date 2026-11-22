@@ -4,39 +4,19 @@ import java.time.Duration;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-/**
- * Reguły limitu per użytkownik (ADR 0034). Reguła to <b>nazwana grupa</b>
- * ścieżek i metod z jednym wspólnym licznikiem — nie limit per ścieżka. Liczy
- * się to, ile jedna osoba robi danej <i>rodzaju</i> rzeczy, a nie którym
- * endpointem: lajk, komentarz i zaproszenie do znajomych kończą się tym samym
- * powiadomieniem u kogoś innego, więc rozłożenie zasypywania na trzy ścieżki
- * nie może dawać trzech budżetów.
- *
- * <p>
- * Żądanie liczy się do <b>każdej</b> reguły, do której pasuje, i jest
- * odrzucane, gdy przekroczy którąkolwiek. Nadpisanie {@code rules} w
- * konfiguracji zastępuje całą listę, nie dopisuje do niej.
- */
 @ConfigurationProperties(prefix = "songly.security.user-rate-limit")
 class UserRateLimitProperties {
 
-	/** Metody zapisu — odczyty celowo nie są limitowane (ADR 0034). */
 	private static final List<String> WRITE_METHODS = List.of("POST", "PUT", "PATCH", "DELETE");
 
 	private boolean enabled = true;
 
-	private List<Rule> rules = List.of(
-			// Budżet na wszystkie zapisy. Cały prefiks, nie lista endpointów: nowy
-			// endpoint jest wtedy objęty domyślnie, a nie dopiero gdy ktoś dopisze go
-			// tutaj (ta sama zasada co /api/v1/admin/** w SecurityConfig). Poziom jest
-			// nieosiągalny ręcznie — ma odciąć skrypt, nie człowieka.
-			new Rule("writes", WRITE_METHODS, List.of("/api/**"), 60, Duration.ofMinutes(1)),
-			// Ścieżki, które kończą się powiadomieniem u KOGOŚ INNEGO. Tylko kierunek
-			// „zaczepiający" (PUT lajka, nie DELETE): cofnięcie własnego śladu nie może
-			// zależeć od limitu, tak jak nie zależy od blokady (§9). Dłuższe okno, bo
-			// szkodą jest wolumen u jednej ofiary, a nie chwilowe natężenie.
-			new Rule("interactions", List.of("PUT", "POST"), List.of("/api/v1/posts/*/likes", "/api/v1/posts/*/shares",
-					"/api/v1/posts/*/comments", "/api/v1/friends/requests"), 40, Duration.ofMinutes(10)));
+	private List<Rule> rules = List
+			.of(new Rule("writes", WRITE_METHODS, List.of("/api/**"), 60, Duration.ofMinutes(1)),
+					new Rule(
+							"interactions", List.of("PUT", "POST"), List.of("/api/v1/posts/*/likes",
+									"/api/v1/posts/*/shares", "/api/v1/posts/*/comments", "/api/v1/friends/requests"),
+							40, Duration.ofMinutes(10)));
 
 	boolean isEnabled() {
 		return enabled;
@@ -56,10 +36,6 @@ class UserRateLimitProperties {
 
 	static class Rule {
 
-		/**
-		 * Trafia do klucza w Redisie i do tagu metryki — musi więc być stałą z
-		 * konfiguracji, nigdy niczym pochodzącym z żądania (kardynalność, §13).
-		 */
 		private String name;
 		private List<String> methods = WRITE_METHODS;
 		private List<String> paths = List.of();

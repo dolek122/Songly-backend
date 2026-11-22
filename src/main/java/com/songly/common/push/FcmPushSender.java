@@ -10,17 +10,6 @@ import org.springframework.http.MediaType;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
-/**
- * Wysyłka przez FCM HTTP v1 (ADR 0040). Jedno żądanie na urządzenie — API v1
- * nie ma wysyłki zbiorczej, a adresatów jednego powiadomienia jest zwykle
- * kilku.
- *
- * <p>
- * Android dostaje wiadomość wyłącznie z {@code data}, więc aplikacja sama
- * buduje powiadomienie (kanał, akcja po stuknięciu) także w tle. iOS bez bloku
- * {@code alert} nie pokazałby niczego, gdy aplikacja śpi — stąd osobny
- * {@code apns}, który na Androida nie wpływa.
- */
 class FcmPushSender implements PushSender {
 
 	private final RestClient restClient;
@@ -49,18 +38,6 @@ class FcmPushSender implements PushSender {
 		}
 	}
 
-	/**
-	 * {@code UNREGISTERED} (zwykle z 404) to jedyny błąd, który na pewno mówi o
-	 * samym tokenie. {@code INVALID_ARGUMENT} bywa i złym tokenem, i złym żądaniem
-	 * — kasowanie tokenu na tej podstawie mogłoby po cichu odpiąć wszystkie
-	 * urządzenia po jednym błędzie w kodzie, więc traktujemy go jak zwykłą porażkę.
-	 *
-	 * <p>
-	 * Z tego samego powodu <b>sam status 404 nie wystarcza</b> (ADR 0049): zły
-	 * adres FCM albo identyfikator projektu w konfiguracji też daje 404, a wtedy
-	 * każdy push kasowałby telefon swojego adresata. FCM przy nieaktualnym tokenie
-	 * zawsze dokłada kod {@code UNREGISTERED}.
-	 */
 	private static RuntimeException failure(HttpStatusCode status, String body) {
 		if (body.contains("UNREGISTERED")) {
 			return new InvalidPushTokenException("FCM nie zna tego urządzenia");

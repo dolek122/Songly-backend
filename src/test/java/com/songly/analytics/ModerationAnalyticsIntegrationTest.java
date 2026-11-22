@@ -20,15 +20,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Analityka moderacji (ADR 0019). Podsystem z ADR 0011–0018 nie zostawiał dotąd
- * w analityce ani jednego śladu, więc decyzje odłożone „do czasu, aż dane
- * pokażą" nie miały skąd wziąć tych danych.
- *
- * <p>
- * Liczniki porównujemy deltą przed/po, bo baza jest współdzielona między
- * klasami testowymi — dokładnie jak w {@code AnalyticsFlowIntegrationTest}.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class ModerationAnalyticsIntegrationTest extends AbstractIntegrationTest {
 
@@ -122,12 +113,6 @@ class ModerationAnalyticsIntegrationTest extends AbstractIntegrationTest {
 						{"text":"odwoluje sie"}""")).andExpect(status().isNoContent());
 	}
 
-	/**
-	 * Zgłoszenia i ich rozstrzygnięcia. {@code POST_FIRST_REPORTED} liczy
-	 * <b>posty</b>, nie kliknięcia „zgłoś" — drugie zgłoszenie tego samego posta
-	 * nie publikuje zdarzenia (bramka z ADR 0012 siedzi u publikującego), więc
-	 * licznik z założenia nie jest wolumenem zgłoszeń.
-	 */
 	@Test
 	void reportsAndTheirOutcomesAreCounted() throws Exception {
 		TestUser adminUser = admin("modanalytics-rep-admin@songly.io");
@@ -161,10 +146,6 @@ class ModerationAnalyticsIntegrationTest extends AbstractIntegrationTest {
 		assertThat(delta(before, after, "COMMUNITY_POST_REMOVED")).isEqualTo(1);
 	}
 
-	/**
-	 * Bany rozdzielone po terminie — bez tego nie da się sprawdzić, czy bany
-	 * czasowe (ADR 0014) w ogóle się przyjęły.
-	 */
 	@Test
 	void permanentAndTemporaryBansAreCountedSeparately() throws Exception {
 		TestUser adminUser = admin("modanalytics-ban-admin@songly.io");
@@ -178,8 +159,6 @@ class ModerationAnalyticsIntegrationTest extends AbstractIntegrationTest {
 
 		ban(owner, communityId, firstTroll, null);
 		ban(owner, communityId, secondTroll, 7);
-		// Powtórzony ban aktywnego nie jest nową decyzją (ADR 0014), więc nie liczy się
-		// drugi raz.
 		ban(owner, communityId, secondTroll, 7);
 
 		Map<String, Long> after = counts(adminUser);
@@ -187,11 +166,6 @@ class ModerationAnalyticsIntegrationTest extends AbstractIntegrationTest {
 		assertThat(delta(before, after, "COMMUNITY_BAN_ISSUED_TEMPORARY")).isEqualTo(1);
 	}
 
-	/**
-	 * Odwołania: złożone, uznane (przez unban) i odrzucone. To z tych trzech serii
-	 * wychodzi odpowiedź na pytanie odłożone w ADR 0017 — jak często moderacja sama
-	 * uznaje, że się pomyliła.
-	 */
 	@Test
 	void appealsAndTheirOutcomesAreCounted() throws Exception {
 		TestUser adminUser = admin("modanalytics-app-admin@songly.io");

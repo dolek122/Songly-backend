@@ -17,20 +17,6 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Weryfikacja adresu e-mail przy rejestracji (ADR 0009).
- *
- * <p>
- * Dwa cele naraz, i drugi jest ważniejszy od pierwszego. Oczywisty: nikt nie
- * zakłada konta na cudzy adres. Mniej oczywisty: <b>rejestracja przestaje być
- * wyrocznią na istnienie kont</b> — wcześniej 409 z adresem w treści pozwalało
- * wylistować użytkowników, mimo że logowanie (§13) i reset hasła (§9) bronią
- * się przed tym z osobna.
- *
- * <p>
- * {@code resend-interval=PT0S} zdejmuje odstęp między wysyłkami, żeby przypadki
- * mogły swobodnie ponawiać zgłoszenia. Sam odstęp ma osobny test niżej.
- */
 @TestPropertySource(properties = {"songly.security.rate-limit.enabled=false",
 		"songly.security.registration.resend-interval=PT0S"})
 class EmailVerificationIntegrationTest extends AbstractIntegrationTest {
@@ -62,10 +48,6 @@ class EmailVerificationIntegrationTest extends AbstractIntegrationTest {
 				{"email":"%s","password":"%s"}""".formatted(email, password))).andExpect(status().is(expectedStatus));
 	}
 
-	/**
-	 * Sedno: dopóki adres nie jest potwierdzony, <b>konto nie istnieje</b> — nie da
-	 * się nim zalogować, bo nie ma czym.
-	 */
 	@Test
 	void accountDoesNotExist_untilTheAddressIsConfirmed() throws Exception {
 		String email = "verify-pending@songly.io";
@@ -82,11 +64,6 @@ class EmailVerificationIntegrationTest extends AbstractIntegrationTest {
 		assertThat(userRepository.findByEmail(email)).isPresent();
 	}
 
-	/**
-	 * Potwierdzenie od razu wydaje parę tokenów. Kliknięcie w link dowodzi kontroli
-	 * nad skrzynką, a hasło podał ten sam człowiek chwilę wcześniej — osobne
-	 * logowanie zaraz potem nie sprawdzałoby niczego więcej.
-	 */
 	@Test
 	void verification_logsTheUserInImmediately() throws Exception {
 		String email = "verify-tokens@songly.io";
@@ -99,17 +76,10 @@ class EmailVerificationIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.refreshToken").isNotEmpty()).andReturn().getResponse().getContentAsString())
 				.get("accessToken").asText();
 
-		// Profil powstaje dopiero teraz — UserRegisteredEvent leci przy weryfikacji,
-		// nie przy zgłoszeniu, więc żaden inny moduł nie widzi konta przedwcześnie.
 		mockMvc.perform(get("/api/v1/profiles/me").header("Authorization", "Bearer " + accessToken))
 				.andExpect(status().isOk());
 	}
 
-	/**
-	 * Zgłoszenie na zajęty adres wygląda identycznie jak na wolny (202) i nie
-	 * tworzy niczego. To jest ta wyrocznia, którą zamykamy: różnicę widzi wyłącznie
-	 * właściciel skrzynki, w treści wiadomości.
-	 */
 	@Test
 	void registrationOnTakenAddress_isIndistinguishable_butWarnsTheOwner() throws Exception {
 		String email = "verify-taken@songly.io";
@@ -120,18 +90,12 @@ class EmailVerificationIntegrationTest extends AbstractIntegrationTest {
 
 		assertThat(mails.sentTo(email)).hasSize(1);
 		assertThat(mails.lastTo(email).subject()).contains("ktoś próbował założyć konto");
-		// Żadnego linku potwierdzającego — nie ma czego potwierdzać.
 		assertThat(mails.lastTo(email).body()).doesNotContain("token=");
 		assertThat(pendingRepository.findByEmail(email)).isEmpty();
-		// Hasło konta zostaje nietknięte.
 		expectLogin(email, "inne-haslo-123", 401);
 		expectLogin(email, "password123", 200);
 	}
 
-	/**
-	 * Token jest jednorazowy — po założeniu konta zgłoszenie znika, więc ponowne
-	 * kliknięcie tego samego linku trafia w pustkę.
-	 */
 	@Test
 	void token_worksOnlyOnce() throws Exception {
 		String email = "verify-once@songly.io";
@@ -146,10 +110,6 @@ class EmailVerificationIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.code").value("INVALID_VERIFICATION_TOKEN"));
 	}
 
-	/**
-	 * Wygasły i zmyślony token dostają ten sam kod błędu. Osobne
-	 * {@code TOKEN_EXPIRED} potwierdzałoby, że takie zgłoszenie kiedyś istniało.
-	 */
 	@Test
 	void expiredToken_isRejectedLikeAFabricatedOne() throws Exception {
 		String rawToken = SecureTokens.generate();
@@ -168,16 +128,6 @@ class EmailVerificationIntegrationTest extends AbstractIntegrationTest {
 		assertThat(userRepository.findByEmail("verify-expired@songly.io")).isEmpty();
 	}
 
-	/**
-	 * Ponowne zgłoszenie wydaje nowy link i unieważnia poprzedni — inaczej każde
-	 * „nie dostałem maila" zostawiałoby w obiegu kolejny ważny klucz.
-	 *
-	 * <p>
-	 * Hasła przy tym <b>nie</b> podmieniamy, i to jest zabezpieczenie, nie
-	 * niedoróbka: inaczej ktoś obcy wstrzeliłby własne hasło w cudze, jeszcze
-	 * niepotwierdzone zgłoszenie i czekał, aż właściciel skrzynki kliknie najnowszy
-	 * link.
-	 */
 	@Test
 	void repeatedRegistration_reissuesLinkButKeepsTheOriginalPassword() throws Exception {
 		String email = "verify-reissue@songly.io";
@@ -196,12 +146,6 @@ class EmailVerificationIntegrationTest extends AbstractIntegrationTest {
 		expectLogin(email, "pierwsze-haslo", 200);
 	}
 
-	/**
-	 * Zgłoszenie rejestracji nie zostawia śladu nigdzie poza własną tabelą. Gdyby
-	 * zostawiało, niepotwierdzony adres pojawiałby się w wyszukiwarce użytkowników
-	 * — a to jest dokładnie ten stan, którego reszta aplikacji nie ma prawa
-	 * zobaczyć (ADR 0009).
-	 */
 	@Test
 	void pendingRegistration_isInvisibleToTheRestOfTheApplication() throws Exception {
 		String searcher = "verify-searcher@songly.io";
@@ -217,10 +161,6 @@ class EmailVerificationIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(0));
 	}
 
-	/**
-	 * Walidacja działa przed czymkolwiek innym — reset ani weryfikacja nie mogą być
-	 * furtką omijającą politykę haseł.
-	 */
 	@Test
 	void invalidPayload_isRejectedByValidation() throws Exception {
 		mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("""

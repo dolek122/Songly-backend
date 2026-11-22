@@ -22,11 +22,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-/**
- * Jedyny kontakt modułu notification z resztą systemu: zdarzenia Springa
- * publikowane przez content, social i community (Claude.md §2) — bez sięgania
- * po ich encje ani serwisy.
- */
 @Component
 class NotificationEventListener {
 
@@ -74,10 +69,6 @@ class NotificationEventListener {
 				event.communityId(), event.occurredAt());
 	}
 
-	/**
-	 * Bez tego zbanowany dowiadywał się o banie dopiero przy próbie napisania
-	 * czegokolwiek — czyli decyzja moderacyjna wyglądała jak awaria aplikacji.
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onCommunityMemberBanned(CommunityMemberBannedEvent event) {
 		notificationService.record(event.userId(), event.moderatorId(), NotificationType.COMMUNITY_BANNED,
@@ -90,22 +81,12 @@ class NotificationEventListener {
 				event.communityId(), event.occurredAt());
 	}
 
-	/**
-	 * Bez tego komentarz znikałby bez słowa — dla autora wyglądałoby to jak błąd
-	 * aplikacji, a od decyzji, o której się nie wie, nie da się wyciągnąć wniosków
-	 * (ADR 0012).
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onCommunityCommentRemoved(CommunityCommentRemovedEvent event) {
 		notificationService.record(event.commentAuthorId(), event.moderatorId(),
 				NotificationType.COMMUNITY_COMMENT_REMOVED, event.postId(), event.occurredAt());
 	}
 
-	/**
-	 * Zwykłe powiadomienie, nie {@code MODERATION} (ADR 0016): zmiana roli nadaje
-	 * albo odbiera uprawnienia, ale niczego nie ogranicza w zwykłym uczestnictwie —
-	 * podlega więc filtrowi blokad jak każda aktywność i nie wychodzi mailem.
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onCommunityMemberRoleChanged(CommunityMemberRoleChangedEvent event) {
 		NotificationType type = event.moderationGranted()
@@ -114,10 +95,6 @@ class NotificationEventListener {
 		notificationService.record(event.userId(), event.changedBy(), type, event.communityId(), event.occurredAt());
 	}
 
-	/**
-	 * Odwołanie od bana — do wszystkich moderatorów, jak zgłoszenie posta: kolejka
-	 * bez powiadomienia to narzędzie, którego nic nie uruchamia (ADR 0017).
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onBanAppealSubmitted(CommunityBanAppealSubmittedEvent event) {
 		communityMembership.moderatorIds(event.communityId())
@@ -131,11 +108,6 @@ class NotificationEventListener {
 				event.communityId(), event.occurredAt());
 	}
 
-	/**
-	 * Druga instancja (ADR 0028). W {@code MODERATION}, bo to odpowiedź na własną
-	 * petycję — nie da się odmówić odpowiedzi, o którą się prosiło (kryterium z ADR
-	 * 0017).
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onBanEscalationAccepted(CommunityBanAppealEscalationAcceptedEvent event) {
 		notificationService.record(event.userId(), event.adminId(), NotificationType.BAN_ESCALATION_ACCEPTED,
@@ -154,17 +126,6 @@ class NotificationEventListener {
 				event.communityId(), event.occurredAt());
 	}
 
-	/**
-	 * Do wszystkich moderatorów naraz — to jest ta połowa moderacji, której kolejka
-	 * sama nie załatwia. Kolejka wymaga, żeby ktoś do niej zajrzał; powiadomienie
-	 * samo mówi, że jest po co.
-	 *
-	 * <p>
-	 * Adresatów pyta moduł community przez swój publiczny interfejs
-	 * ({@code CommunityMembership.moderatorIds}) — notification nie ma prawa
-	 * zaglądać do tabeli członkostw (Claude.md §2). Zgłaszający, jeśli sam jest
-	 * moderatorem, odpada w {@code record}: nikt nie zawiadamia siebie.
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onPostReported(PostReportedEvent event) {
 		communityMembership.moderatorIds(event.communityId())
@@ -172,10 +133,6 @@ class NotificationEventListener {
 						NotificationType.COMMUNITY_POST_REPORTED, event.postId(), event.occurredAt()));
 	}
 
-	/**
-	 * Bez informacji zwrotnej zgłaszanie jest wrzucaniem kartek do zamkniętej
-	 * skrzynki — po kilku takich razach przestaje się zgłaszać cokolwiek.
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onPostReportDismissed(PostReportDismissedEvent event) {
 		notificationService.record(event.reporterId(), event.moderatorId(), NotificationType.POST_REPORT_DISMISSED,

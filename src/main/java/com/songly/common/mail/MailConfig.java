@@ -10,21 +10,10 @@ import org.springframework.mail.javamail.JavaMailSender;
 @EnableConfigurationProperties(MailProperties.class)
 class MailConfig {
 
-	/**
-	 * Dwa wątki wystarczą z zapasem: maile wychodzą przy rejestracji, resecie hasła
-	 * i decyzjach moderacyjnych, a nie przy zwykłej aktywności.
-	 */
 	private static final int SMTP_THREADS = 2;
 
 	private static final int SMTP_QUEUE_CAPACITY = 500;
 
-	/**
-	 * Nazwa beana <b>nie może</b> brzmieć {@code mailSender}: pod tą nazwą Boot
-	 * rejestruje własny {@code JavaMailSender}, gdy tylko ustawiony jest
-	 * {@code spring.mail.host}. Nadpisywanie definicji jest wyłączone, więc kolizja
-	 * wywracała start każdej instancji z prawdziwym SMTP (ADR 0051), a testy jej
-	 * nie widziały, bo działają bez hosta. Pilnuje tego {@code MailConfigTest}.
-	 */
 	@Bean
 	MailSender songlyMailSender(MailProperties properties, ObjectProvider<JavaMailSender> javaMailSender) {
 		if (!"smtp".equalsIgnoreCase(properties.getProvider())) {
@@ -36,8 +25,6 @@ class MailConfig {
 					"songly.mail.provider=smtp wymaga skonfigurowanego spring.mail.host — bez tego aplikacja "
 							+ "wystartowałaby bez działającej wysyłki e-maili (reset hasła przestałby działać po cichu)");
 		}
-		// Poza wątkiem żądania (ADR 0041). Kanał "log" zostaje synchroniczny: nie ma
-		// czego mierzyć czasem, a testy czytają wiadomość zaraz po odpowiedzi.
 		return new AsyncMailSender(new SmtpMailSender(delegate, properties.getFrom()), SMTP_THREADS,
 				SMTP_QUEUE_CAPACITY);
 	}

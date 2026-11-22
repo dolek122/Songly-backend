@@ -104,8 +104,6 @@ class NowPlayingStreamHubTest {
 
 		verify(aliveEmitter).send(any(SseEventBuilder.class));
 		assertThat(hub.hasSubscribers(alive)).isTrue();
-		// O zerwanym gnieździe dowiadujemy się dopiero przy próbie zapisu — po to jest
-		// heartbeat, żeby taki strumień nie siedział w rejestrze do timeoutu.
 		assertThat(hub.hasSubscribers(dead)).isFalse();
 	}
 
@@ -132,7 +130,6 @@ class NowPlayingStreamHubTest {
 					hub.register(user, mock(SseEmitter.class));
 					accepted.incrementAndGet();
 				} catch (TooManyStreamsException ignored) {
-					// oczekiwane dla nadmiarowych prób
 				} catch (InterruptedException ex) {
 					Thread.currentThread().interrupt();
 				} finally {

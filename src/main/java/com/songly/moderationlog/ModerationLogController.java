@@ -12,15 +12,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * Dwa odczyty historii moderacji (ADR 0024), bo są dwie różne publiczności.
- *
- * <p>
- * Ścieżka administracyjna leży pod {@code /api/v1/admin/**}, więc rolę pilnuje
- * {@code SecurityConfig} (ADR 0021) — kontroler nie powtarza tego sprawdzenia.
- * Ścieżkę społecznościową zabezpiecza moduł community przez swój publiczny
- * interfejs, bo tylko on wie, kto moderuje.
- */
 @RestController
 @SecurityRequirement(name = "bearerAuth")
 class ModerationLogController {
@@ -37,10 +28,6 @@ class ModerationLogController {
 		return moderationLogService.communityLog(communityId, (UUID) authentication.getPrincipal(), pageable);
 	}
 
-	/**
-	 * {@code userId} opcjonalny — bez niego cała platforma, z nim historia jednej
-	 * osoby.
-	 */
 	@GetMapping("/api/v1/admin/moderation-log")
 	Page<ModerationLogEntryResponse> platformLog(@RequestParam(required = false) UUID userId,
 			@PageableDefault(size = 20) Pageable pageable) {

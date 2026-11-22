@@ -3,7 +3,6 @@ package com.songly.content;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-/** Zdjęcia wgrane, a jeszcze nieprzypięte do posta (ADR 0048). */
 @ConfigurationProperties(prefix = "songly.content.post-image")
 class PostImageProperties {
 
@@ -13,12 +12,6 @@ class PostImageProperties {
 
 	private int cleanupBatchSize = 500;
 
-	/**
-	 * Ile zdjęć może czekać na post naraz. Kolejne wgranie usuwa najstarsze
-	 * oczekujące, zamiast się nie udać: mobilka wgrywa zdjęcie od razu po wybraniu,
-	 * więc kilka porzuconych to zwykłe przeglądanie galerii, nie nadużycie, a
-	 * odmowa blokowałaby człowieka na całą dobę.
-	 */
 	int getMaxPending() {
 		return maxPending;
 	}
@@ -27,7 +20,6 @@ class PostImageProperties {
 		this.maxPending = maxPending;
 	}
 
-	/** Po jakim czasie nieprzypięte zdjęcie uznajemy za porzucone. */
 	Duration getPendingTtl() {
 		return pendingTtl;
 	}

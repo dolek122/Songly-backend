@@ -36,52 +36,14 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-/**
- * Drugi kanał powiadomień o decyzjach moderacyjnych (ADR 0013): e-mail obok
- * skrzynki w aplikacji.
- *
- * <p>
- * Skrzynka domyka pętlę tylko dla kogoś, kto do aplikacji wejdzie — a ADR 0012
- * powstał właśnie dlatego, że kolejka zgłoszeń czekała na moderatora, który sam
- * z siebie nie miał powodu zajrzeć. Mail dosięga też nieobecnych.
- *
- * <p>
- * <b>Mailem wychodzą wyłącznie typy z {@link NotificationType#MODERATION} — i
- * to nie jest kwestia oszczędności.</b> Skrzynka ukrywa powiadomienia od
- * zablokowanych <i>przy odczycie</i> (Claude.md §9); maila nie da się ukryć po
- * fakcie, więc mailowanie zwykłej aktywności omijałoby filtr blokad bocznymi
- * drzwiami. Typy moderacyjne przechodzą przez ten filtr zawsze, więc dla nich —
- * i tylko dla nich — oba kanały mówią to samo.
- *
- * <p>
- * Osobny listener, nie dopisek w {@code NotificationEventListener}: kanały mają
- * być niezależne, więc awaria zapisu do skrzynki nie może zatrzymać maila ani
- * odwrotnie. Ograniczenie liczby zdarzeń (tylko pierwsze zgłoszenie, tylko nowy
- * ban — ADR 0012) ten kanał dziedziczy za darmo, bo bramka jest u
- * publikującego.
- *
- * <p>
- * Ta niezależność kanałów jest dziś warunkiem tego, żeby preferencje poczty
- * (ADR 0020) w ogóle mogły istnieć: wyłączenie maila nie rusza skrzynki, więc
- * decyzja moderacyjna nadal dociera — tylko kanałem, po który trzeba przyjść.
- */
 @Component
 @EnableConfigurationProperties(ModerationMailProperties.class)
 class ModerationNotificationMailer {
 
 	private static final Logger log = LoggerFactory.getLogger(ModerationNotificationMailer.class);
 
-	/**
-	 * Nazwa społeczności skasowanej między commitem a listenerem — praktycznie
-	 * niemożliwe w jednym żądaniu, ale kod musi coś wstawić w treść.
-	 */
 	private static final String DELETED_COMMUNITY = "(usunięta społeczność)";
 
-	/**
-	 * W Prometheusie:
-	 * {@code songly_moderation_mail_suppressed_total{kind="report|appeal"}} (ADR
-	 * 0019) — ile maili do moderatorów przepadło na odstępie z ADR 0018.
-	 */
 	private static final String MAIL_SUPPRESSED_METRIC = "songly.moderation.mail.suppressed";
 
 	private final MailSender mailSender;
@@ -112,12 +74,6 @@ class ModerationNotificationMailer {
 		this.suspendedAccounts = suspendedAccounts;
 	}
 
-	/**
-	 * Termin banu musi dotrzeć do zbanowanego: ban czasowy, który wygląda na
-	 * dożywotni, mija się z celem — „tydzień przerwy" działa tylko na kimś, kto
-	 * wie, że to tydzień. Skrzynka w aplikacji tego nie przenosi (płaski model, ADR
-	 * 0012), więc mail jest dziś jedynym kanałem z tą informacją.
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onCommunityMemberBanned(CommunityMemberBannedEvent event) {
 		String community = communityName(event.communityId());
@@ -143,16 +99,6 @@ class ModerationNotificationMailer {
 		return "Ban jest czasowy — wygasa za %d %s i wtedy możesz wrócić.".formatted(days, days == 1 ? "dzień" : "dni");
 	}
 
-	/**
-	 * Zawieszenie konta (ADR 0022) — jedyny mail tego mailera bez społeczności, bo
-	 * to sankcja platformy, nie decyzja moderacji społecznościowej.
-	 *
-	 * <p>
-	 * Mail jest tu <b>jedynym</b> kanałem powiadomienia: zawieszone konto nie ma
-	 * dostępu do skrzynki w aplikacji (dostaje wyłącznie {@code ROLE_SUSPENDED}),
-	 * więc zapis w skrzynce byłby informacją zamkniętą przed adresatem. Bez powodu,
-	 * z terminem — dokładnie jak przy banie (ADR 0014 i 0015).
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onUserSuspended(UserSuspendedEvent event) {
 		sendTo(Set.of(event.userId()), null, MailCategory.DECISION_ABOUT_ME, "Songly — konto zawieszone", """
@@ -178,19 +124,6 @@ class ModerationNotificationMailer {
 				days == 1 ? "dzień" : "dni");
 	}
 
-	/**
-	 * Do <b>wszystkich administratorów</b> (ADR 0023) — wykaz zawieszeń jest
-	 * jednocześnie kolejką odwołań, a kolejka bez powiadomienia to narzędzie,
-	 * którego nic nie uruchamia. Tu jest to ostrzejsze niż przy zgłoszeniach
-	 * społecznościowych: odwołanie przychodzi od użytkownika, więc bez maila nikt z
-	 * administracji nie ma skąd o nim wiedzieć.
-	 *
-	 * <p>
-	 * Bez odstępu wyciszającego (ADR 0018): odwołanie jest jedno na zawieszenie, a
-	 * zawieszenia nakłada ręcznie administrator, więc wolumen jest ograniczony
-	 * strukturalnie, nie czasowo. Bez treści odwołania — tekst od użytkownika nie
-	 * jedzie kanałem push (ADR 0015).
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onSuspensionAppealSubmitted(UserSuspensionAppealSubmittedEvent event) {
 		sendTo(adminDirectory.adminIds(), event.userId(), MailCategory.MODERATION_QUEUE,
@@ -255,10 +188,6 @@ class ModerationNotificationMailer {
 						Zespół Songly""".formatted(community));
 	}
 
-	/**
-	 * Ta sama kategoria i ten sam kształt co przy usuniętym poście — bez treści
-	 * komentarza, której i tak już nie ma, i bez wskazania moderatora.
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onCommunityCommentRemoved(CommunityCommentRemovedEvent event) {
 		String community = communityName(event.communityId());
@@ -273,11 +202,6 @@ class ModerationNotificationMailer {
 						Zespół Songly""".formatted(community));
 	}
 
-	/**
-	 * To jest mail, dla którego ten kanał powstał: zgłoszenie w społeczności,
-	 * której moderator akurat nie odwiedza, leżało w kolejce bezterminowo — a
-	 * powiadomienie w aplikacji widzi tylko ktoś, kto do aplikacji wszedł.
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onPostReported(PostReportedEvent event) {
 		String community = communityName(event.communityId());
@@ -294,11 +218,6 @@ class ModerationNotificationMailer {
 						Zespół Songly""".formatted(community));
 	}
 
-	/**
-	 * Bez treści odwołania — celowo, jak przy powodzie bana (ADR 0015): tekst od
-	 * użytkownika nie jedzie kanałem push. Mail mówi, że jest po co zajrzeć; treść
-	 * czeka na liście banów.
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onBanAppealSubmitted(CommunityBanAppealSubmittedEvent event) {
 		String community = communityName(event.communityId());
@@ -342,12 +261,6 @@ class ModerationNotificationMailer {
 						Zespół Songly""".formatted(community));
 	}
 
-	/**
-	 * Druga instancja (ADR 0028). Do <b>administracji platformy</b>, bo nie ma w
-	 * aplikacji kolejki, do której zaglądałaby sama z siebie — dokładnie ten sam
-	 * argument co przy odwołaniach od zawieszenia (ADR 0023). Bez treści odwołania:
-	 * tekst zbanowanego nie jedzie kanałem push (ADR 0015), czeka w kolejce spraw.
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onBanAppealEscalated(CommunityBanAppealEscalatedEvent event) {
 		String community = communityName(event.communityId());
@@ -373,9 +286,6 @@ class ModerationNotificationMailer {
 						społeczności „%s”. Możesz do niej wrócić.
 
 						Zespół Songly""".formatted(community));
-		// Moderatorzy muszą się dowiedzieć, że ich decyzja została uchylona — inaczej
-		// zbanowany wraca do społeczności bez żadnego wyjaśnienia i wygląda to na
-		// awarię (ten sam argument, od którego zaczął się ADR 0012).
 		sendToModerators(event.communityId(), "escalation", event.userId(),
 				"Songly — administracja uchyliła ban w społeczności „%s”".formatted(community), """
 						Cześć!
@@ -419,39 +329,12 @@ class ModerationNotificationMailer {
 						Zespół Songly""".formatted(community));
 	}
 
-	/**
-	 * Rozsyłka do <b>wszystkich moderatorów</b> społeczności, wyciszana odstępem
-	 * per społeczność i rodzaj sprawy (ADR 0018).
-	 *
-	 * <p>
-	 * To są jedyne dwa maile, które wyzwala ktoś spoza moderacji — a więc jedyne,
-	 * którymi da się zasypać cudzą skrzynkę. Limit zgłoszeń per osoba tego nie
-	 * domyka, bo chroni przed jedną osobą, a nie przed dziesięcioma umówionymi:
-	 * ofiarą jest jedna skrzynka niezależnie od tego, ilu nadawców ją zapełnia (ta
-	 * sama logika co {@code resendInterval} przy resecie hasła, Claude.md §9).
-	 *
-	 * <p>
-	 * Wyciszony mail <b>przepada</b>, nie jest kolejkowany — i to jest w porządku
-	 * dokładnie dlatego, że ten mail nigdy nie niósł treści: mówi „jest po co
-	 * zajrzeć", a kolejka i tak pokazuje wszystko, co przyszło w międzyczasie.
-	 * Powiadomienia w aplikacji zostają nietknięte.
-	 *
-	 * <p>
-	 * <b>Fail-open</b> jak rate limiter (§9): gdy Redis nie odpowiada, mail
-	 * wychodzi. Wyciszanie jest zabezpieczeniem, nie warunkiem poprawności — awaria
-	 * cache'a nie może uciszyć kolejki moderacji.
-	 */
 	private void sendToModerators(UUID communityId, String kind, UUID actorId, String subject, String body) {
 		if (!claimModeratorMailSlot(communityId, kind)) {
-			// Wyciszenie jest z zewnątrz niewidoczne — moderator nie wie, że mail nie
-			// przyszedł, bo wyglądałoby to tak samo jak brak spraw. Stąd licznik: stała
-			// seria to znak, że odstęp jest za długi albo że ktoś uprawia zasypywanie.
 			meterRegistry.counter(MAIL_SUPPRESSED_METRIC, "kind", kind).increment();
 			log.debug("Mail do moderatorów społeczności {} ({}) wyciszony odstępem", communityId, kind);
 			return;
 		}
-		// Zawieszony moderator nie może rozpatrzyć sprawy, do której ten mail wzywa
-		// (ADR 0022) — wezwania do kolejki dostają tylko ci, którzy mogą ją otworzyć.
 		Set<UUID> suspended = suspendedAccounts.suspendedUserIds();
 		Set<UUID> moderators = communityMembership.moderatorIds(communityId).stream()
 				.filter(moderatorId -> !suspended.contains(moderatorId)).collect(Collectors.toSet());
@@ -470,25 +353,8 @@ class ModerationNotificationMailer {
 		}
 	}
 
-	/**
-	 * Wysyłka do wielu adresatów naraz; sprawca decyzji odpada — nikt nie
-	 * zawiadamia siebie, ta sama reguła co w {@code NotificationService.record}.
-	 * Adresy pobieramy jednym zapytaniem; userId bez konta (usunięte w
-	 * międzyczasie) po prostu nie ma w wyniku i cicho wypada.
-	 *
-	 * <p>
-	 * Błąd wysyłki <b>nie</b> leci dalej i jest łapany per adresat — jeden
-	 * niedoręczalny adres nie może zatrzymać maili do pozostałych moderatorów.
-	 * Powiadomienie w skrzynce już istnieje (osobny listener), więc przepadnięcie
-	 * maila degraduje kanał, nie informację. W logu wyłącznie userId, nigdy adres
-	 * (Claude.md §13).
-	 */
 	private void sendTo(Set<UUID> recipientIds, UUID actorId, MailCategory category, String subject, String body) {
 		Set<UUID> recipients = recipientIds.stream().filter(id -> !id.equals(actorId)).collect(Collectors.toSet());
-		// Preferencje (ADR 0020) odsiewamy PER ADRESAT, nie „wyślij albo nie":
-		// jeden moderator z wyłączoną pocztą nie może wyciszyć maila pozostałym.
-		// Odstęp z ADR 0018 działa niezależnie i wcześniej — to okno należy do
-		// społeczności, nie do adresata.
 		recipients = mailPreferences.allowedRecipients(recipients, category);
 		Map<UUID, String> emails = userEmailDirectory.emailsOf(recipients);
 		emails.forEach((recipientId, email) -> {

@@ -102,11 +102,6 @@ class NowPlayingPollerTest {
 		verify(nowPlayingService, never()).refreshFromProvider(unlinkedFriend);
 	}
 
-	/**
-	 * Wygasły status wykrywamy u <b>wszystkich</b> obserwowanych, także tych bez
-	 * providera — to właśnie oni ustawiają status ręcznie i nie mają czego
-	 * odpytywać (ADR 0007).
-	 */
 	@Test
 	void checksExpiredStatus_alsoForUsersWithoutProviderLink() {
 		UUID viewer = UUID.randomUUID();
@@ -123,10 +118,6 @@ class NowPlayingPollerTest {
 		verify(nowPlayingService).publishStoppedIfStatusExpired(unlinkedFriend);
 	}
 
-	/**
-	 * Padnięte zapytanie o listę do odpytania nie może zabrać sprawdzenia wygasłych
-	 * statusów — ono nie zależy od providera ani od tej listy.
-	 */
 	@Test
 	void expiryCheckStillRuns_whenPollableLookupFails() {
 		UUID viewer = UUID.randomUUID();
@@ -187,11 +178,6 @@ class NowPlayingPollerTest {
 		verify(nowPlayingService).refreshFromProvider(healthy);
 	}
 
-	/**
-	 * Rate limit Spotify jest per client ID, więc kolejni użytkownicy w tym samym
-	 * przebiegu dostaliby to samo 429 — dopytywanie tylko pogłębiłoby karę. Stąd
-	 * przerwanie przebiegu, inaczej niż przy zwykłym błędzie providera wyżej.
-	 */
 	@Test
 	void rateLimit_abortsRunAndBacksOffForRetryAfter() {
 		UUID viewer = UUID.randomUUID();
@@ -207,7 +193,6 @@ class NowPlayingPollerTest {
 
 		verify(nowPlayingService).applyProviderBackoff(Duration.ofSeconds(90));
 		verify(nowPlayingService, never()).refreshFromProvider(next);
-		// Zamiatanie wygasłych statusów nie dotyka providera, więc biegnie dalej.
 		verify(nowPlayingService).publishStoppedIfStatusExpired(next);
 	}
 

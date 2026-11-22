@@ -57,12 +57,6 @@ class NowPlayingProperties {
 		this.manualStatusTtl = manualStatusTtl;
 	}
 
-	/**
-	 * Jak długo pamiętamy, że ogłosiliśmy granie danego użytkownika. Musi być
-	 * dłuższe niż najdłużej żyjący status ({@link #getManualStatusTtl()}) — inaczej
-	 * znacznik zniknąłby przed samym statusem i nie byłoby po czym poznać, że
-	 * status wygasł.
-	 */
 	Duration getAnnouncedTtl() {
 		return announcedTtl;
 	}
@@ -71,11 +65,6 @@ class NowPlayingProperties {
 		this.announcedTtl = announcedTtl;
 	}
 
-	/**
-	 * Dokąd callback odsyła przeglądarkę po zakończeniu OAuth (ADR 0038). Wynik
-	 * doklejamy jako {@code result} (i {@code code} przy błędzie), więc adres nie
-	 * może mieć własnego parametru o tej nazwie.
-	 */
 	String getConnectResultUrl() {
 		return connectResultUrl;
 	}
@@ -96,7 +85,6 @@ class NowPlayingProperties {
 		return poll;
 	}
 
-	/** Limity długo żyjących połączeń SSE (ADR 0007, Etap 4). */
 	static class Stream {
 
 		private Duration timeout = Duration.ofMinutes(30);
@@ -119,10 +107,6 @@ class NowPlayingProperties {
 		}
 	}
 
-	/**
-	 * Sam interwał i włącznik polla czyta {@code @Scheduled} wprost z propercji —
-	 * tu jest tylko to, czego potrzebuje kod.
-	 */
 	static class Poll {
 
 		private Duration lockTtl = Duration.ofSeconds(25);
@@ -136,12 +120,6 @@ class NowPlayingProperties {
 			this.lockTtl = lockTtl;
 		}
 
-		/**
-		 * Jak długo nie odpytujemy providera po jego 429, gdy sam nie podał
-		 * {@code Retry-After}. Minuta to dwa pominięte przebiegi przy domyślnym
-		 * interwale — dość, by nie wpaść w pętlę "limit → kara → limit", i za mało, by
-		 * presence wyglądało na zepsute.
-		 */
 		Duration getProviderBackoff() {
 			return providerBackoff;
 		}

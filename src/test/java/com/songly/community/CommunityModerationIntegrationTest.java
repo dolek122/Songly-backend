@@ -16,15 +16,6 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Moderacja społeczności (ADR 0011): moderatorzy, bany i kolejka zgłoszeń.
- *
- * <p>
- * Pętla, którą ten test zamyka: dało się już usunąć post w swojej społeczności,
- * ale nie dało się <b>zgłosić</b> niczego ani powstrzymać kogoś przed
- * natychmiastowym powrotem. Moderacja sprowadzała się do wyścigu na kliknięcia
- * jednej osoby.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class CommunityModerationIntegrationTest extends AbstractIntegrationTest {
 
@@ -94,11 +85,6 @@ class CommunityModerationIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().is(expectedStatus));
 	}
 
-	/**
-	 * Ban na konto, którego nie ma (usunięte chwilę wcześniej, zły identyfikator),
-	 * trafia w klucz obcy do {@code users}. To konflikt ze stanem danych, a nie
-	 * awaria serwera — wcześniej wracało jako 500 ze stack tracem.
-	 */
 	@Test
 	void banningNonexistentUser_isAConflictNotAServerError() throws Exception {
 		TestUser owner = user("moderation-ghost-owner@songly.io");
@@ -110,10 +96,6 @@ class CommunityModerationIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.code").value("CONFLICT"));
 	}
 
-	/**
-	 * Moderator dostaje prawo kasowania cudzych postów — dotąd miał je wyłącznie
-	 * właściciel, więc moderacja była wąskim gardłem jednej osoby.
-	 */
 	@Test
 	void moderatorCanDeleteOthersPosts_ordinaryMemberCannot() throws Exception {
 		TestUser owner = user("mod-owner@songly.io");
@@ -131,15 +113,11 @@ class CommunityModerationIntegrationTest extends AbstractIntegrationTest {
 		mockMvc.perform(delete("/api/v1/posts/" + secondPostId).header("Authorization", "Bearer " + moderator.token()))
 				.andExpect(status().isNoContent());
 
-		// Zwykły członek dalej nie moderuje niczego poza własnymi postami.
 		String ownerPostId = createPost(owner, communityId, "post wlasciciela");
 		mockMvc.perform(delete("/api/v1/posts/" + ownerPostId).header("Authorization", "Bearer " + member.token()))
 				.andExpect(status().isForbidden());
 	}
 
-	/**
-	 * Role rozdaje wyłącznie właściciel — inaczej moderator przejąłby społeczność.
-	 */
 	@Test
 	void onlyOwnerAssignsRoles() throws Exception {
 		TestUser owner = user("role-owner@songly.io");
@@ -151,8 +129,6 @@ class CommunityModerationIntegrationTest extends AbstractIntegrationTest {
 		setRole(owner, communityId, moderator.userId(), "MODERATOR", 204);
 
 		setRole(moderator, communityId, member.userId(), "MODERATOR", 403);
-		// Właściciela nie da się zdegradować nawet własną ręką — to zostawiłoby
-		// społeczność bez właściciela.
 		setRole(owner, communityId, owner.userId(), "MEMBER", 403);
 		mockMvc.perform(put("/api/v1/communities/" + communityId + "/members/" + member.userId() + "/role")
 				.header("Authorization", "Bearer " + owner.token()).contentType(MediaType.APPLICATION_JSON).content("""
@@ -160,11 +136,6 @@ class CommunityModerationIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.code").value("CANNOT_ASSIGN_OWNER_ROLE"));
 	}
 
-	/**
-	 * Sedno banu: samo usunięcie z listy członków nic by nie dało, bo dołączenie
-	 * jest otwarte i natychmiastowe (§8). Dopiero blokada powrotu czyni decyzję
-	 * trwałą.
-	 */
 	@Test
 	void bannedUserLosesMembershipAndCannotRejoinOrPost() throws Exception {
 		TestUser owner = user("ban-owner@songly.io");
@@ -180,10 +151,6 @@ class CommunityModerationIntegrationTest extends AbstractIntegrationTest {
 						{"content":"wracam"}""")).andExpect(status().isForbidden());
 	}
 
-	/**
-	 * Ban odcina od <b>pisania</b>, nie od czytania. Społeczności są publiczne,
-	 * więc ukrywanie treści byłoby ochroną pozorną — wystarczy się wylogować.
-	 */
 	@Test
 	void bannedUserStillReadsButCannotComment() throws Exception {
 		TestUser owner = user("ban-read-owner@songly.io");
@@ -216,8 +183,6 @@ class CommunityModerationIntegrationTest extends AbstractIntegrationTest {
 
 		ban(modA, communityId, owner.userId(), 403);
 		ban(modA, communityId, modB.userId(), 403);
-		// Właściciel może zbanować moderatora — inaczej nie miałby jak odwołać
-		// kogoś, komu sam dał uprawnienia.
 		ban(owner, communityId, modB.userId(), 204);
 	}
 
@@ -235,7 +200,6 @@ class CommunityModerationIntegrationTest extends AbstractIntegrationTest {
 		join(user, communityId, 204);
 	}
 
-	/** Pełna pętla: zgłoszenie trafia do kolejki i da się je rozpatrzyć. */
 	@Test
 	void reportedPostReachesTheQueueAndCanBeDismissed() throws Exception {
 		TestUser owner = user("rep-owner@songly.io");
@@ -264,10 +228,6 @@ class CommunityModerationIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.content.length()").value(0));
 	}
 
-	/**
-	 * Skasowanie posta zabiera jego zgłoszenia — bez posta nie ma czego moderować,
-	 * a zgłoszenie wskazujące w pustkę zostawałoby w kolejce na zawsze.
-	 */
 	@Test
 	void deletingReportedPost_clearsItsReports() throws Exception {
 		TestUser owner = user("rep-del-owner@songly.io");
@@ -297,8 +257,6 @@ class CommunityModerationIntegrationTest extends AbstractIntegrationTest {
 		report(reporter, postId, 202);
 		report(reporter, postId, 409);
 
-		// Zwykły post nie ma dziś nikogo, kto miałby prawo rozpatrzyć zgłoszenie —
-		// moderacja jest społecznościowa, nie globalna (świadomy zakres ADR 0011).
 		String plainPostId = objectMapper.readTree(mockMvc
 				.perform(post("/api/v1/posts").header("Authorization", "Bearer " + owner.token())
 						.contentType(MediaType.APPLICATION_JSON).content("""
@@ -311,7 +269,6 @@ class CommunityModerationIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("POST_NOT_IN_COMMUNITY"));
 	}
 
-	/** Kolejka jest dla moderatorów — zwykły członek jej nie ogląda. */
 	@Test
 	void queueIsVisibleOnlyToModerators() throws Exception {
 		TestUser owner = user("queue-owner@songly.io");
