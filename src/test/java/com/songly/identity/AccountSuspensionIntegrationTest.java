@@ -24,15 +24,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Globalne zawieszanie kont (ADR 0022).
- *
- * <p>
- * Najważniejsze są tu dwie rzeczy: że zawieszenie naprawdę odcina
- * <b>wszystko</b> (bo egzekucja siedzi w uprawnieniach, a nie w sprawdzeniach
- * rozsianych po modułach) i że mimo tego zostawia otwarte usunięcie konta —
- * prawo z RODO (Claude.md §9), którego sankcja nie może unieważniać.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class AccountSuspensionIntegrationTest extends AbstractIntegrationTest {
 
@@ -73,11 +64,6 @@ class AccountSuspensionIntegrationTest extends AbstractIntegrationTest {
 				.content(body)).andExpect(status().isNoContent());
 	}
 
-	/**
-	 * Zawieszenie odcina każdą ścieżkę, nie tylko zapis — i zostawia dokładnie to,
-	 * co musi zostać. Odczyt feedu jest tu równie ważny jak publikowanie:
-	 * zawieszone konto nie ma być obecne w produkcie.
-	 */
 	@Test
 	void suspendedAccountLosesEverythingExceptItsOwnStatusAndDeletion() throws Exception {
 		TestUser admin = admin("suspension-cut-admin@songly.io");
@@ -85,15 +71,10 @@ class AccountSuspensionIntegrationTest extends AbstractIntegrationTest {
 
 		suspend(admin, troll, null);
 
-		// Uprawnienie czytamy na żywo z bazy, więc stary token traci moc bez
-		// wylogowywania (ta sama własność co przy odebraniu roli admina, ADR 0021).
 		mockMvc.perform(post("/api/v1/posts").header("Authorization", "Bearer " + troll.token())
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"content":"nie powinno przejsc"}""")).andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.code").value("ACCOUNT_SUSPENDED"))
-				// Komunikat ma polskie znaki, a pisze go filtr, nie Spring MVC (ADR 0051).
-				// MockMvc odczyta treść poprawnie w każdym kodowaniu, więc o tym, co zobaczy
-				// klient, mówi dopiero nagłówek.
 				.andExpect(header().string("Content-Type", "application/json;charset=UTF-8"))
 				.andExpect(jsonPath("$.message")
 						.value("Konto jest zawieszone — szczegóły pod GET /api/v1/auth/me/suspension"));
@@ -104,7 +85,6 @@ class AccountSuspensionIntegrationTest extends AbstractIntegrationTest {
 		mockMvc.perform(get("/api/v1/profiles/me").header("Authorization", "Bearer " + troll.token()))
 				.andExpect(status().isForbidden());
 
-		// ...a to zostaje: własny stan zawieszenia z powodem i bez terminu.
 		JsonNode suspension = objectMapper.readTree(
 				mockMvc.perform(get("/api/v1/auth/me/suspension").header("Authorization", "Bearer " + troll.token()))
 						.andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
@@ -113,10 +93,6 @@ class AccountSuspensionIntegrationTest extends AbstractIntegrationTest {
 		assertThat(suspension.get("expiresAt").isNull()).isTrue();
 	}
 
-	/**
-	 * Prawo do usunięcia danych (RODO, §9) przeżywa zawieszenie — gdyby nie
-	 * przeżywało, sankcja odbierałaby uprawnienie, którego nie wolno odebrać.
-	 */
 	@Test
 	void suspendedAccountCanStillDeleteItself() throws Exception {
 		TestUser admin = admin("suspension-rodo-admin@songly.io");
@@ -127,17 +103,11 @@ class AccountSuspensionIntegrationTest extends AbstractIntegrationTest {
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"password":"%s"}""".formatted(troll.password()))).andExpect(status().isNoContent());
 
-		// Konto znika, więc logowanie przestaje działać w ogóle.
 		mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content("""
 				{"email":"%s","password":"%s"}""".formatted(troll.email(), troll.password())))
 				.andExpect(status().isUnauthorized());
 	}
 
-	/**
-	 * Logowanie zawieszonego <b>przechodzi</b> i to jest celowe: bez tokenu nie
-	 * miałby jak poznać powodu ani usunąć konta. Wydane uprawnienia są przy tym
-	 * puste, co sprawdza test wyżej.
-	 */
 	@Test
 	void suspendedAccountCanStillLogIn() throws Exception {
 		TestUser admin = admin("suspension-login-admin@songly.io");
@@ -156,7 +126,6 @@ class AccountSuspensionIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isForbidden());
 	}
 
-	/** Wygasanie jest leniwe: po terminie konto działa samo, bez niczyjej akcji. */
 	@Test
 	void expiredSuspensionRestoresTheAccountByItself() throws Exception {
 		TestUser admin = admin("suspension-exp-admin@songly.io");
@@ -173,7 +142,6 @@ class AccountSuspensionIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isOk());
 		mockMvc.perform(get("/api/v1/auth/me/suspension").header("Authorization", "Bearer " + troll.token()))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.suspended").value(false));
-		// Wygasłe zawieszenie nie jest stanem, więc nie ma go w wykazie dla admina.
 		assertThat(suspensions(admin)).doesNotContain(troll.userId());
 	}
 
@@ -191,15 +159,10 @@ class AccountSuspensionIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isOk());
 		assertThat(suspensions(admin)).doesNotContain(troll.userId());
 
-		// Idempotentne: zdjęcie zawieszenia z konta aktywnego nie jest błędem.
 		mockMvc.perform(delete("/api/v1/admin/users/" + troll.userId() + "/suspension").header("Authorization",
 				"Bearer " + admin.token())).andExpect(status().isNoContent());
 	}
 
-	/**
-	 * Dwa zakazy przeniesione z reguł moderacji społeczności (ADR 0011): nie siebie
-	 * i nie innego administratora.
-	 */
 	@Test
 	void adminCannotSuspendThemselvesOrAnotherAdmin() throws Exception {
 		TestUser admin = admin("suspension-rules-admin@songly.io");
@@ -216,9 +179,6 @@ class AccountSuspensionIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.code").value("CANNOT_SUSPEND_ADMIN"));
 	}
 
-	/**
-	 * Powód jest obowiązkowy — zawieszenie bez uzasadnienia byłoby nieodtwarzalne.
-	 */
 	@Test
 	void reasonIsRequired() throws Exception {
 		TestUser admin = admin("suspension-valid-admin@songly.io");
@@ -229,12 +189,6 @@ class AccountSuspensionIntegrationTest extends AbstractIntegrationTest {
 						{"reason":"  "}""")).andExpect(status().isBadRequest());
 	}
 
-	/**
-	 * Mail jest jedynym kanałem powiadomienia (skrzynka w aplikacji jest dla
-	 * zawieszonego niedostępna), ale <b>powodu nie niesie</b> — tekst
-	 * administratora nie jedzie kanałem push (ADR 0015). Termin owszem, bo bez
-	 * niego zawieszenie czasowe wygląda jak dożywotnie (ADR 0014).
-	 */
 	@Test
 	void mailCarriesTheTermButNeverTheReason() throws Exception {
 		TestUser admin = admin("suspension-mail-admin@songly.io");
@@ -246,11 +200,9 @@ class AccountSuspensionIntegrationTest extends AbstractIntegrationTest {
 		assertThat(mails.lastTo(troll.email()).subject()).contains("zawieszone");
 		assertThat(mails.lastTo(troll.email()).body()).contains("wygasa za 7 dni").doesNotContain("nękanie innych");
 
-		// Poprawka trwającego zawieszenia nie wysyła drugiego maila o tym samym.
 		suspend(admin, troll, 14);
 		assertThat(mails.sentTo(troll.email())).hasSize(1);
 
-		// Zdjęcie zawieszenia zawiadamia, że konto wróciło.
 		mockMvc.perform(delete("/api/v1/admin/users/" + troll.userId() + "/suspension").header("Authorization",
 				"Bearer " + admin.token())).andExpect(status().isNoContent());
 		assertThat(mails.lastTo(troll.email()).subject()).contains("zdjęte");
@@ -261,10 +213,6 @@ class AccountSuspensionIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 	}
 
-	/**
-	 * Kilkaset milionów dni wypycha termin poza zakres znacznika czasu Postgresa —
-	 * bez górnej granicy kończyło się to 500 zamiast 400 (ADR 0049).
-	 */
 	@Test
 	void absurdlyLongSuspensionIsRejected() throws Exception {
 		TestUser admin = admin("suspension-huge-admin@songly.io");

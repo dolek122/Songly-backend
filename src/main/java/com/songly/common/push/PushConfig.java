@@ -14,12 +14,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
-/**
- * Ten sam układ co kanał e-mail (Claude.md §9): domyślnie {@code log}, a
- * {@code fcm} bez klucza konta serwisowego <b>wywala start</b> — instancja,
- * która tylko wygląda, jakby wysyłała pushe, to awaria niezauważalna, dopóki
- * ktoś nie zapyta, czemu telefon milczy.
- */
 @Configuration
 @EnableConfigurationProperties(PushProperties.class)
 class PushConfig {
@@ -56,7 +50,6 @@ class PushConfig {
 		}
 	}
 
-	/** Biblioteka cache'uje token i odświeża go sama przed wygaśnięciem. */
 	private static String accessToken(GoogleCredentials credentials) {
 		try {
 			credentials.refreshIfExpired();

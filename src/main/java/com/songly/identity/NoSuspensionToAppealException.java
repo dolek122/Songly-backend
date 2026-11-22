@@ -3,10 +3,6 @@ package com.songly.identity;
 import com.songly.common.web.ApiException;
 import org.springframework.http.HttpStatus;
 
-/**
- * Odwołać się może wyłącznie konto z <b>aktywnym</b> zawieszeniem — wygasłe to
- * brak zawieszenia (ADR 0022), więc nie ma się od czego odwoływać.
- */
 class NoSuspensionToAppealException extends ApiException {
 
 	NoSuspensionToAppealException() {

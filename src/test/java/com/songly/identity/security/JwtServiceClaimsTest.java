@@ -8,11 +8,6 @@ import java.util.Base64;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-/**
- * Token niesie tylko to, czego serwer potrzebuje: identyfikator konta. Adres
- * e-mail w treści wędrował z każdym żądaniem do logów proxy i raportów awarii
- * (Claude.md §13), choć nic go po stronie serwera nie czytało.
- */
 class JwtServiceClaimsTest {
 
 	@Test

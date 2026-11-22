@@ -26,10 +26,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.util.UriComponentsBuilder;
 import tools.jackson.databind.ObjectMapper;
 
-// Poll wyłączony: testowy strumień SSE zostaje w rejestrze do timeoutu, więc
-// harmonogram odpytywałby providera w tle w trakcie asercji (ADR 0007, Etap 1b).
-// Heartbeat też wyłączony: leci w te same emittery co realne zdarzenia, więc
-// testy liczące pushe łapałyby jego zamiast tego, co sprawdzają.
 @TestPropertySource(properties = {"songly.security.rate-limit.enabled=false", "songly.now-playing.poll.enabled=false",
 		"songly.now-playing.stream.heartbeat.enabled=false"})
 class NowPlayingIntegrationTest extends AbstractIntegrationTest {
@@ -102,10 +98,6 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 		return UriComponentsBuilder.fromUriString(authorizeUrl).build().getQueryParams().getFirst("state");
 	}
 
-	/**
-	 * Po drugiej stronie callbacku stoi przeglądarka, nie klient API — błąd ma
-	 * wrócić do aplikacji, a nie zostawić użytkownika na stronie z JSON-em.
-	 */
 	@Test
 	void callback_redirectsToAppWithError_whenStateUnknown() throws Exception {
 		mockMvc.perform(
@@ -123,8 +115,6 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isFound())
 				.andExpect(header().string("Location", "songly://now-playing/spotify?result=denied"));
 
-		// Odmowa zużywa state — podstawienie go potem z kodem nie może już
-		// dokończyć połączenia.
 		mockMvc.perform(get("/api/v1/now-playing/spotify/callback").param("code", "late-code").param("state", state))
 				.andExpect(header().string("Location",
 						"songly://now-playing/spotify?result=error&code=INVALID_OAUTH_STATE"));
@@ -140,10 +130,6 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 						"songly://now-playing/spotify?result=error&code=MUSIC_PROVIDER_ERROR"));
 	}
 
-	/**
-	 * Stan każdego nowego konta — to „nic nie gra", nie błąd. 404 zasłaniało w
-	 * kliencie cały ekran, razem z drogami wyjścia z tego stanu.
-	 */
 	@Test
 	void myStatus_returnsNoContent_whenProviderNotConnected() throws Exception {
 		String accessToken = registerAndGetAccessToken("spotify-status@songly.io");
@@ -215,8 +201,7 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 		setManualStatus(stranger, "Come As You Are", "Nirvana", "Tidal");
 
 		befriend(viewer, playing);
-		befriend(viewer, silent); // znajomy bez statusu — pomijany
-		// stranger celowo nie jest znajomym — nie powinien się pojawić
+		befriend(viewer, silent);
 
 		mockMvc.perform(get("/api/v1/now-playing/friends").header("Authorization", "Bearer " + viewer.accessToken()))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
@@ -228,11 +213,6 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$[0].status.playing").value(true));
 	}
 
-	/**
-	 * Status zawieszonego konta nie opuszcza serwera (ADR 0049). ADR 0026 zakładał,
-	 * że zawieszony go „nie odświeży”, ale ręczny status żyje godzinami, a ten ze
-	 * Spotify odświeża serwerowy poll.
-	 */
 	@Test
 	void friends_leavesOutSuspendedFriend() throws Exception {
 		TestUser viewer = registerUser("np-friends-suspended-viewer@songly.io");
@@ -265,12 +245,6 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(header().string("Content-Type", org.hamcrest.Matchers.containsString("text/event-stream")));
 	}
 
-	/**
-	 * Etap 2 end-to-end: zmiana statusu wychodzi na kanał Redis, wraca do tej samej
-	 * instancji przez {@code RedisMessageListenerContainer} i ląduje w strumieniu
-	 * SSE znajomego. Ta sama ścieżka niesie zmianę między instancjami — tam, gdzie
-	 * tu jest jeden proces, w produkcji stoi drugi węzeł.
-	 */
 	@Test
 	void statusChange_reachesFriendStream_throughRedisChannel() throws Exception {
 		TestUser viewer = registerUser("np-fanout-viewer@songly.io");
@@ -288,8 +262,6 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 			}
 		});
 
-		// Obcy nie ma prawa trafić do cudzego strumienia — publikujemy go pierwszego,
-		// żeby jego wiadomość zdążyła przejść przez kanał przed asercją.
 		setManualStatus(stranger, "Come As You Are", "Nirvana", "Tidal");
 		setManualStatus(subject, "Bohemian Rhapsody", "Queen", "Tidal");
 
@@ -320,10 +292,6 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 				.contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isBadRequest());
 	}
 
-	/**
-	 * Wyłączona widoczność chowa status przed znajomymi (ADR 0007, Etap 4), ale
-	 * właściciel nadal widzi swój własny w {@code /me}.
-	 */
 	@Test
 	void hiddenStatus_disappearsFromFriendsList_butStaysVisibleToOwner() throws Exception {
 		TestUser viewer = registerUser("np-hidden-viewer@songly.io");
@@ -366,19 +334,12 @@ class NowPlayingIntegrationTest extends AbstractIntegrationTest {
 		});
 
 		setManualStatus(hidden, "Come As You Are", "Nirvana", "Tidal");
-		// Status widocznego znajomego jest sondą: gdy on dojdzie, wiadomość ukrytego
-		// też zdążyła już przejść przez kanał — i skoro jej nie ma, to jej nie będzie.
 		setManualStatus(visible, "Bohemian Rhapsody", "Queen", "Tidal");
 
 		assertThat(delivered.await(10, TimeUnit.SECONDS)).isTrue();
 		assertThat(received).hasSize(1);
 	}
 
-	/**
-	 * Wyłączenie widoczności musi dojść do znajomego, który <b>już</b> ma otwarty
-	 * strumień — dla niego nie ma żadnego kolejnego pushu, więc bez tego zdarzenia
-	 * widziałby ostatni status w nieskończoność (Claude.md §9).
-	 */
 	@Test
 	void turningSharingOff_reachesOpenFriendStream() throws Exception {
 		TestUser viewer = registerUser("np-optout-viewer@songly.io");

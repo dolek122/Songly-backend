@@ -4,10 +4,6 @@ import com.songly.identity.UserAccountDeletionRequestedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
-/**
- * Zwykły {@code @EventListener} celowo — patrz
- * {@link UserAccountDeletionRequestedEvent}.
- */
 @Component
 class CommunityAccountDeletionListener {
 

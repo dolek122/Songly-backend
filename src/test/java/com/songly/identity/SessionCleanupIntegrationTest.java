@@ -14,15 +14,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 
-/**
- * Sprzątanie stoi na natywnym SQL-u i predykacie łączącym dwie kolumny, więc
- * sprawdzamy je na prawdziwym Postgresie — mock repozytorium potwierdziłby
- * jedynie, że job woła metodę, a nie że kasuje właściwe wiersze.
- *
- * <p>
- * Harmonogram wyłączony: job wołamy ręcznie, żeby test nie zależał od tego,
- * kiedy akurat wypadnie przebieg.
- */
 @TestPropertySource(properties = {"songly.security.session-cleanup.enabled=false",
 		"songly.now-playing.poll.enabled=false", "songly.now-playing.stream.heartbeat.enabled=false"})
 class SessionCleanupIntegrationTest extends AbstractIntegrationTest {
@@ -44,10 +35,6 @@ class SessionCleanupIntegrationTest extends AbstractIntegrationTest {
 		userRepository.save(new User(userId, "session-cleanup-%s@songly.io".formatted(userId), "hash", Instant.now()));
 	}
 
-	/**
-	 * Wstawiamy przez SQL, bo encja nie pozwala (słusznie) ustawić dowolnej daty
-	 * odwołania — a właśnie wiek martwych wierszy jest tu przedmiotem testu.
-	 */
 	private UUID insertSession(Instant expiresAt, Instant revokedAt) {
 		UUID id = UUID.randomUUID();
 		jdbcTemplate.update("""
@@ -58,7 +45,6 @@ class SessionCleanupIntegrationTest extends AbstractIntegrationTest {
 		return id;
 	}
 
-	/** Sterownik Postgresa nie potrafi zbindować {@link Instant} wprost. */
 	private static OffsetDateTime at(Instant instant) {
 		return instant == null ? null : instant.atOffset(ZoneOffset.UTC);
 	}
@@ -82,8 +68,6 @@ class SessionCleanupIntegrationTest extends AbstractIntegrationTest {
 
 		assertThat(deleted).isEqualTo(1);
 		assertThat(exists(longExpired)).isFalse();
-		// Odwołana dawno, ale ważna jeszcze 23 dni: zostaje, bo tylko po tym wierszu
-		// refresh rozpozna skradzioną kopię tokenu jako ponowne użycie.
 		assertThat(exists(longRevoked)).isTrue();
 		assertThat(exists(justExpired)).isTrue();
 		assertThat(exists(justRevoked)).isTrue();
@@ -106,8 +90,6 @@ class SessionCleanupIntegrationTest extends AbstractIntegrationTest {
 	void neverTouchesSessionsThatCanStillAuthenticate() {
 		UUID live = insertSession(Instant.now().plus(30, ChronoUnit.DAYS), null);
 
-		// Cutoff w przyszłości — nawet wtedy żywa sesja musi przetrwać, bo warunek
-		// patrzy na wygaśnięcie i odwołanie, a nie na wiek wiersza.
 		sessionRepository.deleteDeadSessions(Instant.now().plus(1, ChronoUnit.DAYS), 5_000);
 
 		assertThat(exists(live)).isTrue();

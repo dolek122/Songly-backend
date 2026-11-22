@@ -19,11 +19,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-/**
- * Jedyny kontakt modułu analytics z resztą systemu: te same zdarzenia Springa,
- * które konsumuje moduł notification (Claude.md §2) — bez sięgania po encje ani
- * serwisy innych modułów.
- */
 @Component
 class AnalyticsEventListener {
 
@@ -68,12 +63,6 @@ class AnalyticsEventListener {
 		analyticsService.record(AnalyticsEventType.COMMUNITY_MEMBER_JOINED, event.occurredAt());
 	}
 
-	/**
-	 * Moderacja (ADR 0011–0018) nie zostawiała dotąd ani jednego śladu w analityce,
-	 * więc kilka decyzji odłożonych „do czasu, aż dane pokażą" nie miało skąd wziąć
-	 * tych danych (ADR 0019). Zdarzenia są te same, które konsumuje notification —
-	 * bez nowych zdarzeń i bez dotykania modułów, które je publikują.
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onPostReported(PostReportedEvent event) {
 		analyticsService.record(AnalyticsEventType.POST_FIRST_REPORTED, event.occurredAt());
@@ -94,10 +83,6 @@ class AnalyticsEventListener {
 		analyticsService.record(AnalyticsEventType.COMMUNITY_COMMENT_REMOVED, event.occurredAt());
 	}
 
-	/**
-	 * Rozgałęzienie po terminie, bo analityka liczy same typy (ADR 0004) — inaczej
-	 * nie dałoby się sprawdzić, czy bany czasowe się przyjęły.
-	 */
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onCommunityMemberBanned(CommunityMemberBannedEvent event) {
 		analyticsService.record(event.expiresAt() == null

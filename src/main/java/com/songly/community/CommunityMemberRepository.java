@@ -13,7 +13,6 @@ interface CommunityMemberRepository extends JpaRepository<CommunityMember, Commu
 
 	Page<CommunityMember> findByCommunityIdOrderByJoinedAtAsc(UUID communityId, Pageable pageable);
 
-	/** Adresaci powiadomień moderacyjnych — właściciel i moderatorzy. */
 	List<CommunityMember> findByCommunityIdAndRoleIn(UUID communityId, Collection<CommunityRole> roles);
 
 	Page<CommunityMember> findByUserIdOrderByJoinedAtDesc(UUID userId, Pageable pageable);
@@ -24,7 +23,6 @@ interface CommunityMemberRepository extends JpaRepository<CommunityMember, Commu
 
 	void deleteByUserId(UUID userId);
 
-	/** Zliczenia dla całej strony społeczności jednym zapytaniem (bez N+1). */
 	@Query("select m.communityId as communityId, count(m) as memberCount from CommunityMember m "
 			+ "where m.communityId in :communityIds group by m.communityId")
 	List<CommunityIdCount> countByCommunityIdIn(@Param("communityIds") Collection<UUID> communityIds);

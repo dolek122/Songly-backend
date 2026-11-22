@@ -12,10 +12,6 @@ interface PushDeviceRepository extends JpaRepository<PushDevice, String> {
 
 	List<PushDevice> findByUserIdOrderByUpdatedAtDesc(UUID userId);
 
-	/**
-	 * Wsadowo, bo na tej encji nie wisi żadne zdarzenie cyklu życia (pułapka z
-	 * Claude.md §8 jej nie dotyczy).
-	 */
 	@Modifying
 	@Query("delete from PushDevice d where d.userId = :userId")
 	void deleteByUserId(UUID userId);

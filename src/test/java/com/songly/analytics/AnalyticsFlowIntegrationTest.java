@@ -19,12 +19,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Kontener bazy jest współdzielony między wszystkimi klasami testowymi
- * (AbstractIntegrationTest), więc liczniki nie są tu porównywane wprost — tylko
- * delta przed/po akcjach w obrębie jednego testu, żeby nie zależeć od tego, co
- * inne klasy zdążyły już zapisać.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class AnalyticsFlowIntegrationTest extends AbstractIntegrationTest {
 

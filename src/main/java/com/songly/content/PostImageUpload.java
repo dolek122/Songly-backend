@@ -7,15 +7,6 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Zdjęcie wgrane, ale jeszcze nieprzypięte do posta (ADR 0048).
- *
- * <p>
- * Wiersz istnieje dokładnie tak długo, jak plik czeka na post: publikacja posta
- * go zużywa, a sprzątanie usuwa porzucone. Klucz przypięty do posta nie ma już
- * wiersza, więc ani sprzątanie, ani limit oczekujących nie mają jak dotknąć
- * zdjęcia, które ktoś opublikował.
- */
 @Entity
 @Table(name = "post_image_uploads")
 class PostImageUpload {

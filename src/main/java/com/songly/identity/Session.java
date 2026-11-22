@@ -7,10 +7,6 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Refresh-token session, umożliwia rewokację bez czekania na wygaśnięcie
- * tokenu.
- */
 @Entity
 @Table(name = "sessions")
 class Session {
@@ -33,12 +29,6 @@ class Session {
 	@Column(nullable = false)
 	private boolean revoked;
 
-	/**
-	 * {@code null}, dopóki sesja nie została odwołana. Potrzebne sprzątaniu:
-	 * odwołany wiersz zachowuje pierwotne {@code expiresAt} (nawet +30 dni), więc
-	 * bez tej daty czekałby na skasowanie znacznie dłużej, niż jest do czegokolwiek
-	 * potrzebny.
-	 */
 	@Column(name = "revoked_at")
 	private Instant revokedAt;
 

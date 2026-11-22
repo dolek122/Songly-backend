@@ -10,11 +10,5 @@ interface PasswordResetTokenRepository extends JpaRepository<PasswordResetToken,
 
 	Optional<PasswordResetToken> findFirstByUserIdOrderByCreatedAtDesc(UUID userId);
 
-	/**
-	 * Kasowanie po encjach (a nie masowym {@code @Modifying}), bo liczba tokenów
-	 * jednego użytkownika jest z założenia bliska jedności — nowe żądanie resetu
-	 * usuwa poprzedni. Dzięki temu tabela nie potrzebuje osobnego zadania
-	 * sprzątającego, w przeciwieństwie do {@code sessions}.
-	 */
 	void deleteByUserId(UUID userId);
 }

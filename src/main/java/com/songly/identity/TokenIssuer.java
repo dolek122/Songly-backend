@@ -6,15 +6,6 @@ import java.time.Instant;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
-/**
- * Wydanie pary tokenów razem z założeniem sesji.
- *
- * <p>
- * Wyciągnięte z {@code AuthService}, gdy drugim miejscem wydającym sesję stała
- * się weryfikacja adresu e-mail. Dwie kopie tego kodu rozjechałyby się na
- * pierwszej zmianie w cyklu życia sesji — a sesja to jedyna rzecz w tym module,
- * której poprawność nie wybacza rozjazdów.
- */
 @Component
 class TokenIssuer {
 

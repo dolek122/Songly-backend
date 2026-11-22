@@ -33,3 +33,6 @@ build/
 
 ### Claude Code ###
 .claude/settings.local.json
+
+*.md
+!/README.md

@@ -22,22 +22,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Reset hasła — jedyna droga powrotu do konta dla kogoś, kto hasła nie pamięta.
- *
- * <p>
- * Test jest integracyjny, bo sedno tej funkcji leży poza serwisem: token
- * istnieje w postaci jawnej wyłącznie w wysłanej wiadomości (w bazie jest tylko
- * skrót), a skutek resetu — unieważnienie wszystkich sesji — robi masowy UPDATE
- * omijający kontekst persystencji. Ani jednego, ani drugiego nie da się
- * uczciwie sprawdzić bez prawdziwej bazy i pełnej ścieżki HTTP.
- *
- * <p>
- * {@code resend-interval=PT0S} zdejmuje odstęp między wysyłkami, żeby kolejne
- * przypadki mogły swobodnie zamawiać linki. Sam odstęp ma własną klasę testową
- * ({@code PasswordResetThrottleIntegrationTest}) — inaczej wyciszałby wysyłki w
- * testach, które badają coś zupełnie innego.
- */
 @TestPropertySource(properties = {"songly.security.rate-limit.enabled=false",
 		"songly.security.password-reset.resend-interval=PT0S"})
 class PasswordResetIntegrationTest extends AbstractIntegrationTest {
@@ -84,7 +68,6 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
 				{"email":"%s"}""".formatted(email))).andExpect(status().isAccepted());
 	}
 
-	/** Token istnieje w postaci jawnej tylko tutaj — w bazie leży sam skrót. */
 	private String tokenFromMailTo(String email) {
 		Matcher matcher = TOKEN_IN_LINK.matcher(mails.lastTo(email).body());
 		assertThat(matcher.find()).as("Wiadomość powinna zawierać link z tokenem").isTrue();
@@ -108,11 +91,6 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
 				{"refreshToken":"%s"}""".formatted(refreshToken))).andExpect(status().isUnauthorized());
 	}
 
-	/**
-	 * Cała ścieżka, którą przechodzi użytkownik: zamawiam link, dostaję maila,
-	 * ustawiam nowe hasło i wracam do konta. Bez tego przebiegu reszta asercji nie
-	 * ma znaczenia.
-	 */
 	@Test
 	void fullFlow_letsUserBackInWithTheNewPassword() throws Exception {
 		register("reset-happy@songly.io", "password123");
@@ -125,12 +103,6 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
 		login("reset-happy@songly.io", "brand-new-password");
 	}
 
-	/**
-	 * Reset robi się po utracie kontroli nad kontem, więc musi mieć ten sam skutek
-	 * co zmiana hasła: sesje ze wszystkich urządzeń giną. Zostawienie w mocy sesji
-	 * sprzed resetu przekreślałoby całą operację — złodziej dalej miałby ważny
-	 * refresh token.
-	 */
 	@Test
 	void reset_killsSessionsFromEveryDevice() throws Exception {
 		Tokens phone = register("reset-sessions@songly.io", "password123");
@@ -143,12 +115,6 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
 		expectRefreshRejected(laptop.refreshToken());
 	}
 
-	/**
-	 * Nieznany adres wygląda dokładnie tak samo jak znany — inaczej endpoint byłby
-	 * darmową listą kont (Claude.md §13). Sprawdzamy też, że nic nie poszło pocztą:
-	 * sama odpowiedź 202 nie wyklucza wysyłki, a wysłanie czegokolwiek na
-	 * niezarejestrowany adres byłoby i tak niepożądane.
-	 */
 	@Test
 	void unknownEmail_looksIdenticalAndSendsNothing() throws Exception {
 		requestReset("nie-ma-takiego-konta@songly.io");
@@ -156,10 +122,6 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
 		assertThat(mails.sent()).isEmpty();
 	}
 
-	/**
-	 * Token jest jednorazowy. Gdyby nie był, link zalegający w skrzynce (albo w
-	 * historii przeglądarki) otwierałby konto w kółko przez cały swój czas życia.
-	 */
 	@Test
 	void token_worksOnlyOnce() throws Exception {
 		register("reset-once@songly.io", "password123");
@@ -174,15 +136,6 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
 		login("reset-once@songly.io", "brand-new-password");
 	}
 
-	/**
-	 * Wygasły token dostaje ten sam kod błędu co token zmyślony. Osobne
-	 * {@code TOKEN_EXPIRED} byłoby wygodniejsze dla klienta, ale potwierdzałoby, że
-	 * taki token kiedyś istniał — czyli że pod danym adresem jest konto.
-	 *
-	 * <p>
-	 * Token wstawiamy wprost przez repozytorium, bo inaczej test musiałby czekać
-	 * pół godziny albo podnosić osobny kontekst z {@code ttl} bliskim zeru.
-	 */
 	@Test
 	void expiredToken_isRejectedTheSameWayAsAFabricatedOne() throws Exception {
 		Tokens tokens = register("reset-expired@songly.io", "password123");
@@ -203,11 +156,6 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
 		login("reset-expired@songly.io", "password123");
 	}
 
-	/**
-	 * Kolejne „nie dostałem maila" nie może zostawiać w obiegu następnego ważnego
-	 * klucza do konta — użytkownik nie ma żadnego sposobu, żeby te starsze linki
-	 * unieważnić.
-	 */
 	@Test
 	void newRequest_invalidatesThePreviousLink() throws Exception {
 		register("reset-relink@songly.io", "password123");
@@ -222,11 +170,6 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
 		resetPassword(secondToken, "brand-new-password", 204);
 	}
 
-	/**
-	 * Zmiana hasła zwykłą drogą unieważnia oczekujący link resetujący. Taki link
-	 * najczęściej zamówił ktoś obcy — zostawienie go żywego jeszcze przez pół
-	 * godziny znaczyłoby, że reakcja właściciela niczego nie zamknęła.
-	 */
 	@Test
 	void changingPassword_invalidatesAPendingResetLink() throws Exception {
 		Tokens tokens = register("reset-vs-change@songly.io", "password123");
@@ -242,10 +185,6 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
 		login("reset-vs-change@songly.io", "wybrane-swiadomie");
 	}
 
-	/**
-	 * Reset nie może być obejściem polityki haseł obowiązującej przy rejestracji i
-	 * zmianie hasła.
-	 */
 	@Test
 	void shortNewPassword_isRejectedByValidation() throws Exception {
 		register("reset-short@songly.io", "password123");
@@ -255,11 +194,6 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
 		login("reset-short@songly.io", "password123");
 	}
 
-	/**
-	 * Oba endpointy muszą działać bez tokenu — cała ścieżka istnieje właśnie dla
-	 * kogoś, kto nie jest w stanie się zalogować. Wpuszczenie ich do
-	 * {@code SecurityConfig} łatwo przeoczyć, a objawem byłoby 401 zamiast resetu.
-	 */
 	@Test
 	void bothEndpointsAreReachableWithoutAuthentication() throws Exception {
 		mockMvc.perform(post("/api/v1/auth/password/reset-request").contentType(MediaType.APPLICATION_JSON).content("""

@@ -14,15 +14,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * Publiczny dostęp do cudzych profili — osobny kontroler, bo
- * {@link ProfileController} jest przypięty do {@code /me}. Dwie ścieżki:
- * wyszukiwanie po nazwie ({@code /search}, do dodawania znajomych — moduł
- * social-graph wysyła zaproszenie po {@code addresseeId}, którego inaczej nie
- * było jak zdobyć) oraz pojedynczy profil po {@code userId} (do oglądania
- * cudzego profilu). Literały {@code /search} i {@code /me} mają w dopasowaniu
- * ścieżki pierwszeństwo nad zmienną {@code /{userId}}, więc nie kolidują.
- */
 @RestController
 @RequestMapping("/api/v1/profiles")
 @SecurityRequirement(name = "bearerAuth")

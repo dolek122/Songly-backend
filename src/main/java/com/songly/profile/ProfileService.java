@@ -1,6 +1,5 @@
 package com.songly.profile;
 
-import com.songly.common.media.ImageType;
 import com.songly.common.media.SanitizedImage;
 import com.songly.common.storage.ObjectStorage;
 import com.songly.identity.SuspendedAccounts;
@@ -29,13 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 class ProfileService implements ProfileDirectory {
 
-	/** Limit id w jednym zapytaniu administracji o nazwy (ADR 0036). */
 	static final int MAX_SUMMARY_IDS = 100;
 
-	/**
-	 * Przedrostek domyślnej nazwy wyświetlanej — patrz
-	 * {@link #defaultDisplayName()}.
-	 */
 	static final String DEFAULT_DISPLAY_NAME_PREFIX = "Użytkownik";
 
 	private final ProfileRepository profileRepository;
@@ -59,12 +53,6 @@ class ProfileService implements ProfileDirectory {
 		this.genrePopularityCache = genrePopularityCache;
 	}
 
-	/**
-	 * REQUIRES_NEW celowo: wywoływane z {@code AFTER_COMMIT} listenera modułu
-	 * identity, gdzie transakcja rejestracji już się zakończyła — REQUIRED
-	 * dołączyłby się do jej resztek zamiast otworzyć nową, a wstawiany profil nigdy
-	 * by się nie zacommitował.
-	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	void createDefaultProfile(UUID userId) {
 		if (profileRepository.existsByUserId(userId)) {
@@ -79,18 +67,6 @@ class ProfileService implements ProfileDirectory {
 		return toResponse(profileRepository.findByUserId(userId).orElseThrow(ProfileNotFoundException::new));
 	}
 
-	/**
-	 * Publiczny profil dowolnego użytkownika (do oglądania cudzych profili). Rzuca
-	 * {@link ProfileNotFoundException} (→ 404) gdy profilu nie ma. Ulubione gatunki
-	 * dokładamy tą samą ścieżką co dla własnego profilu — to dane publiczne.
-	 *
-	 * <p>
-	 * Profil konta zawieszonego zgłaszamy jako <b>nieistniejący</b> (ADR 0026).
-	 * Ukrycie w wyszukiwarce bez ukrycia samego profilu byłoby połowicznym
-	 * środkiem: wystarczyłby zapamiętany link. 404, nie 403 — status konta to nie
-	 * informacja dla osób postronnych, ta sama zasada co przy postach zablokowanych
-	 * autorów.
-	 */
 	@Transactional(readOnly = true)
 	PublicProfileResponse getPublicProfile(UUID userId) {
 		if (suspendedAccounts.suspendedUserIds().contains(userId)) {
@@ -101,30 +77,6 @@ class ProfileService implements ProfileDirectory {
 				avatarUrl(profile), getFavoriteGenres(userId));
 	}
 
-	/**
-	 * Wyszukiwanie użytkowników po nazwie wyświetlanej — na potrzeby dodawania
-	 * znajomych (moduł social-graph potrzebuje {@code addresseeId}). Pusty/biały
-	 * query zwraca pustą stronę, żeby nie wysypywać wszystkich użytkowników. Sam
-	 * pytający jest wykluczany z wyników. Wyszukiwarka celowo nie filtruje po
-	 * blokadach (to dane modułu social, poza granicą §2) — wysłanie zaproszenia do
-	 * zablokowanego i tak odrzuci moduł social.
-	 *
-	 * <p>
-	 * Konta <b>zawieszone</b> odsiewa natomiast (ADR 0026), i nie jest to
-	 * niekonsekwencja wobec zdania wyżej: blokada to relacja dwóch osób, której ten
-	 * moduł nie ma prawa znać, a zawieszenie to stan konta, czyli dane modułu
-	 * identity — od którego profile już zależy. Bez tego filtru sankcja platformowa
-	 * zostawiała nękającego w wyszukiwarce, czyli tam, gdzie się go szuka.
-	 *
-	 * <p>
-	 * Filtr jest <b>w zapytaniu</b>, nie po pobraniu strony: odsiewanie po fakcie
-	 * psuje paginację (strona o rozmiarze 20 wracałaby z 19 wynikami, a
-	 * {@code totalElements} liczyłby też ukrytych). Pusty zbiór zawieszeń jest tu
-	 * przypadkiem normalnym i bezpiecznym tylko dlatego, że wrzucamy do niego
-	 * pytającego — {@code not in ()} nie jest w SQL-u prawdą dla żadnego wiersza,
-	 * więc wyszukiwarka zwracałaby wtedy pustkę wszystkim (ta sama pułapka co przy
-	 * filtrze blokad, §9).
-	 */
 	@Transactional(readOnly = true)
 	Page<UserSearchResponse> searchUsers(UUID requesterId, String query, Pageable pageable) {
 		String trimmed = query == null ? "" : query.trim();
@@ -137,11 +89,6 @@ class ProfileService implements ProfileDirectory {
 				profile -> new UserSearchResponse(profile.getUserId(), profile.getDisplayName(), avatarUrl(profile)));
 	}
 
-	/**
-	 * {@code %} i {@code _} z zapytania mają znaczyć siebie, a nie wzorzec LIKE.
-	 * Bez tego „%" dopasowywało każdego, czyli zwracało całą listę użytkowników
-	 * stronami — dokładnie to, czego pusty query świadomie nie robi.
-	 */
 	private static String escapeLike(String query) {
 		return query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
 	}
@@ -167,10 +114,6 @@ class ProfileService implements ProfileDirectory {
 		userGenreRepository.deleteByUserId(userId);
 		Instant now = Instant.now();
 		userGenreRepository.saveAll(genreIds.stream().map(genreId -> new UserGenre(userId, genreId, now)).toList());
-		// Popularność gatunków właśnie się zmieniła, więc zapamiętany obraz jest do
-		// wyrzucenia (ADR 0032). Zdarzenie, a nie wołanie cache'a wprost, bo
-		// unieważnienie musi wykonać się PO commicie — patrz
-		// FavoriteGenresChangedListener.
 		eventPublisher.publishEvent(new FavoriteGenresChangedEvent(userId));
 	}
 
@@ -181,16 +124,6 @@ class ProfileService implements ProfileDirectory {
 				.map(genre -> new GenreResponse(genre.getId(), genre.getName())).toList();
 	}
 
-	/**
-	 * Nazwy i awatary dla administracji (ADR 0036) — <b>bez</b> filtra zawieszeń z
-	 * ADR 0026, bo to właśnie o zawieszonych administracja decyduje. Ukrywanie
-	 * treści zawieszonych chroni innych użytkowników; administratorowi zasłaniałoby
-	 * tylko to, kogo dotyczy jego własna decyzja.
-	 *
-	 * <p>
-	 * Nieznane id po prostu nie występują w wyniku (konto usunięte to normalny
-	 * przypadek w historii moderacji), w kolejności pytania nie ma znaczenia.
-	 */
 	@Transactional(readOnly = true)
 	List<ProfileSummaryResponse> profileSummaries(Set<UUID> userIds) {
 		if (userIds.size() > MAX_SUMMARY_IDS) {
@@ -213,8 +146,6 @@ class ProfileService implements ProfileDirectory {
 	@Override
 	@Transactional(readOnly = true)
 	public Map<UUID, String> avatarUrls(Collection<UUID> userIds) {
-		// Filtrujemy null-e: Collectors.toMap nie przyjmuje null wartości, a i tak
-		// „brak avatara" reprezentujemy nieobecnością klucza (konsument dostaje null).
 		return profileRepository.findByUserIdIn(userIds).stream().filter(profile -> profile.getAvatarKey() != null)
 				.collect(Collectors.toMap(Profile::getUserId, this::avatarUrl));
 	}
@@ -226,8 +157,6 @@ class ProfileService implements ProfileDirectory {
 			return Map.of();
 		}
 		Map<UUID, Long> counts = popularity().counts();
-		// Zawężenie do pytanych gatunków zostaje, choć obraz mamy cały: kontrakt
-		// interfejsu obiecuje odpowiedź na zadane pytanie, a nie zrzut tabeli.
 		return genreIds.stream().filter(counts::containsKey).collect(Collectors.toMap(genreId -> genreId, counts::get));
 	}
 
@@ -237,21 +166,6 @@ class ProfileService implements ProfileDirectory {
 		return popularity().totalUsers();
 	}
 
-	/**
-	 * Obraz popularności — z Redisa, a przy chybieniu policzony z bazy i zapisany
-	 * (ADR 0032).
-	 *
-	 * <p>
-	 * Oba pytania z {@code ProfileDirectory} (popularność gatunków i mianownik)
-	 * odczytują ten sam wpis, każde swoim odczytem. Wpis jest niepodzielny, więc
-	 * każde z nich widzi liczby ze sobą spójne; rozjazd wymagałby wygaśnięcia
-	 * klucza dokładnie między dwoma odczytami jednego żądania, a jego skutkiem
-	 * byłaby waga policzona z sąsiedniej epoki — nie błąd. Zlanie tego w jedną
-	 * metodę wymagałoby wyniesienia przez granicę modułu typu z parą liczb, a
-	 * reguła 1 {@code ModuleBoundariesTest} przepuszcza tylko interfejsy i
-	 * zdarzenia (§3) — interfejs w roli pary liczb byłby ceremonią droższą niż
-	 * problem, który rozwiązuje.
-	 */
 	private GenrePopularityCache.Snapshot popularity() {
 		return genrePopularityCache.read().orElseGet(() -> {
 			GenrePopularityCache.Snapshot snapshot = new GenrePopularityCache.Snapshot(
@@ -274,28 +188,6 @@ class ProfileService implements ProfileDirectory {
 				.collect(Collectors.toSet());
 	}
 
-	/**
-	 * Wgrywa nowy avatar i zwraca zaktualizowany profil.
-	 *
-	 * <p>
-	 * Format rozpoznajemy <b>po zawartości pliku</b>, nie po nagłówku
-	 * {@code Content-Type} ani rozszerzeniu — jedno i drugie podaje klient (patrz
-	 * {@link ImageType}). Rozszerzenie w kluczu bierze się z rozpoznanego typu, a
-	 * nie z nazwy, którą przysłał przeglądarka: inaczej dałoby się zapisać plik
-	 * jako {@code .html} i zdobyć adres, spod którego serwujemy cudzy HTML na
-	 * własnej domenie. Do magazynu trafia plik bez metadanych, w tym bez GPS-u
-	 * ({@link SanitizedImage}, ADR 0047).
-	 *
-	 * <p>
-	 * Losowy człon w kluczu, zamiast stałego {@code avatars/{userId}}, bo pod
-	 * starym adresem stoi cache CDN-u — nadpisanie w miejscu pokazywałoby przez
-	 * wiele godzin poprzednie zdjęcie i wyglądało jak zignorowana zmiana.
-	 *
-	 * <p>
-	 * Plik ląduje w magazynie <b>przed</b> commitem, więc wycofanie transakcji
-	 * zostawia go osieroconym. To świadomie ta strona pomyłki: odwrotna kolejność
-	 * dawałaby wiersz wskazujący na plik, którego nie ma.
-	 */
 	@Transactional
 	ProfileResponse uploadAvatar(UUID userId, byte[] content) {
 		SanitizedImage image = SanitizedImage.from(content);
@@ -312,11 +204,6 @@ class ProfileService implements ProfileDirectory {
 		replaceAvatarKey(profileRepository.findByUserId(userId).orElseThrow(ProfileNotFoundException::new), null);
 	}
 
-	/**
-	 * Ustawia nowy klucz i zgłasza poprzedni do skasowania. Zgłoszenie, a nie
-	 * skasowanie od razu — plik ginie dopiero po commicie
-	 * ({@link OrphanedAvatarEvent}).
-	 */
 	private void replaceAvatarKey(Profile profile, String newKey) {
 		String previousKey = profile.getAvatarKey();
 		profile.changeAvatarKey(newKey);
@@ -328,13 +215,8 @@ class ProfileService implements ProfileDirectory {
 	@Transactional
 	void deleteAccountData(UUID userId) {
 		userGenreRepository.deleteByUserId(userId);
-		// Skasowane konto zabiera swoje gatunki, więc popularność też się zmienia —
-		// druga i ostatnia ścieżka ruszająca user_genres (ADR 0032).
 		eventPublisher.publishEvent(new FavoriteGenresChangedEvent(userId));
 		profileRepository.findByUserId(userId).ifPresent(profile -> {
-			// Zgłoszenie pliku do skasowania musi wyjść PRZED usunięciem wiersza, bo
-			// potem nie ma już skąd odczytać klucza. Sam plik ginie i tak dopiero po
-			// commicie — inaczej wycofane kasowanie konta zostawiłoby profil bez zdjęcia.
 			replaceAvatarKey(profile, null);
 			profileRepository.delete(profile);
 		});
@@ -354,17 +236,6 @@ class ProfileService implements ProfileDirectory {
 				Collectors.mapping(UserGenre::getGenreId, Collectors.toSet())));
 	}
 
-	/**
-	 * Nazwa do czasu, aż użytkownik wybierze własną (ADR 0046). Wcześniej była to
-	 * część adresu przed „@” — publiczna, wyszukiwalna i u większości ludzi będąca
-	 * imieniem i nazwiskiem, czyli połową adresu e-mail podaną każdemu, kto otworzy
-	 * profil albo wpisze fragment nazwy w wyszukiwarkę.
-	 *
-	 * <p>
-	 * Sześć cyfr, a nie cztery: nazwy nie są unikalne, ale przy kilku tysiącach
-	 * kont z domyślną nazwą krótszy sufiks dawałby w wyszukiwarce całe listy
-	 * identycznie wyglądających osób.
-	 */
 	private static String defaultDisplayName() {
 		return "%s %06d".formatted(DEFAULT_DISPLAY_NAME_PREFIX, ThreadLocalRandom.current().nextInt(1_000_000));
 	}

@@ -10,9 +10,5 @@ interface AccountDeletionTokenRepository extends JpaRepository<AccountDeletionTo
 
 	Optional<AccountDeletionToken> findFirstByUserIdOrderByCreatedAtDesc(UUID userId);
 
-	/**
-	 * Po encjach, jak przy tokenach resetu: na konto przypada co najwyżej jeden
-	 * żywy token, bo nowe żądanie kasuje poprzedni.
-	 */
 	void deleteByUserId(UUID userId);
 }

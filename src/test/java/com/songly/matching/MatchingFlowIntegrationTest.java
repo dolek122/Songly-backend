@@ -23,17 +23,6 @@ import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Klasy testów integracyjnych współdzielą bazę (singleton containers), więc ten
- * test używa gatunków z końca seeda V2 (nietykanych przez inne testy) i asercji
- * filtrowanych po konkretnych userId zamiast pozycyjnych.
- *
- * <p>
- * Od ADR 0029 wynik zależy od popularności gatunków w <b>całej</b> bazie, więc
- * żadna asercja nie przybija tu konkretnej liczby — dokładna arytmetyka należy
- * do {@code MatchingServiceTest}, a tutaj pilnujemy kolejności i tego, że wagi
- * naprawdę przechodzą przez SQL.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class MatchingFlowIntegrationTest extends AbstractIntegrationTest {
 
@@ -100,17 +89,6 @@ class MatchingFlowIntegrationTest extends AbstractIntegrationTest {
 		throw new AssertionError("brak dopasowania do " + candidate.userId());
 	}
 
-	/**
-	 * Kształt odpowiedzi: kto dzieli jakie gatunki i że wynik zostaje w (0, 1) — od
-	 * ADR 0033 jedynki nie da się już osiągnąć.
-	 *
-	 * <p>
-	 * <b>Czego ten test celowo nie asertuje:</b> że kandydat z większą liczbą
-	 * wspólnych gatunków stoi wyżej. Od ADR 0029 to nie jest już własność algorytmu
-	 * — dwa wspólne gatunki mainstreamowe mogą przegrać z jednym niszowym, i o to w
-	 * tej zmianie chodziło. Kolejność sprawdza test poniżej, który sam ustawia
-	 * popularność, zamiast zakładać ją po liczbie trafień.
-	 */
 	@Test
 	void matches_reportSharedGenres() throws Exception {
 		TestUser ada = registerUser("match-ada@songly.io");
@@ -133,18 +111,11 @@ class MatchingFlowIntegrationTest extends AbstractIntegrationTest {
 		assertThat(scoreOf(matches, carol)).isGreaterThan(0.0).isLessThan(1.0);
 	}
 
-	/**
-	 * Sedno ADR 0029 przez prawdziwe zapytania: obaj kandydaci dzielą z pytającym
-	 * <b>dokładnie jeden</b> gatunek i mają identyczne złączenie (ten sam trzeci
-	 * gatunek), więc surowy Jaccard dawał tu remis 1/3, a kolejność rozstrzygał
-	 * identyfikator. Waga rzadkości ustawia wyżej tego, z którym dzielimy niszę.
-	 */
 	@Test
 	void matches_rankRareSharedGenreAboveMainstreamOne() throws Exception {
 		TestUser viewer = registerUser("wmatch-viewer@songly.io");
 		TestUser nicheTwin = registerUser("wmatch-niche@songly.io");
 		TestUser mainstreamTwin = registerUser("wmatch-mainstream@songly.io");
-		// Reggae robimy w tej bazie gatunkiem mainstreamowym; folk zostaje niszą.
 		for (int i = 0; i < 6; i++) {
 			setGenres(registerUser("wmatch-crowd-%d@songly.io".formatted(i)), List.of(GENRE_REGGAE));
 		}
@@ -160,17 +131,6 @@ class MatchingFlowIntegrationTest extends AbstractIntegrationTest {
 		assertThat(ranking.indexOf(nicheTwin.userId())).isLessThan(ranking.indexOf(mainstreamTwin.userId()));
 	}
 
-	/**
-	 * Sedno ADR 0033 przez całe API: dwie pary o <b>identycznym</b> guście, więc
-	 * obie z pełnym pokryciem — a jednak para, która powiedziała o sobie więcej,
-	 * dostaje wyższy wynik. Przed tą zmianą obie dostawały 1.0, bo proporcja
-	 * pokrycia nie wie, ile danych za nią stoi.
-	 *
-	 * <p>
-	 * Asercja jest odporna na stan współdzielonej bazy: złączenie bogatej pary jest
-	 * nadzbiorem złączenia ubogiej, a wagi są dodatnie, więc nierówność zachodzi
-	 * niezależnie od popularności gatunków.
-	 */
 	@Test
 	void matches_scoreGrowsWithHowMuchBothProfilesTell() throws Exception {
 		TestUser poorViewer = registerUser("conf-poor-viewer@songly.io");
@@ -188,12 +148,8 @@ class MatchingFlowIntegrationTest extends AbstractIntegrationTest {
 		double richScore = scoreOf(matches(richViewer), richTwin);
 
 		assertThat(richScore).isGreaterThan(poorScore);
-		// Nikt nie dostaje już 1.0 i to jest zamierzone: o niczyim guście nie wiemy
-		// wszystkiego.
 		assertThat(richScore).isLessThan(1.0);
 
-		// Pewność jedzie w odpowiedzi obok wyniku, żeby klient mógł nie pokazywać
-		// procentu, którego nie ma czym poprzeć.
 		double poorConfidence = confidenceOf(matches(poorViewer), poorTwin);
 		assertThat(poorConfidence).isGreaterThan(0.0).isLessThan(1.0);
 		assertThat(confidenceOf(matches(richViewer), richTwin)).isGreaterThan(poorConfidence);

@@ -19,13 +19,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Testujemy przez prawdziwy serwer HTTP na loopbacku, a nie przez zamockowany
- * {@code RestClient}: połowa tego, co ta klasa robi, dzieje się na drucie —
- * Basic auth, kodowanie formularza, 204 bez ciała, nagłówek
- * {@code Retry-After}. Mock po stronie Springa przyklepałby nasze własne
- * założenia zamiast je sprawdzić.
- */
 class SpotifyClientTest {
 
 	private HttpServer server;
@@ -108,8 +101,6 @@ class SpotifyClientTest {
 
 		SpotifyClient.TokenResponse tokens = spotifyClient.refresh("old-refresh");
 
-		// Spotify przy tym grancie zwykle nie odsyła refresh tokenu — null jest
-		// normalną odpowiedzią, nie błędem parsowania.
 		assertThat(tokens.accessToken()).isEqualTo("fresh");
 		assertThat(tokens.refreshToken()).isNull();
 		assertThat(requestBody).contains("grant_type=refresh_token").contains("refresh_token=old-refresh");
@@ -124,11 +115,6 @@ class SpotifyClientTest {
 				.isInstanceOfSatisfying(SpotifyApiException.class, ex -> assertThat(ex.isInvalidGrant()).isTrue());
 	}
 
-	/**
-	 * Bramka albo proxy potrafi odpowiedzieć HTML-em zamiast JSON-em OAuth. To nie
-	 * może przesłonić samego błędu HTTP ani — tym bardziej — udawać odwołanej
-	 * zgody, bo skasowalibyśmy komuś działający link do Spotify.
-	 */
 	@Test
 	void refresh_keepsHttpStatus_whenErrorBodyIsNotJson() {
 		responder = exchange -> {
@@ -186,11 +172,6 @@ class SpotifyClientTest {
 				});
 	}
 
-	/**
-	 * Wcześniej 5xx nie miało własnej obsługi i wychodziło stąd jako wyjątek
-	 * {@code RestClient}, którego nikt wyżej nie rozpoznawał — czyli awaria Spotify
-	 * wracała do klienta jako nasze 500.
-	 */
 	@Test
 	void getCurrentlyPlaying_mapsServerErrorToo() {
 		responder = json(503, "{}");
@@ -216,8 +197,6 @@ class SpotifyClientTest {
 	@Test
 	void getCurrentlyPlaying_toleratesUnparsableRetryAfter() {
 		responder = exchange -> {
-			// Specyfikacja HTTP dopuszcza datę; nie parsujemy jej, ale nie wolno nam się
-			// o nią wywrócić — poll ma wtedy sięgnąć po własny domyślny backoff.
 			exchange.getResponseHeaders().set(HttpHeaders.RETRY_AFTER, "Wed, 21 Oct 2026 07:28:00 GMT");
 			exchange.sendResponseHeaders(429, -1);
 		};

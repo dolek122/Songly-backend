@@ -16,15 +16,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Preferencje kanału e-mail (ADR 0020).
- *
- * <p>
- * Najważniejszy tu jest niezmiennik, a nie sam przełącznik: wyłączenie poczty
- * <b>nie rusza skrzynki w aplikacji</b>. Decyzji moderacyjnej nie da się
- * odmówić (ADR 0012), a ścieżka odwoławcza (ADR 0017) traciłaby sens, gdyby
- * dało się nie dowiedzieć o własnym banie.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class MailPreferencesIntegrationTest extends AbstractIntegrationTest {
 
@@ -91,10 +82,6 @@ class MailPreferencesIntegrationTest extends AbstractIntegrationTest {
 		return count;
 	}
 
-	/**
-	 * Brak wiersza to zgoda — te maile są konsekwencją korzystania z usługi, nie
-	 * marketingiem.
-	 */
 	@Test
 	void defaultsAreBothEnabledAndUpdatePersists() throws Exception {
 		TestUser someone = user("mailprefs-default@songly.io");
@@ -112,11 +99,6 @@ class MailPreferencesIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.moderationQueue").value(true));
 	}
 
-	/**
-	 * Sedno ADR 0020: wypisanie się z poczty wycisza <b>tylko</b> pocztę.
-	 * Powiadomienie o banie zostaje w skrzynce, bo to ono jest zapisem decyzji, od
-	 * której da się odwołać.
-	 */
 	@Test
 	void disablingDecisionMailLeavesTheInboxUntouched() throws Exception {
 		TestUser owner = user("mailprefs-ban-owner@songly.io");
@@ -132,10 +114,6 @@ class MailPreferencesIntegrationTest extends AbstractIntegrationTest {
 		assertThat(countOfType(troll, "COMMUNITY_BANNED")).isEqualTo(1);
 	}
 
-	/**
-	 * Filtr działa <b>per adresat</b>: jeden moderator wypisany z kolejki nie może
-	 * wyciszyć maila pozostałym, bo zgłoszenie idzie do wszystkich naraz.
-	 */
 	@Test
 	void queueMailIsFilteredPerRecipient() throws Exception {
 		TestUser owner = user("mailprefs-queue-owner@songly.io");
@@ -154,7 +132,6 @@ class MailPreferencesIntegrationTest extends AbstractIntegrationTest {
 						.content("""
 								{"content":"sporny post"}"""))
 				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asText();
-		// Właściciel nie chce poczty z kolejki, moderator chce.
 		setPreferences(owner, true, false);
 		mails.clear();
 
@@ -166,26 +143,18 @@ class MailPreferencesIntegrationTest extends AbstractIntegrationTest {
 
 		assertThat(mails.sentTo(owner.email())).isEmpty();
 		assertThat(mails.sentTo(moderator.email())).hasSize(1);
-		// Skrzynka w aplikacji dostaje powiadomienie niezależnie od preferencji poczty.
 		assertThat(countOfType(owner, "COMMUNITY_POST_REPORTED")).isEqualTo(1);
 	}
 
-	/**
-	 * Dwa przełączniki są niezależne, bo odpowiadają dwóm rolom: moderator
-	 * zasypywany pocztą ze swojej społeczności nie powinien przy okazji tracić
-	 * informacji o własnym koncie.
-	 */
 	@Test
 	void switchesAreIndependent() throws Exception {
 		TestUser owner = user("mailprefs-indep-owner@songly.io");
 		TestUser moderator = user("mailprefs-indep-mod@songly.io");
 		String communityId = createCommunity(owner, "Mailprefs-niezaleznosc");
 		join(moderator, communityId);
-		// Moderator wypisuje się z kolejki, ale zostaje przy decyzjach o sobie...
 		setPreferences(moderator, true, false);
 		mails.clearFor(moderator.email());
 
-		// ...a ban to decyzja o nim, więc mail przychodzi.
 		ban(owner, communityId, moderator);
 
 		assertThat(mails.sentTo(moderator.email())).hasSize(1);

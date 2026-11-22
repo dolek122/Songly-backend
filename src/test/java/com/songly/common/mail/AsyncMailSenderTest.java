@@ -10,11 +10,6 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 
-/**
- * Wysyłka poza wątkiem żądania (ADR 0041). Najważniejsze jest pierwsze
- * zachowanie: {@code send} wraca od razu, nawet gdy serwer pocztowy wisi —
- * inaczej czas odpowiedzi resetu hasła znów mówiłby, czy konto istnieje.
- */
 class AsyncMailSenderTest {
 
 	@Test
@@ -28,7 +23,6 @@ class AsyncMailSenderTest {
 
 		sender.send("jan@songly.io", "temat", "treść");
 
-		// Wróciliśmy, choć „serwer pocztowy" wciąż trzyma wiadomość.
 		assertThat(delivered.getCount()).isEqualTo(1);
 		release.countDown();
 		assertThat(delivered.await(5, TimeUnit.SECONDS)).isTrue();
@@ -49,10 +43,6 @@ class AsyncMailSenderTest {
 		sender.close();
 	}
 
-	/**
-	 * Przepełniona kolejka to błąd, który wołający już łapią — nie blokada wątku
-	 * żądania, bo ta przywróciłaby dokładnie to, przed czym ta klasa chroni.
-	 */
 	@Test
 	void fullQueue_rejectsInsteadOfBlocking() throws Exception {
 		CountDownLatch started = new CountDownLatch(1);
@@ -63,8 +53,6 @@ class AsyncMailSenderTest {
 		}, 1, 1);
 
 		sender.send("a@songly.io", "1", "zajmuje wątek");
-		// Pierwsza wiadomość musi już zająć jedyny wątek, zanim druga trafi do kolejki
-		// — inaczej test sprawdzałby wyścig, a nie pojemność.
 		assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
 		sender.send("b@songly.io", "2", "zajmuje kolejkę");
 

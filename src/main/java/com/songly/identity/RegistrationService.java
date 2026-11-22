@@ -16,46 +16,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Rejestracja z potwierdzeniem adresu e-mail.
- *
- * <p>
- * Do tej pory rejestracja od razu zakładała konto i wydawała tokeny, a na
- * zajęty adres odpowiadała 409 z tym adresem w treści. Była więc <b>wyrocznią
- * na istnienie kont</b> — dokładnie tym, przed czym logowanie (§13) i reset
- * hasła (§9) bronią się z osobna. Wystarczyło wpisywać kolejne adresy, żeby
- * dowiedzieć się, kto ma tu konto.
- *
- * <p>
- * Teraz oba przypadki wyglądają identycznie (202) i różnią się wyłącznie
- * <b>treścią wiadomości, którą dostaje właściciel skrzynki</b>: wolny adres
- * dostaje link potwierdzający, zajęty — informację, że ktoś próbował założyć
- * konto. Osoba pytająca nie dowiaduje się niczego, chyba że jest właścicielem
- * skrzynki, a wtedy ma prawo wiedzieć.
- *
- * <p>
- * <b>Konto nie powstaje, dopóki adres nie zostanie potwierdzony.</b> Kluczowa
- * konsekwencja architektoniczna: niezweryfikowane zgłoszenie nie jest wierszem
- * w {@code users}, więc {@code UserRegisteredEvent} po prostu leci później, a
- * żaden inny moduł nie musi się uczyć, że użytkownik bywa „niepotwierdzony".
- * Flaga na {@code users} rozlałaby ten stan po profilu, wyszukiwarce i
- * dopasowywaniu (Claude.md §2).
- */
 @Service
 @EnableConfigurationProperties(RegistrationProperties.class)
 class RegistrationService {
 
 	private static final Logger log = LoggerFactory.getLogger(RegistrationService.class);
 
-	/**
-	 * {@code songly_auth_registration_attempts_total{outcome="..."}}.
-	 *
-	 * <p>
-	 * {@code existing-account} mówi „ktoś próbował się zarejestrować na adres,
-	 * który już ma konto" — bez wskazania jaki. Ta seria rosnąca ponad tło jest
-	 * sygnałem, że ktoś przeczesuje adresy, mimo że odpowiedzi mu tego nie
-	 * ułatwiają.
-	 */
 	private static final String REGISTRATION_ATTEMPTS_METRIC = "songly.auth.registration.attempts";
 
 	private static final String EXISTING_ACCOUNT_WARNING_KEY_PREFIX = "registration:existing-account-warning:";
@@ -82,16 +48,6 @@ class RegistrationService {
 		this.redisTemplate = redisTemplate;
 	}
 
-	/**
-	 * Przyjmuje zgłoszenie rejestracji. Wraca bez wyniku i zawsze tak samo.
-	 *
-	 * <p>
-	 * Hasło hashujemy <b>zanim</b> cokolwiek zapiszemy, także w gałęzi „adres
-	 * zajęty" — nie, żeby je tam zapisać, tylko żeby obie ścieżki kosztowały
-	 * podobnie. Bcrypt to rzędy wielkości więcej niż zapytanie o e-mail, więc bez
-	 * tego czas odpowiedzi sam odtworzyłby wyrocznię, którą reszta tej metody
-	 * likwiduje.
-	 */
 	@Transactional
 	void register(RegisterRequest request) {
 		registrationOutcome("requested").increment();
@@ -117,7 +73,6 @@ class RegistrationService {
 				registrationOutcome("throttled").increment();
 				return;
 			}
-			// Nowy link, stare hasło — patrz PendingRegistration#reissue.
 			String reissuedToken = SecureTokens.generate();
 			existingPending.reissue(SecureTokens.hash(reissuedToken), now, now.plus(properties.getTtl()));
 			registrationOutcome("resent").increment();
@@ -133,20 +88,6 @@ class RegistrationService {
 		eventPublisher.publishEvent(new RegistrationVerificationRequestedEvent(request.email(), token));
 	}
 
-	/**
-	 * Odstęp między ostrzeżeniami „ktoś próbował założyć konto” dla jednego konta —
-	 * ten sam {@code resend-interval} co przy zgłoszeniach na wolny adres (ADR
-	 * 0009). Bez niego ta gałąź była darmowym mailerem wycelowanym w skrzynkę
-	 * każdego, kto ma tu konto: limit per IP chroni przed jednym źródłem, a ofiara
-	 * jest jedna. Przy okazji zapychała wspólną kolejkę SMTP, z której wychodzą też
-	 * linki resetu hasła.
-	 *
-	 * <p>
-	 * W Redisie, nie w bazie: {@code users} nie ma gdzie trzymać tej daty, a to
-	 * stan, który wolno zgubić przy restarcie. <b>Fail-open</b> jak rate limiter
-	 * (§9) — przy awarii Redisa ostrzeżenie wychodzi, bo wyciszone przez pomyłkę
-	 * byłoby gorsze niż jedno zbędne.
-	 */
 	private boolean claimExistingAccountWarning(UUID userId) {
 		try {
 			Boolean claimed = redisTemplate.opsForValue().setIfAbsent(EXISTING_ACCOUNT_WARNING_KEY_PREFIX + userId, "1",
@@ -158,20 +99,6 @@ class RegistrationService {
 		}
 	}
 
-	/**
-	 * Potwierdza adres i dopiero teraz zakłada konto.
-	 *
-	 * <p>
-	 * Zwraca parę tokenów, czyli loguje użytkownika od razu. To nie jest wygoda
-	 * kosztem bezpieczeństwa: kliknięcie w link dowodzi kontroli nad skrzynką, a
-	 * hasło podał ten sam człowiek chwilę wcześniej. Kazanie mu logować się zaraz
-	 * po potwierdzeniu nie sprawdzałoby niczego więcej.
-	 *
-	 * <p>
-	 * {@code UserRegisteredEvent} leci tutaj, a nie przy zgłoszeniu — z punktu
-	 * widzenia reszty aplikacji użytkownik rejestruje się w tym momencie i to jest
-	 * prawda, bo wcześniej żadne konto nie istniało.
-	 */
 	@Transactional
 	AuthTokensResponse verify(String token) {
 		PendingRegistration pending = pendingRepository.findByTokenHash(SecureTokens.hash(token))
@@ -179,9 +106,6 @@ class RegistrationService {
 		if (pending.isExpired(Instant.now())) {
 			throw invalidToken();
 		}
-		// Wyścig: ktoś mógł w międzyczasie potwierdzić ten sam adres innym
-		// zgłoszeniem. Sprzątamy i odmawiamy tak samo jak przy złym tokenie —
-		// osobny komunikat mówiłby pytającemu, że konto na ten adres istnieje.
 		if (userRepository.existsByEmail(pending.getEmail())) {
 			pendingRepository.delete(pending);
 			throw invalidToken();

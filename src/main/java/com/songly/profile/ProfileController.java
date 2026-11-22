@@ -44,12 +44,6 @@ class ProfileController {
 		return profileService.updateProfile(currentUserId(authentication), request);
 	}
 
-	/**
-	 * Wgrywa avatar. Multipart, bo plik idzie <b>przez backend</b>, a nie prosto do
-	 * magazynu na podpisanym URL-u (ADR 0010): tylko tak możemy sprawdzić, czy
-	 * przesłane bajty naprawdę są obrazem. Przy podpisanym URL-u klient wgrywa
-	 * cokolwiek i dostaje na to publiczny adres w naszej domenie.
-	 */
 	@PostMapping(path = "/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 	ProfileResponse uploadAvatar(Authentication authentication, @RequestPart("file") MultipartFile file)
 			throws IOException {

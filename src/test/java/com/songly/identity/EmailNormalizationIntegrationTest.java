@@ -11,12 +11,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
-/**
- * Adres e-mail to jedno konto niezależnie od wielkości liter i spacji na
- * brzegach (ADR 0042). Klawiatura w telefonie zaczyna adres wielką literą sama
- * z siebie, a autouzupełnianie dopisuje spację — bez normalizacji kończyło się
- * to drugim kontem albo „błędnym hasłem" przy pierwszym logowaniu.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class EmailNormalizationIntegrationTest extends AbstractIntegrationTest {
 
@@ -40,10 +34,6 @@ class EmailNormalizationIntegrationTest extends AbstractIntegrationTest {
 				{"email":"JAN.NORMALIZACJA@SONGLY.IO","password":"password123"}""")).andExpect(status().isOk());
 	}
 
-	/**
-	 * Inna wielkość liter to ten sam adres, więc druga rejestracja idzie gałęzią
-	 * „konto już istnieje" (ADR 0009), a nie zakłada bliźniaczego konta.
-	 */
 	@Test
 	void registrationWithDifferentCase_hitsExistingAccount() throws Exception {
 		String normalized = "duplikat.liter@songly.io";

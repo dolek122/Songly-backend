@@ -17,15 +17,6 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * E-mail jako drugi kanał powiadomień o decyzjach moderacyjnych (ADR 0013).
- *
- * <p>
- * Skrzynkę w aplikacji pokrywa {@code ModerationNotificationIntegrationTest} —
- * tu sprawdzamy wyłącznie, co wyszło mailem. Rejestracja też wysyła wiadomości
- * (weryfikacja adresu, ADR 0009), więc każdy przypadek zaczyna od
- * {@code mails.clearFor} adresata, którego skrzynkę pocztową potem asertuje.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class ModerationMailIntegrationTest extends AbstractIntegrationTest {
 
@@ -102,10 +93,6 @@ class ModerationMailIntegrationTest extends AbstractIntegrationTest {
 		assertThat(mail.body()).contains("Mail-ban");
 	}
 
-	/**
-	 * Bramka „tylko nowy ban" jest u publikującego zdarzenie, więc obowiązuje oba
-	 * kanały naraz — mail dziedziczy ją tak samo jak skrzynka.
-	 */
 	@Test
 	void repeatedBanDoesNotRepeatTheEmail() throws Exception {
 		TestUser owner = user("modmail-reban-owner@songly.io");
@@ -142,10 +129,6 @@ class ModerationMailIntegrationTest extends AbstractIntegrationTest {
 		assertThat(mail.subject()).contains("usunięty").contains("Mail-usuwanie");
 	}
 
-	/**
-	 * Sedno ADR 0013: mail o zgłoszeniu dosięga moderatorów, którzy do aplikacji
-	 * nie zaglądają — skrzynka w aplikacji tego nie umiała.
-	 */
 	@Test
 	void firstReportEmailsAllModeratorsAndOnlyOnce() throws Exception {
 		TestUser owner = user("modmail-rep-owner@songly.io");
@@ -166,12 +149,9 @@ class ModerationMailIntegrationTest extends AbstractIntegrationTest {
 
 		assertThat(mails.lastTo(owner.email()).subject()).contains("zgłoszenie").contains("Mail-zgloszenia");
 		assertThat(mails.lastTo(moderator.email()).subject()).contains("zgłoszenie");
-		// Ani autor zgłoszonego posta, ani zgłaszający nie dostają maila.
 		assertThat(mails.sentTo(author.email())).isEmpty();
 		assertThat(mails.sentTo(reporter.email())).isEmpty();
 
-		// Drugie zgłoszenie tego samego posta nie wysyła niczego — bramka „tylko
-		// pierwsze zgłoszenie" jest u publikującego, więc obowiązuje i mail.
 		report(secondReporter, postId);
 		assertThat(mails.sentTo(owner.email())).hasSize(1);
 		assertThat(mails.sentTo(moderator.email())).hasSize(1);
@@ -201,11 +181,6 @@ class ModerationMailIntegrationTest extends AbstractIntegrationTest {
 		assertThat(mail.body()).contains("Mail-odrzucenia");
 	}
 
-	/**
-	 * Mail wychodzi wyłącznie dla decyzji moderacyjnych. Zwykła aktywność (lajk)
-	 * zapisuje się w skrzynce, ale mailem nie wychodzi — skrzynka umie ukryć
-	 * powiadomienie od zablokowanego przy odczycie, maila nie da się cofnąć.
-	 */
 	@Test
 	void ordinaryActivityDoesNotSendEmail() throws Exception {
 		TestUser author = user("modmail-like-author@songly.io");

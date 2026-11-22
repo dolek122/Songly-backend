@@ -52,11 +52,6 @@ class Profile {
 		this.updatedAt = Instant.now();
 	}
 
-	/**
-	 * Podmiana avatara jest osobną operacją od edycji profilu, bo wiąże się z
-	 * plikiem w magazynie obiektow: wolajacy musi wiedziec, ktory klucz przestal
-	 * byc uzywany, zeby go posprzatac.
-	 */
 	void changeAvatarKey(String avatarKey) {
 		this.avatarKey = avatarKey;
 		this.updatedAt = Instant.now();

@@ -27,16 +27,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Upload avatara od końca do końca (ADR 0010).
- *
- * <p>
- * Test integracyjny z prawdziwym MinIO, bo pytanie, na które odpowiada, brzmi
- * „czy plik naprawdę da się potem pobrać publicznym adresem" — a na to atrapa
- * magazynu nie odpowiada, tylko potwierdza samą siebie. Dlatego zwrócony URL
- * pobieramy <b>zwykłym klientem HTTP, bez uwierzytelnienia</b>: dokładnie tak,
- * jak zrobi to przeglądarka albo aplikacja mobilna.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class AvatarUploadIntegrationTest extends AbstractIntegrationTest {
 
@@ -51,10 +41,6 @@ class AvatarUploadIntegrationTest extends AbstractIntegrationTest {
 				.get("accessToken").asText();
 	}
 
-	/**
-	 * Prawdziwy, minimalny PNG. Sam nagłówek przestał wystarczać, kiedy backend
-	 * zaczął czytać strukturę pliku, żeby usunąć metadane (ADR 0047).
-	 */
 	private static byte[] pngBytes() {
 		return TestImages.png();
 	}
@@ -74,7 +60,6 @@ class AvatarUploadIntegrationTest extends AbstractIntegrationTest {
 		return objectMapper.readTree(result.getResponse().getContentAsString()).get("avatarUrl").asText();
 	}
 
-	/** Pobranie bez żadnego nagłówka autoryzacji — tak jak zrobi to klient. */
 	private HttpResponse<byte[]> fetchAnonymously(String url) throws IOException, InterruptedException {
 		try (HttpClient client = HttpClient.newHttpClient()) {
 			return client.send(HttpRequest.newBuilder(URI.create(url)).GET().build(),
@@ -82,10 +67,6 @@ class AvatarUploadIntegrationTest extends AbstractIntegrationTest {
 		}
 	}
 
-	/**
-	 * Sedno całej zmiany: plik wgrany przez API naprawdę leży w magazynie i
-	 * naprawdę da się go pobrać spod zwróconego adresu.
-	 */
 	@Test
 	void uploadedAvatar_isPubliclyFetchableAtTheReturnedUrl() throws Exception {
 		String token = accessToken("avatar-happy@songly.io");
@@ -98,11 +79,6 @@ class AvatarUploadIntegrationTest extends AbstractIntegrationTest {
 		assertThat(fetched.headers().firstValue("content-type")).contains(MediaType.IMAGE_PNG_VALUE);
 	}
 
-	/**
-	 * Avatar jest publiczny, a zdjęcie z aparatu niesie w EXIF-ie miejsce, w którym
-	 * je zrobiono (ADR 0047). Sprawdzamy plik, który naprawdę leży w magazynie, a
-	 * nie to, co zwróciło API.
-	 */
 	@Test
 	void uploadedAvatar_isStoredWithoutCameraMetadata() throws Exception {
 		String token = accessToken("avatar-exif@songly.io");
@@ -115,12 +91,6 @@ class AvatarUploadIntegrationTest extends AbstractIntegrationTest {
 		assertThat(ImageIO.read(new ByteArrayInputStream(stored)).getWidth()).isEqualTo(2);
 	}
 
-	/**
-	 * Format bierze się z <b>zawartości</b>, nie z nagłówka ani nazwy pliku. Tu oba
-	 * kłamią — plik jest JPEG-iem, a klient twierdzi, że to PNG o nazwie
-	 * {@code .html}. Rozszerzenie w kluczu musi wyjść z rozpoznania, inaczej dałoby
-	 * się zdobyć adres, spod którego serwujemy cudzy HTML na własnej domenie.
-	 */
 	@Test
 	void fileExtensionAndContentTypeFromTheClientAreIgnored() throws Exception {
 		String token = accessToken("avatar-liar@songly.io");
@@ -131,11 +101,6 @@ class AvatarUploadIntegrationTest extends AbstractIntegrationTest {
 		assertThat(fetchAnonymously(url).headers().firstValue("content-type")).contains(MediaType.IMAGE_JPEG_VALUE);
 	}
 
-	/**
-	 * Plik, który obrazem nie jest, odpada — nawet jeśli nagłówek twierdzi inaczej.
-	 * To jest jedyny powód, dla którego bajty w ogóle idą przez backend, a nie
-	 * prosto do magazynu na podpisanym URL-u.
-	 */
 	@Test
 	void nonImageIsRejected_evenWhenItClaimsToBeOne() throws Exception {
 		String token = accessToken("avatar-notimage@songly.io");
@@ -159,11 +124,6 @@ class AvatarUploadIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.code").value("EMPTY_UPLOAD"));
 	}
 
-	/**
-	 * Podmiana avatara kasuje poprzedni plik — inaczej każda zmiana zdjęcia
-	 * zostawiałaby w magazynie kolejną kopię, której nic już nie wskazuje i po
-	 * której nie ma śladu w bazie.
-	 */
 	@Test
 	void replacingAvatar_removesThePreviousFile() throws Exception {
 		String token = accessToken("avatar-replace@songly.io");
@@ -189,11 +149,6 @@ class AvatarUploadIntegrationTest extends AbstractIntegrationTest {
 		assertThat(fetchAnonymously(url).statusCode()).isEqualTo(404);
 	}
 
-	/**
-	 * Avatara nie da się już ustawić dowolnym adresem przez edycję profilu. To był
-	 * gotowy piksel śledzący: adres pod kontrolą obcej osoby renderowany w kliencie
-	 * każdego, kto obejrzy ten profil (ADR 0010).
-	 */
 	@Test
 	void profileUpdateCannotSetAnArbitraryAvatarUrl() throws Exception {
 		String token = accessToken("avatar-arbitrary@songly.io");
@@ -203,17 +158,6 @@ class AvatarUploadIntegrationTest extends AbstractIntegrationTest {
 						{"displayName":"Ada","bio":"cos","avatarUrl":"https://tracker.example/pixel.gif"}"""))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.avatarUrl").doesNotExist());
 	}
-
-	/*
-	 * Limitu rozmiaru pliku celowo NIE ma w tej klasie. Egzekwuje go kontener
-	 * servletów przy parsowaniu multiparta — czyli zanim żądanie dotrze do
-	 * kontrolera, i to jest właściwe miejsce, bo dzięki temu za duży plik nigdy nie
-	 * zostaje w całości zbuforowany. MockMvc nie ma prawdziwego kontenera i
-	 * przyjmuje MockMultipartFile gotowy, więc test tutaj sprawdzałby wyłącznie, że
-	 * limit się NIE stosuje. Mapowanie MaxUploadSizeExceededException na 413
-	 * FILE_TOO_LARGE — jedyną część, która może cicho zepsuć się w naszym kodzie —
-	 * pilnuje GlobalExceptionHandlerTest.
-	 */
 
 	@Test
 	void endpointRequiresAuthentication() throws Exception {

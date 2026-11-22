@@ -37,10 +37,6 @@ import org.springframework.web.util.UriComponentsBuilder;
 @RequestMapping("/api/v1/now-playing")
 class NowPlayingController {
 
-	/**
-	 * Kod z {@link SpotifyApiException} — provider wrócił z błędem bez kodu
-	 * autoryzacyjnego.
-	 */
 	private static final String MUSIC_PROVIDER_ERROR = "MUSIC_PROVIDER_ERROR";
 
 	private final NowPlayingService nowPlayingService;
@@ -60,24 +56,6 @@ class NowPlayingController {
 		return new ConnectResponse(nowPlayingService.beginConnect(currentUserId(authentication)));
 	}
 
-	/**
-	 * Przeglądarka wraca tu z redirectu Spotify bez JWT — endpoint jest publiczny,
-	 * a użytkownika identyfikuje jednorazowy state z Redis.
-	 *
-	 * <p>
-	 * Każdy wynik, także błąd, kończy się przekierowaniem do aplikacji (ADR 0038):
-	 * po drugiej stronie stoi przeglądarka, a nie klient API, więc JSON z błędem
-	 * byłby dla użytkownika ślepą uliczką, a 204 — pustą kartą. Jedyny wyjątek to
-	 * brak {@code state}: wtedy nie jest to powrót od providera.
-	 *
-	 * <p>
-	 * Sukces nie łączy jeszcze konta (ADR 0050): przekierowanie niesie bilet,
-	 * którym aplikacja kończy łączenie przez
-	 * {@code POST /spotify/connect/complete}.
-	 */
-	// springdoc nie dokłada adnotowanych odpowiedzi do wywnioskowanych, tylko je
-	// nimi zastępuje — więc gdy opisujemy błędy, sukces trzeba wypisać razem z
-	// nimi.
 	@GetMapping("/spotify/callback")
 	@ApiResponse(responseCode = "302", description = "Przekierowanie do aplikacji z wynikiem w parametrze `result`: "
 			+ "`authorized` z jednorazowym biletem w `ticket` (aplikacja kończy nim łączenie przez "
@@ -109,12 +87,6 @@ class NowPlayingController {
 		return ResponseEntity.status(HttpStatus.FOUND).location(location).build();
 	}
 
-	/**
-	 * Drugi krok łączenia (ADR 0050), wołany przez aplikację po powrocie z
-	 * przeglądarki. Dopiero tu kod ze Spotify zamienia się na tokeny, i tylko gdy
-	 * łączenie zaczęło to samo konto, które teraz pyta — inaczej podesłany link
-	 * przypinałby Spotify ofiary do konta autora linku.
-	 */
 	@PostMapping("/spotify/connect/complete")
 	@SecurityRequirement(name = "bearerAuth")
 	@ApiResponse(responseCode = "204", description = "Spotify połączony", content = @Content)
@@ -135,10 +107,6 @@ class NowPlayingController {
 		return ResponseEntity.noContent().build();
 	}
 
-	/**
-	 * Jedyny endpoint, który może odpytać providera na żywo (gdy nie ma nic w
-	 * cache'u), więc jako jedyny wystawia klientowi jego awarie.
-	 */
 	@GetMapping("/me")
 	@SecurityRequirement(name = "bearerAuth")
 	@ApiResponse(responseCode = "200", description = "Aktualny status", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = NowPlayingStatusResponse.class)))
@@ -152,38 +120,14 @@ class NowPlayingController {
 				.orElseGet(() -> ResponseEntity.noContent().build());
 	}
 
-	/**
-	 * "Co słuchają znajomi teraz" (ADR 0007, Etap 0) — statusy znajomych z cache'a,
-	 * bez odpytywania providera per znajomy. Zwraca tylko tych, którzy mają
-	 * aktualny status; pusta lista, gdy nikt nie gra albo brak znajomych.
-	 */
 	@GetMapping("/friends")
 	@SecurityRequirement(name = "bearerAuth")
 	List<FriendNowPlayingResponse> friendsNowPlaying(Authentication authentication) {
 		return nowPlayingService.friendsNowPlaying(currentUserId(authentication));
 	}
 
-	/**
-	 * Strumień SSE ze statusami znajomych na żywo (ADR 0007, Etap 1). Klient trzyma
-	 * jedno połączenie; serwer pushuje zdarzenie {@code now-playing}
-	 * ({@link FriendNowPlayingResponse}), gdy status któregoś znajomego się zmieni.
-	 * Stan początkowy klient pobiera przez {@code GET /friends}.
-	 *
-	 * <p>
-	 * {@code status == null} w zdarzeniu znaczy "przestał słuchać" — znajomego
-	 * należy wtedy zdjąć z listy grających. Serwer wysyła też co kilkanaście sekund
-	 * komentarz SSE (linia zaczynająca się od {@code :}), który klient ignoruje;
-	 * jego brak przez dłuższy czas to sygnał do reconnectu.
-	 *
-	 * <p>
-	 * Liczba równoległych strumieni na użytkownika jest limitowana — nadmiarowe
-	 * połączenie dostaje 429 {@code TOO_MANY_STREAMS}.
-	 */
 	@GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	@SecurityRequirement(name = "bearerAuth")
-	// Bez tego springdoc opisuje ten endpoint typem zwracanym metody (SseEmitter),
-	// co klientowi nie mówi nic o treści zdarzeń — a to jedyna ścieżka, której
-	// kształtu nie da się wyczytać z kontraktu w żaden inny sposób.
 	@ApiResponse(responseCode = "200", description = "Strumień zdarzeń `now-playing`. "
 			+ "Każde zdarzenie niesie jeden obiekt; `status: null` znaczy, że znajomy przestał słuchać.", content = @Content(mediaType = MediaType.TEXT_EVENT_STREAM_VALUE, schema = @Schema(implementation = FriendNowPlayingResponse.class)))
 	@ApiResponse(responseCode = "429", description = "Przekroczony limit równoległych strumieni na użytkownika", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiError.class)))
@@ -191,11 +135,6 @@ class NowPlayingController {
 		return streamHub.subscribe(currentUserId(authentication));
 	}
 
-	/**
-	 * Widoczność statusu dla znajomych (ADR 0007, Etap 4). Domyślnie włączona —
-	 * status i tak pojawia się dopiero, gdy użytkownik sam podłączy serwis muzyczny
-	 * albo ustawi status ręcznie.
-	 */
 	@GetMapping("/settings")
 	@SecurityRequirement(name = "bearerAuth")
 	NowPlayingSettingsResponse settings(Authentication authentication) {
@@ -210,11 +149,6 @@ class NowPlayingController {
 		return ResponseEntity.noContent().build();
 	}
 
-	/**
-	 * Uniwersalny fallback dla serwisów bez integracji (Apple Music, Tidal, YouTube
-	 * Music...) — Claude.md §7. Ma pierwszeństwo przed providerem, dopóki nie
-	 * wygaśnie albo user go nie wyczyści.
-	 */
 	@PutMapping("/manual")
 	@SecurityRequirement(name = "bearerAuth")
 	ResponseEntity<Void> setManualStatus(Authentication authentication,

@@ -34,10 +34,6 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Serwerowy poll (ADR 0007, Etap 1b): odświeżanie z providera z pominięciem
- * cache'a i publikacja zdarzenia wyłącznie przy realnej zmianie utworu.
- */
 @ExtendWith(MockitoExtension.class)
 class NowPlayingServiceRefreshTest {
 
@@ -131,7 +127,6 @@ class NowPlayingServiceRefreshTest {
 
 		service.refreshFromProvider(userId);
 
-		// TTL trzeba odnowić mimo braku zmiany, inaczej status zniknie z /friends
 		verify(valueOperations).set(eq(CACHE_KEY_PREFIX + userId), anyString(), eq(Duration.ofSeconds(45)));
 		verify(statusPublisher, never()).publish(any(), any());
 		verify(statusPublisher, never()).publishStopped(any());
@@ -146,14 +141,9 @@ class NowPlayingServiceRefreshTest {
 
 		service.refreshFromProvider(userId);
 
-		// Sentinel w cache'u, żeby kolejny odczyt nie poszedł znowu do providera
 		verify(valueOperations).set(CACHE_KEY_PREFIX + userId, "NOTHING_PLAYING", Duration.ofSeconds(45));
 	}
 
-	/**
-	 * "Przestał słuchać" (ADR 0007, Etap 4) — bez tego znajomy zostawałby na liście
-	 * grających do wygaśnięcia cache'a.
-	 */
 	@Test
 	void publishesStopped_whenPlaybackEnded() {
 		when(redisTemplate.hasKey(MANUAL_KEY_PREFIX + userId)).thenReturn(false);
@@ -189,10 +179,6 @@ class NowPlayingServiceRefreshTest {
 		verify(statusPublisher).publishStopped(userId);
 	}
 
-	/**
-	 * Ręczny status zdjęty z wierzchu odsłania świeży status z providera — wtedy
-	 * użytkownik nadal coś gra i "przestał słuchać" byłoby kłamstwem.
-	 */
 	@Test
 	void clearingManualStatus_staysQuiet_whenProviderStatusIsStillCached() {
 		when(redisTemplate.opsForValue()).thenReturn(valueOperations);
@@ -229,10 +215,6 @@ class NowPlayingServiceRefreshTest {
 		verifyNoInteractions(linkRepository);
 	}
 
-	/**
-	 * Kto wyłączył widoczność, tego nie ma po co odpytywać — jego status i tak nie
-	 * opuściłby serwera (ADR 0007, Etap 4).
-	 */
 	@Test
 	void pollableUserIds_skipsUsersWhoTurnedSharingOff() {
 		UUID hidden = UUID.randomUUID();
@@ -284,10 +266,6 @@ class NowPlayingServiceRefreshTest {
 		verify(preferenceRepository, never()).save(any());
 	}
 
-	/**
-	 * Sama flaga w bazie nie wystarcza: znajomy z otwartym strumieniem nie dostanie
-	 * już żadnego pushu, więc bez tego widziałby ostatni status w nieskończoność.
-	 */
 	@Test
 	void turningSharingOff_pushesStoppedToWatchingFriends() {
 		when(preferenceRepository.findById(userId)).thenReturn(Optional.empty());
@@ -333,7 +311,6 @@ class NowPlayingServiceRefreshTest {
 		verify(statusPublisher).publishStopped(userId);
 	}
 
-	/** Ręczny status przeżywa odłączenie providera, więc user nadal coś gra. */
 	@Test
 	void disconnectingProvider_staysQuiet_whenManualStatusRemains() {
 		when(musicProvider.name()).thenReturn("spotify");
@@ -351,11 +328,6 @@ class NowPlayingServiceRefreshTest {
 		verify(statusPublisher).publishStopped(userId);
 	}
 
-	/**
-	 * Ręczny status wygasa sam (TTL w godzinach), a jego właściciel nie ma
-	 * providera do odpytania — bez tej ścieżki wisiałby na ekranie znajomego w
-	 * nieskończoność.
-	 */
 	@Test
 	void publishesStopped_whenAnnouncedStatusExpired() {
 		when(redisTemplate.hasKey(ANNOUNCED_KEY_PREFIX + userId)).thenReturn(true);
@@ -379,9 +351,6 @@ class NowPlayingServiceRefreshTest {
 		verify(statusPublisher, never()).publishStopped(any());
 	}
 
-	/**
-	 * Bez znacznika nie ma czego odwoływać — inaczej „stopped" leciałoby w kółko.
-	 */
 	@Test
 	void staysQuiet_forUsersWhoNeverAnnouncedAnything() {
 		when(redisTemplate.hasKey(ANNOUNCED_KEY_PREFIX + userId)).thenReturn(false);
@@ -401,10 +370,6 @@ class NowPlayingServiceRefreshTest {
 		assertThat(service.tryAcquirePollLock(userId)).isFalse();
 	}
 
-	/**
-	 * Awaria Redisa nie może wywrócić usunięcia konta (ADR 0049) — klucze statusu i
-	 * tak wygasają same, a prawo z RODO nie może zależeć od cache'a.
-	 */
 	@Test
 	void deleteAccountData_survivesRedisFailure() {
 		UUID userId = UUID.randomUUID();
@@ -416,10 +381,6 @@ class NowPlayingServiceRefreshTest {
 		verify(preferenceRepository).deleteByUserId(userId);
 	}
 
-	/**
-	 * Redis dopiero po commicie: „przestał słuchać” wysłane przed commitem
-	 * ogłaszałoby znajomym usunięcie, które mogło się jeszcze wycofać.
-	 */
 	@Test
 	void deleteAccountData_touchesRedisOnlyAfterCommit() {
 		UUID userId = UUID.randomUUID();

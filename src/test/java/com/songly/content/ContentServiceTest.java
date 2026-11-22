@@ -192,8 +192,6 @@ class ContentServiceTest {
 		UUID commentId = UUID.randomUUID();
 		Comment comment = new Comment(commentId, postId, UUID.randomUUID(), "treść", Instant.now());
 		when(commentRepository.findById(commentId)).thenReturn(Optional.of(comment));
-		// Zwykły post (bez społeczności) — tam nikt poza autorem komentarza go nie
-		// usunie, także autor posta.
 		when(postRepository.findById(postId))
 				.thenReturn(Optional.of(new Post(postId, UUID.randomUUID(), "post", Instant.now(), null, null)));
 
@@ -271,10 +269,6 @@ class ContentServiceTest {
 		assertThat(page.getContent().get(0).authorDisplayName()).isEqualTo("Ada");
 	}
 
-	/**
-	 * Zapis na poście zablokowanego autora kończy się 404, a nie 403 — 403
-	 * potwierdzałoby istnienie posta i fakt blokady.
-	 */
 	@Test
 	void likePost_reportsPostOfBlockedAuthorAsMissing() {
 		UUID viewerId = UUID.randomUUID();
@@ -290,11 +284,6 @@ class ContentServiceTest {
 		verify(eventPublisher, never()).publishEvent(any());
 	}
 
-	/**
-	 * Najważniejszy przypadek całej blokady: komentarz to jedyna ścieżka, którą
-	 * zablokowany może napisać wprost do blokującego (przez powiadomienie o
-	 * komentarzu pod jego postem).
-	 */
 	@Test
 	void addComment_isRejectedUnderPostOfBlockedAuthor() {
 		UUID commenterId = UUID.randomUUID();
@@ -310,10 +299,6 @@ class ContentServiceTest {
 		verify(eventPublisher, never()).publishEvent(any());
 	}
 
-	/**
-	 * Cofnięcie polubienia działa mimo blokady — inaczej blokujący zostałby na
-	 * zawsze z polubieniem, którego nie może wycofać.
-	 */
 	@Test
 	void unlikePost_worksDespiteBlock() {
 		UUID viewerId = UUID.randomUUID();

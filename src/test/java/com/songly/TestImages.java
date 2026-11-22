@@ -10,14 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.zip.CRC32;
 import javax.imageio.ImageIO;
 
-/**
- * Prawdziwe, minimalne obrazy do testów wgrywania — od ADR 0047 backend czyta
- * strukturę pliku, więc same magiczne bajty już nie wystarczają — oraz
- * metadane, jakie dokleja do nich aparat.
- */
 public final class TestImages {
 
-	/** Tekst, którego nie może być w pliku po wgraniu; stoi w miejscu GPS-u. */
 	public static final String SECRET = "GPS 52.2297N 21.0122E";
 
 	private TestImages() {
@@ -31,7 +25,6 @@ public final class TestImages {
 		return encode("jpg");
 	}
 
-	/** JPEG z blokiem EXIF zaraz po SOI, tam gdzie zapisuje go aparat. */
 	public static byte[] jpegWithExif(int orientation) {
 		byte[] jpeg = jpeg();
 		byte[] payload = concat("Exif\0\0".getBytes(StandardCharsets.US_ASCII), tiff(orientation));
@@ -46,7 +39,6 @@ public final class TestImages {
 		return out.toByteArray();
 	}
 
-	/** Wstawia blok PNG zaraz po IHDR. */
 	public static byte[] pngWithChunk(String type, byte[] data) {
 		byte[] png = png();
 		int afterIhdr = 8 + 12 + 13;
@@ -66,11 +58,6 @@ public final class TestImages {
 				ByteBuffer.allocate(4).putInt((int) crc.getValue()).array());
 	}
 
-	/**
-	 * TIFF w kolejności Intela (jak w większości telefonów): orientacja i opis
-	 * obrazu z {@link #SECRET} — opis zamiast prawdziwego bloku GPS, bo test
-	 * sprawdza, że z bloku nie przeszedł żaden bajt poza orientacją.
-	 */
 	public static byte[] tiff(int orientation) {
 		byte[] secret = (SECRET + "\0").getBytes(StandardCharsets.US_ASCII);
 		int ifdEntries = 2;

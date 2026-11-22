@@ -39,10 +39,6 @@ class SocialGraphService implements SocialGraph {
 		this.eventPublisher = eventPublisher;
 	}
 
-	/**
-	 * Jeśli adresat sam wcześniej wysłał zaproszenie w drugą stronę, nie tworzymy
-	 * duplikatu tylko akceptujemy tamto — obie strony wyraziły chęć znajomości.
-	 */
 	@Transactional
 	FriendRequestResponse sendRequest(UUID requesterId, UUID addresseeId) {
 		if (requesterId.equals(addresseeId)) {
@@ -136,10 +132,6 @@ class SocialGraphService implements SocialGraph {
 		friendshipRepository.deleteById(id);
 	}
 
-	/**
-	 * Idempotentne. Blokada zrywa znajomość i usuwa oczekujące zaproszenia w obu
-	 * kierunkach — po odblokowaniu relację trzeba zbudować od nowa.
-	 */
 	@Transactional
 	void blockUser(UUID blockerId, UUID blockedId) {
 		if (blockerId.equals(blockedId)) {
@@ -168,10 +160,6 @@ class SocialGraphService implements SocialGraph {
 		blockRepository.deleteByBlockerIdOrBlockedId(userId, userId);
 	}
 
-	/**
-	 * Bez sprawdzania, czy użytkownik istnieje: dla nieistniejącego odpowiedź „nie
-	 * blokujesz" jest prawdziwa i nie mówi niczego, czego nie powie profil.
-	 */
 	@Transactional(readOnly = true)
 	boolean isBlocking(UUID blockerId, UUID blockedId) {
 		return blockRepository.existsById(new BlockId(blockerId, blockedId));
@@ -209,11 +197,6 @@ class SocialGraphService implements SocialGraph {
 				.collect(Collectors.toSet());
 	}
 
-	/**
-	 * Zwraca oczekujące zaproszenie tylko jeśli {@code currentUserId} jest jego
-	 * właściwą stroną — cudze zaproszenia zgłaszamy jako nieistniejące, żeby nie
-	 * ujawniać relacji między innymi użytkownikami.
-	 */
 	private FriendRequest pendingRequestFor(UUID requestId, Function<FriendRequest, UUID> side, UUID currentUserId) {
 		FriendRequest request = friendRequestRepository.findById(requestId)
 				.filter(r -> side.apply(r).equals(currentUserId)).orElseThrow(FriendRequestNotFoundException::new);

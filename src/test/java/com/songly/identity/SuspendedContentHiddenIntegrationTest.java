@@ -23,15 +23,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Ukrywanie treści zawieszonego konta (ADR 0026).
- *
- * <p>
- * ADR 0022 odciął zawieszone konto od pisania i czytania, ale jego treści stały
- * dalej: zawieszało się kogoś za nękanie, a nękające posty, komentarze i profil
- * zostawały na widoku. Najważniejszy jest tu ostatni test — zdjęcie zawieszenia
- * przywraca wszystko, bo ukrywamy przy odczycie i nigdy nie kasujemy.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class SuspendedContentHiddenIntegrationTest extends AbstractIntegrationTest {
 
@@ -112,11 +103,6 @@ class SuspendedContentHiddenIntegrationTest extends AbstractIntegrationTest {
 		return false;
 	}
 
-	/**
-	 * Sedno ADR 0026: treści zawieszonego znikają z każdej ścieżki odczytu, a jego
-	 * profil przestaje być osiągalny — także wprost z linku, nie tylko z
-	 * wyszukiwarki.
-	 */
 	@Test
 	void suspensionHidesPostsProfileAndSearchResults() throws Exception {
 		TestUser adminUser = admin("hidden-main-admin@songly.io");
@@ -137,11 +123,6 @@ class SuspendedContentHiddenIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isNotFound());
 	}
 
-	/**
-	 * Post ukryty jest nietykalny także dla ścieżek zapisu — inaczej dałoby się
-	 * komentować i lajkować treść, której nie widać, a autor dostawałby
-	 * powiadomienia o aktywności pod niewidzialnym postem.
-	 */
 	@Test
 	void hiddenPostCannotBeLikedOrCommented() throws Exception {
 		TestUser adminUser = admin("hidden-write-admin@songly.io");
@@ -157,9 +138,6 @@ class SuspendedContentHiddenIntegrationTest extends AbstractIntegrationTest {
 						{"content":"komentarz"}""")).andExpect(status().isNotFound());
 	}
 
-	/**
-	 * Sankcja nie rozlewa się na innych: posty pozostałych kont zostają widoczne.
-	 */
 	@Test
 	void otherAccountsAreUnaffected() throws Exception {
 		TestUser adminUser = admin("hidden-other-admin@songly.io");
@@ -177,12 +155,6 @@ class SuspendedContentHiddenIntegrationTest extends AbstractIntegrationTest {
 		assertThat(searchFinds(viewer, "Hiddenother", innocent.userId())).isTrue();
 	}
 
-	/**
-	 * Najważniejszy test tej zmiany: <b>ukrywamy przy odczycie, nigdy nie
-	 * kasujemy</b>. Zawieszenia bywają czasowe i zdejmowane, więc treści muszą
-	 * wrócić w całości — inaczej zawieszenie byłoby karą cięższą od samego
-	 * zawieszenia.
-	 */
 	@Test
 	void liftingAndExpiryRestoreEverything() throws Exception {
 		TestUser adminUser = admin("hidden-restore-admin@songly.io");
@@ -191,7 +163,6 @@ class SuspendedContentHiddenIntegrationTest extends AbstractIntegrationTest {
 		rename(troll, "Wracajacy Hiddenrestore");
 		String postId = createPost(troll, "tresc wracajaca");
 
-		// Zdjęcie zawieszenia przywraca.
 		suspend(adminUser, troll, null);
 		assertThat(publicListContains(viewer, postId)).isFalse();
 		mockMvc.perform(delete("/api/v1/admin/users/" + troll.userId() + "/suspension").header("Authorization",
@@ -199,7 +170,6 @@ class SuspendedContentHiddenIntegrationTest extends AbstractIntegrationTest {
 		assertThat(publicListContains(viewer, postId)).isTrue();
 		assertThat(searchFinds(viewer, "Hiddenrestore", troll.userId())).isTrue();
 
-		// Wygaśnięcie terminu też — i bez niczyjej akcji (ADR 0014).
 		suspend(adminUser, troll, 7);
 		assertThat(publicListContains(viewer, postId)).isFalse();
 		OffsetDateTime past = Instant.now().minus(1, ChronoUnit.HOURS).atOffset(ZoneOffset.UTC);

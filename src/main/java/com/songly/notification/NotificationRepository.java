@@ -12,17 +12,6 @@ import org.springframework.data.repository.query.Param;
 
 interface NotificationRepository extends JpaRepository<Notification, UUID> {
 
-	/**
-	 * Ukrywa powiadomienia od osób zablokowanych w którymkolwiek kierunku —
-	 * <b>poza</b> powiadomieniami o decyzjach moderacyjnych, które przechodzą
-	 * zawsze (patrz {@link NotificationType#MODERATION}).
-	 *
-	 * <p>
-	 * Filtr jest w zapytaniu, nie po pobraniu strony: po fakcie psułby paginację,
-	 * tak samo jak w module content. Pusta lista zablokowanych to przypadek
-	 * większości użytkowników i działa poprawnie — {@code not in ()} jest prawdą
-	 * dla każdego wiersza.
-	 */
 	@Query("""
 			select n from Notification n
 			where n.userId = :userId and (n.actorId not in :excludedActorIds or n.type in :alwaysVisibleTypes)

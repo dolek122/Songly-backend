@@ -8,10 +8,6 @@ import com.songly.common.storage.ObjectStorage;
 import com.songly.common.storage.ObjectStorageException;
 import org.junit.jupiter.api.Test;
 
-/**
- * Po commicie nie ma czego wycofać, więc błąd magazynu (od ADR 0049 zgłaszany
- * wyjątkiem) zostaje w logu, a nie wychodzi z listenera.
- */
 class OrphanedAvatarCleanerTest {
 
 	@Test

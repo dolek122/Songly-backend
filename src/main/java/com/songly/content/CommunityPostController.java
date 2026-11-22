@@ -18,16 +18,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * Posty w społecznościach. Ścieżka należy do społeczności, ale zasób to post,
- * więc kontroler siedzi w module content — moduł community nie wie nic o
- * postach.
- *
- * <p>
- * Reszta operacji na takim poście (lajki, komentarze, udostępnienia, usuwanie)
- * idzie zwykłymi endpointami {@code /api/v1/posts/{postId}} — post w
- * społeczności to ten sam byt, tylko opublikowany w innym miejscu.
- */
 @RestController
 @RequestMapping("/api/v1/communities/{communityId}/posts")
 @SecurityRequirement(name = "bearerAuth")
@@ -39,9 +29,6 @@ class CommunityPostController {
 		this.contentService = contentService;
 	}
 
-	// Nazwy metod celowo różne od tych w PostController: springdoc bierze z nich
-	// operationId, a przy kolizji dokleja numer ("listPosts_1"), co w generowanym
-	// kliencie nie znaczy nic.
 	@PostMapping
 	ResponseEntity<PostResponse> createCommunityPost(Authentication authentication, @PathVariable UUID communityId,
 			@Valid @RequestBody CreatePostRequest request) {

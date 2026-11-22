@@ -8,7 +8,6 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
-/** Ulubiony gatunek użytkownika (N—M User—Genre przez {@code user_genres}). */
 @Entity
 @Table(name = "user_genres")
 @IdClass(UserGenreId.class)

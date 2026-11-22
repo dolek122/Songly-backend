@@ -7,10 +7,6 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Połączenie konta użytkownika z zewnętrznym serwisem muzycznym. Tokeny OAuth
- * trzymane wyłącznie zaszyfrowane (AES-GCM) — patrz Claude.md §9.
- */
 @Entity
 @Table(name = "music_provider_links")
 class MusicProviderLink {

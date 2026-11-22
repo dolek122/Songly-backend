@@ -9,15 +9,6 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Zgłoszenie posta do moderacji.
- *
- * <p>
- * Tabela należy do modułu content, bo to on jest właścicielem postów i tylko on
- * może mieć do nich klucz obcy (Claude.md §2). Uprawnienie do oglądania kolejki
- * sprawdzamy przez publiczny interfejs modułu community, a nie zaglądając w
- * jego tabele.
- */
 @Entity
 @Table(name = "post_reports")
 class PostReport {
@@ -92,16 +83,6 @@ class PostReport {
 		return createdAt;
 	}
 
-	/**
-	 * Zgłoszenie odrzucone — moderator uznał, że post zostaje.
-	 *
-	 * <p>
-	 * Nie ma tu odpowiednika „uwzględnione": skasowanie posta zabiera jego
-	 * zgłoszenia kaskadą, bo bez posta nie ma czego moderować. Świadomy koszt:
-	 * kolejka nie jest archiwum decyzji. Gdy będzie potrzebny ślad audytowy, trzeba
-	 * będzie zdjąć kaskadę i zacząć przechowywać kopię treści — czyli osobna
-	 * decyzja, nie rozszerzenie tej.
-	 */
 	void dismiss(UUID reviewerId, Instant now) {
 		this.status = ReportStatus.DISMISSED;
 		this.reviewedBy = reviewerId;

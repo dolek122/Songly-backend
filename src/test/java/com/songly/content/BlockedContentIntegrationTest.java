@@ -16,18 +16,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Blokada egzekwowana w module content. Moduł social pilnował jej dotąd tylko u
- * siebie (zaproszenia) i w matchingu, więc blokada zrywała znajomość, ale nie
- * zasłaniała ani jednej treści: zablokowany dalej czytał posty blokującego i —
- * co gorsza — dalej mógł go zaczepiać komentarzem pod jego własnym postem.
- *
- * <p>
- * Test integracyjny, nie jednostkowy, bo filtr siedzi w zapytaniach do bazy
- * (inaczej psułby paginację, patrz {@link PostRepository}). Mock powiedziałby
- * tylko, że wywołaliśmy metodę z odpowiednim argumentem — nie, czy Postgres
- * naprawdę odsiał te wiersze i czy {@code totalElements} się zgadza.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class BlockedContentIntegrationTest extends AbstractIntegrationTest {
 
@@ -72,13 +60,6 @@ class BlockedContentIntegrationTest extends AbstractIntegrationTest {
 				"Bearer " + b.token())).andExpect(status().isOk());
 	}
 
-	/**
-	 * Warunek konieczny całej reszty: pusty zbiór blokad to przypadek
-	 * <b>zdecydowanej większości</b> użytkowników, a filtr {@code not in} na pustej
-	 * liście to klasyczna pułapka SQL-a — {@code x not in (null)} nie jest prawdą
-	 * dla żadnego wiersza, więc naiwna implementacja wygasza feed wszystkim naraz.
-	 * Ten test pilnuje, że tak się nie dzieje.
-	 */
 	@Test
 	void userWithoutBlocks_seesPostsNormally() throws Exception {
 		TestUser viewer = register("block-none-viewer@songly.io");
@@ -87,9 +68,6 @@ class BlockedContentIntegrationTest extends AbstractIntegrationTest {
 				.header("Authorization", "Bearer " + viewer.token()).contentType(MediaType.APPLICATION_JSON).content("""
 						{"content":"wlasny komentarz"}""")).andExpect(status().isCreated());
 
-		// Każde z tych trzech wyjść filtruje przez `not in :excludedAuthorIds`, a
-		// zbiór jest tu pusty — czyli dokładnie przypadek, który przy złym
-		// potraktowaniu pustej listy zwraca zero wierszy zamiast wszystkich.
 		mockMvc.perform(get("/api/v1/feed").header("Authorization", "Bearer " + viewer.token()))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.page.totalElements").value(1));
 
@@ -100,7 +78,6 @@ class BlockedContentIntegrationTest extends AbstractIntegrationTest {
 				get("/api/v1/posts/" + postId + "/comments").header("Authorization", "Bearer " + viewer.token()))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.page.totalElements").value(1));
 
-		// Licznik komentarzy też filtruje po tym samym pustym zbiorze.
 		mockMvc.perform(get("/api/v1/posts/" + postId).header("Authorization", "Bearer " + viewer.token()))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.commentCount").value(1));
 	}
@@ -121,11 +98,6 @@ class BlockedContentIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.page.totalElements").value(0));
 	}
 
-	/**
-	 * Blokada działa w obie strony: zablokowany traci widok tak samo jak blokujący.
-	 * Inaczej blokada byłaby tylko zasłonięciem sobie oczu, a druga strona dalej
-	 * śledziłaby wszystko, co piszemy.
-	 */
 	@Test
 	void blockIsSymmetric_blockedUserAlsoLosesSight() throws Exception {
 		TestUser blocker = register("block-sym-blocker@songly.io");
@@ -137,11 +109,6 @@ class BlockedContentIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isNotFound());
 	}
 
-	/**
-	 * Sedno blokady. Lajk i komentarz kończą się powiadomieniem u autora, więc bez
-	 * tego sprawdzenia „zablokowanie" nie odcinałoby najbardziej dokuczliwego
-	 * kanału kontaktu, jaki produkt ma.
-	 */
 	@Test
 	void blockedUserCannotInteractWithBlockersPost() throws Exception {
 		TestUser blocker = register("block-write-blocker@songly.io");
@@ -160,11 +127,6 @@ class BlockedContentIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isNotFound());
 	}
 
-	/**
-	 * Komentarz zablokowanego znika też z cudzego posta — tam obie strony spotykają
-	 * się mimo braku wspólnej relacji. Licznik musi zejść razem z listą, inaczej
-	 * post pokazywałby „2 komentarze" nad listą jednego.
-	 */
 	@Test
 	void blockedUsersComment_vanishesFromListAndCount() throws Exception {
 		TestUser host = register("block-comment-host@songly.io");
@@ -193,12 +155,6 @@ class BlockedContentIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isOk()).andExpect(jsonPath("$.commentCount").value(1));
 	}
 
-	/**
-	 * Jedyna droga, którą treść zablokowanego wracała do feedu po zerwaniu
-	 * znajomości: udostępnienie przez wspólnego znajomego. Blokada wyklucza autora
-	 * z {@code userIds}, ale nie z cudzych udostępnień — dlatego filtr autorów jest
-	 * w zapytaniu feedu osobnym warunkiem.
-	 */
 	@Test
 	void friendsShareOfBlockedAuthorsPost_staysOutOfFeed() throws Exception {
 		TestUser blocker = register("block-feed-blocker@songly.io");
@@ -216,10 +172,6 @@ class BlockedContentIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isOk()).andExpect(jsonPath("$.page.totalElements").value(0));
 	}
 
-	/**
-	 * Społeczność jest publiczna, ale blokada to granica osobista — działa też w
-	 * cudzym „domu".
-	 */
 	@Test
 	void blockedAuthorsPost_isHiddenInsideCommunity() throws Exception {
 		TestUser owner = register("block-comm-owner@songly.io");

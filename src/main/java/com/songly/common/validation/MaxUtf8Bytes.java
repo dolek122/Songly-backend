@@ -11,15 +11,6 @@ import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
-/**
- * Górna granica długości tekstu w <b>bajtach UTF-8</b>, nie w znakach.
- *
- * <p>
- * {@code @Size} liczy znaki, a bcrypt bierze pod uwagę 72 bajty i od Spring
- * Security 6.4 odrzuca dłuższe hasło wyjątkiem. Polska litera zajmuje 2 bajty,
- * emoji 4 — hasło mieszczące się w {@code @Size(max = 72)} kończyło się więc
- * 500 przy rejestracji, zmianie i resecie hasła zamiast zwykłym 400.
- */
 @Documented
 @Constraint(validatedBy = MaxUtf8BytesValidator.class)
 @Target({FIELD, METHOD, PARAMETER})

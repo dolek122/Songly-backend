@@ -17,17 +17,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Posty w społecznościach — publikacja, izolacja od feedu, moderacja przez
- * właściciela i sprzątanie po usuniętej społeczności.
- *
- * <p>
- * Test integracyjny, nie jednostkowy, bo najciekawsze rzeczy dzieją się na
- * granicy modułów i w bazie: {@code posts.community_id} ma klucz obcy do
- * {@code communities}, więc usunięcie społeczności musi przejść przez zdarzenie
- * i sprzątanie w module content — mock nie pokazałby, czy baza to w ogóle
- * przyjmie.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class CommunityPostIntegrationTest extends AbstractIntegrationTest {
 
@@ -109,8 +98,6 @@ class CommunityPostIntegrationTest extends AbstractIntegrationTest {
 						{"content":"wchodze z buta"}""")).andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.code").value("NOT_COMMUNITY_MEMBER"));
 
-		// Społeczności są w pełni publiczne (listowanie, podglądanie, dołączanie bez
-		// zgody), więc ukrywanie treści przed nie-członkiem byłoby ochroną pozorną.
 		mockMvc.perform(get("/api/v1/communities/" + communityId + "/posts").header("Authorization",
 				"Bearer " + outsider.token())).andExpect(status().isOk())
 				.andExpect(jsonPath("$.content.length()").value(1));
@@ -126,11 +113,6 @@ class CommunityPostIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.code").value("COMMUNITY_NOT_FOUND"));
 	}
 
-	/**
-	 * Sedno rozdziału obu światów: post z niszowej społeczności nie może wypływać
-	 * na feed ani profil autora, bo trafiłby do ludzi, którzy do tej społeczności
-	 * nie należą i nigdy jej nie wybrali.
-	 */
 	@Test
 	void communityPostStaysOutOfFeedAndAuthorTimeline() throws Exception {
 		TestUser author = register("cpost-author@songly.io");
@@ -153,11 +135,6 @@ class CommunityPostIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.content[0].content").value("post zwykly"));
 	}
 
-	/**
-	 * Minimum moderacji (Claude.md §8) — bez tego społeczność nie ma żadnej obrony
-	 * przed spamem, a właściciel nie może zrobić nic z treścią w miejscu, które
-	 * założył.
-	 */
 	@Test
 	void communityOwnerDeletesSomeoneElsesPost() throws Exception {
 		TestUser owner = register("cpost-mod-owner@songly.io");
@@ -167,7 +144,6 @@ class CommunityPostIntegrationTest extends AbstractIntegrationTest {
 		join(member, communityId);
 		String postId = publish(member, communityId, "spam");
 
-		// Ani autor, ani właściciel — moderacja nie rozlewa się na wszystkich.
 		mockMvc.perform(delete("/api/v1/posts/" + postId).header("Authorization", "Bearer " + outsider.token()))
 				.andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("NOT_RESOURCE_OWNER"));
 
@@ -179,10 +155,6 @@ class CommunityPostIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(0));
 	}
 
-	/**
-	 * Ownerowi wolno moderować tylko u siebie: post zwykły (bez społeczności)
-	 * chroni wyłącznie autorstwo.
-	 */
 	@Test
 	void communityOwnerCannotDeletePlainPostsOfOthers() throws Exception {
 		TestUser owner = register("cpost-scope-owner@songly.io");
@@ -198,10 +170,6 @@ class CommunityPostIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isForbidden());
 	}
 
-	/**
-	 * {@code posts.community_id} ma klucz obcy do {@code communities}, więc bez
-	 * synchronicznego sprzątania w module content baza odrzuciłaby to usunięcie.
-	 */
 	@Test
 	void deletingCommunity_removesItsPosts() throws Exception {
 		TestUser owner = register("cpost-del-owner@songly.io");
@@ -217,12 +185,6 @@ class CommunityPostIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isNotFound());
 	}
 
-	/**
-	 * Ta sama pułapka na drugiej ścieżce: usunięcie konta właściciela kasuje jego
-	 * społeczności, a razem z nimi muszą zniknąć posty — również cudze. Wcześniej
-	 * szło to masowym {@code deleteByOwnerId}, które omija cykl życia encji i nie
-	 * wysłałoby ani jednego zdarzenia.
-	 */
 	@Test
 	void deletingOwnerAccount_removesCommunityPostsOfOtherUsers() throws Exception {
 		TestUser owner = register("cpost-acc-owner@songly.io");

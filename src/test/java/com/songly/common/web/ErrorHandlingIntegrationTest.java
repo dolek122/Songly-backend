@@ -16,11 +16,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Błędne żądanie klienta ma dawać 4xx w formacie {@link ApiError} (Claude.md
- * §6), nie 500 — inaczej literówka w JSON-ie po stronie klienta wygląda w
- * monitoringu identycznie jak realna awaria serwera i topi ją w szumie.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class ErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 
@@ -43,14 +38,12 @@ class ErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"));
 	}
 
-	/** Publiczny callback Spotify bez parametrów, które dokleja provider. */
 	@Test
 	void missingRequiredRequestParameter_returnsBadRequest() throws Exception {
 		mockMvc.perform(get("/api/v1/now-playing/spotify/callback")).andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("MISSING_PARAMETER"));
 	}
 
-	/** Wcześniej 500 ze stack tracem — wywoływalne przez każdego, bez logowania. */
 	@Test
 	void unsupportedContentType_returnsUnsupportedMediaType() throws Exception {
 		mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.TEXT_PLAIN).content("cokolwiek"))
@@ -81,12 +74,6 @@ class ErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 	}
 
-	/**
-	 * Uwierzytelnione żądanie do nieistniejącej ścieżki ma dawać 404 {@code
-	 * NOT_FOUND}, nie 500 — literówka w URL-u klienta to błąd klienta, a nie awaria
-	 * serwera (Claude.md §6). Anonimowe żądanie testujemy osobno, bo Security
-	 * odcina je 401-ką jeszcze przed dispatcherem, więc nie dotknęłoby handlera.
-	 */
 	@Test
 	void unknownRouteWhenAuthenticated_returnsNotFound() throws Exception {
 		MvcResult registration = registerAndVerify("unknown-route@songly.io", "password123");
@@ -102,8 +89,6 @@ class ErrorHandlingIntegrationTest extends AbstractIntegrationTest {
 	void unknownRouteWhenAnonymous_returnsUnauthorized() throws Exception {
 		mockMvc.perform(get("/api/v1/nie-ma-takiej-sciezki")).andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
-				// Pisane przez filtr bezpieczeństwa, nie przez GlobalExceptionHandler — stąd
-				// jawne UTF-8 (ADR 0051).
 				.andExpect(header().string("Content-Type", "application/json;charset=UTF-8"));
 	}
 }

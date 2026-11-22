@@ -19,23 +19,6 @@ import org.springframework.web.client.RestClient;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Cienka warstwa HTTP do Spotify — bez logiki biznesowej.
- *
- * <p>
- * Timeouty ustawiamy jawnie, bo domyślny klient JDK czeka na odpowiedź w
- * nieskończoność. Te wywołania idą z wątku harmonogramu (ADR 0007, Etap 1b), a
- * zawieszone połączenie do Spotify blokowałoby wtedy poll wszystkich
- * obserwowanych użytkowników — awaria u jednego providera zamieniałaby się w
- * awarię całego presence.
- *
- * <p>
- * Każda odpowiedź błędna — również z endpointu tokenowego i również 5xx —
- * wychodzi stąd jako {@link SpotifyApiException}. Domyślne wyjątki
- * {@code RestClient} niosą co prawda status, ale nie mówią nic o kodzie błędu
- * Spotify ani o {@code Retry-After}, a bez tych dwóch rzeczy warstwa wyżej nie
- * umie odróżnić "user cofnął zgodę" od "chwilowo padło".
- */
 @Component
 class SpotifyClient {
 
@@ -76,7 +59,6 @@ class SpotifyClient {
 				}).body(TokenResponse.class);
 	}
 
-	/** Zwraca null gdy nic nie gra (Spotify odpowiada 204 No Content). */
 	CurrentlyPlayingResponse getCurrentlyPlaying(String accessToken) {
 		return restClient.get().uri(spotify.getApiBaseUrl() + "/me/player/currently-playing")
 				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken).retrieve()
@@ -89,12 +71,6 @@ class SpotifyClient {
 		return new SpotifyApiException(response.getStatusCode().value(), error, retryAfter(response));
 	}
 
-	/**
-	 * Endpoint tokenowy odpowiada płaskim {@code {"error": "..."}} (OAuth 2), a Web
-	 * API zagnieżdżonym obiektem — dlatego czytamy kod błędu tylko tam, gdzie ma on
-	 * ustalone znaczenie. Nieczytelne ciało nie może przesłonić samego błędu HTTP,
-	 * więc traktujemy je jak brak kodu.
-	 */
 	private String tokenErrorCode(ClientHttpResponse response) {
 		try {
 			String body = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
@@ -104,11 +80,6 @@ class SpotifyClient {
 		}
 	}
 
-	/**
-	 * Spotify podaje {@code Retry-After} w sekundach. Specyfikacja HTTP dopuszcza
-	 * też datę — nie parsujemy jej, bo brak wartości i tak ma zdefiniowane
-	 * zachowanie (poller sięga po własny domyślny backoff).
-	 */
 	private Duration retryAfter(ClientHttpResponse response) {
 		String header = response.getHeaders().getFirst(HttpHeaders.RETRY_AFTER);
 		if (header == null) {

@@ -22,11 +22,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-/**
- * Unit, nie integracja: testy integracyjne dzielą jedną bazę między
- * kontekstami, więc zasiane konto admina zostałoby w niej dla wszystkich
- * pozostałych testów (np. jako adresat maili do administracji).
- */
 @ExtendWith(MockitoExtension.class)
 class LocalDevAccountsSeederTest {
 
@@ -59,14 +54,12 @@ class LocalDevAccountsSeederTest {
 		assertThat(byEmail.get(LocalDevAccountsSeeder.ADMIN_EMAIL).isAdmin()).isTrue();
 		assertThat(byEmail.get(LocalDevAccountsSeeder.USER_EMAIL).isAdmin()).isFalse();
 
-		// Bez zdarzenia konto nie miałoby profilu, czyli 404 na /profiles/me.
 		ArgumentCaptor<UserRegisteredEvent> events = ArgumentCaptor.forClass(UserRegisteredEvent.class);
 		verify(eventPublisher, times(2)).publishEvent(events.capture());
 		assertThat(events.getAllValues()).extracting(UserRegisteredEvent::userId)
 				.containsExactlyInAnyOrderElementsOf(saved.getAllValues().stream().map(User::getId).toList());
 	}
 
-	/** Restart nie może resetować haseł ani tego, co ktoś zdążył przeklikać. */
 	@Test
 	void leavesExistingAccountsUntouched() {
 		when(userRepository.existsByEmail(anyString())).thenReturn(true);
@@ -77,10 +70,6 @@ class LocalDevAccountsSeederTest {
 		verify(eventPublisher, never()).publishEvent(any());
 	}
 
-	/**
-	 * Hasła leżą w repo — poza profilem local to byłby publiczny klucz do
-	 * administracji.
-	 */
 	@Test
 	void isActiveOnlyInLocalProfile() {
 		Profile profile = LocalDevAccountsSeeder.class.getAnnotation(Profile.class);
@@ -89,10 +78,6 @@ class LocalDevAccountsSeederTest {
 		assertThat(profile.value()).containsExactly("local");
 	}
 
-	/**
-	 * Druga zapora obok {@code @Profile}: profil local włączony przez pomyłkę na
-	 * środowisku z prawdziwymi sekretami nie może założyć admina ze znanym hasłem.
-	 */
 	@Test
 	void refusesToStart_whereProductionSecretsAreRequired() {
 		assertThatThrownBy(() -> new LocalDevAccountsSeeder(userRepository, passwordEncoder, eventPublisher, true))

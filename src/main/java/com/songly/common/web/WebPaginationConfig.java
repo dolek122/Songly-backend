@@ -18,36 +18,6 @@ import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-/**
- * Strony Spring Data serializują się przez stabilne DTO ({@code PagedModel})
- * zamiast surowego {@code PageImpl}: kształt JSON-a dla {@code Page<T>} nie
- * jest inaczej gwarantowany między wersjami, a to kontrakt, z którego korzysta
- * klient mobilny (KMP). Ustawia to
- * {@code spring.data.web.pageable.serialization-mode=via-dto}, <b>nie</b>
- * {@code @EnableSpringDataWebSupport}: adnotacja wyłączała autokonfigurację
- * Boota, a razem z nią wszystkie {@code spring.data.web.pageable.*}, więc sufit
- * {@code max-page-size=100} z §6 nigdy nie działał i każda lista oddawała do
- * 2000 wierszy na żądanie (ADR 0051).
- *
- * <p>
- * Efekt w JSON: metadane paginacji przenoszą się z pól najwyższego poziomu do
- * zagnieżdżonego obiektu {@code page} ({@code size}, {@code number},
- * {@code totalElements}, {@code totalPages}). Lista wyników pozostaje pod
- * {@code content}.
- *
- * <p>
- * <b>Kolejność należy do serwera, parametr {@code sort} jest ignorowany</b>
- * (ADR 0051). Kontrakt to {@code ?page=&size=} (§6), a każda lista ma kolejność
- * zapisaną w zapytaniu: feed od najnowszych, kolejka zgłoszeń od najstarszych.
- * Spring Data dokładał {@code sort} od klienta do każdego zapytania, więc
- * {@code ?sort=foo} kończył się 500 na każdej liście, a {@code ?sort=bio}
- * sortował po dowolnym polu encji, także niezaindeksowanym i niewystawionym w
- * odpowiedzi. Odrzucanie przez 400 wymagałoby rozpoznania trzech różnych
- * wyjątków (zapytania pochodne, JPQL, natywne), z których ostatni wygląda tak
- * samo jak prawdziwy błąd w SQL-u. Zapytanie stronicowane <b>musi więc mieć
- * własne {@code ORDER BY}</b>: bez niego kolejne strony mogą się nakładać, a
- * {@code @PageableDefault(sort = ...)} nic tu nie zmieni.
- */
 @Configuration
 @Order(Ordered.HIGHEST_PRECEDENCE)
 class WebPaginationConfig implements WebMvcConfigurer {
@@ -58,19 +28,11 @@ class WebPaginationConfig implements WebMvcConfigurer {
 		this.springDataResolver = springDataResolver;
 	}
 
-	/**
-	 * Przed resolverem Spring Data, bo wygrywa pierwszy, który obsługuje typ
-	 * parametru — stąd {@code HIGHEST_PRECEDENCE} na klasie.
-	 */
 	@Override
 	public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
 		resolvers.add(new ServerOrderedPageableResolver(springDataResolver.getObject()));
 	}
 
-	/**
-	 * Kontrakt nie może obiecywać parametru, którego serwer nie czyta. Springdoc
-	 * opisuje {@code Pageable} z {@code sort}, więc go stamtąd usuwamy.
-	 */
 	@Bean
 	GlobalOpenApiCustomizer pageableWithoutSort() {
 		return openApi -> {
@@ -84,11 +46,6 @@ class WebPaginationConfig implements WebMvcConfigurer {
 		};
 	}
 
-	/**
-	 * Strona i rozmiar idą przez resolver Spring Data, więc zostają
-	 * {@code @PageableDefault} i sufit {@code max-page-size}. Odcinamy wyłącznie
-	 * sortowanie.
-	 */
 	static final class ServerOrderedPageableResolver implements HandlerMethodArgumentResolver {
 
 		private final PageableHandlerMethodArgumentResolver delegate;

@@ -27,7 +27,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 class CommunityService implements CommunityMembership, CommunityDirectory {
 
-	/** Indeks z V34, który rozstrzyga wyścig o nazwę (ADR 0052). */
 	private static final String NAME_INDEX = "uq_communities_name_lower";
 
 	private final CommunityRepository communityRepository;
@@ -72,12 +71,6 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 				roleOf(communityId, requesterId));
 	}
 
-	/**
-	 * Sprawdzenie nazwy przed zapisem nie wystarcza przy dwóch żądaniach naraz:
-	 * żadne nie widzi jeszcze wiersza drugiego. Rozstrzyga indeks na
-	 * {@code lower(name)} (ADR 0052), a ten zapis zamienia jego naruszenie w ten
-	 * sam błąd, który dostałby drugi klikający po kolei, zamiast ogólnego 409.
-	 */
 	private void flushRespectingUniqueName() {
 		try {
 			communityRepository.flush();
@@ -142,21 +135,6 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		return communityRepository.findById(communityId).map(Community::getName);
 	}
 
-	/**
-	 * Własny status pytającego — w tym szczegóły <b>własnego</b> bana (ADR 0015).
-	 *
-	 * <p>
-	 * To jedyne miejsce, w którym zbanowany widzi powód i termin. Powiadomienie
-	 * jest płaskie (ADR 0012), a mail celowo powodu nie niesie: mail omija blokady
-	 * (ADR 0013) i jest kanałem push, więc powód-w-mailu zamieniałby cykl ban/unban
-	 * w doręczanie dowolnego tekstu moderatora prosto do cudzej skrzynki pocztowej.
-	 * Tu jest odwrotnie — po treść trzeba samemu przyjść.
-	 *
-	 * <p>
-	 * Członkostwo sprawdzane przed banem: po wygaśnięciu bana i powrocie oba
-	 * wiersze istnieją naraz (wygasły ban zostaje, ADR 0014), a stan opisuje
-	 * członkostwo.
-	 */
 	@Transactional(readOnly = true)
 	MembershipStatusResponse membershipStatus(UUID communityId, UUID userId) {
 		requireCommunity(communityId);
@@ -173,16 +151,6 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 				.orElseGet(() -> new MembershipStatusResponse(CommunityMembershipStatus.NONE, null, null, null));
 	}
 
-	/**
-	 * Nadaje rolę w społeczności. <b>Wyłącznie właściciel</b> — moderator mogący
-	 * rozdawać role mógłby zdegradować właściciela i przejąć społeczność.
-	 *
-	 * <p>
-	 * {@code OWNER} nie jest tu osiągalny: właścicielstwo to nie stopień w tej
-	 * samej skali, tylko osobne pole na {@code communities}, i jego przekazanie
-	 * jest inną operacją (dziś nieistniejącą). Dopuszczenie go tutaj dałoby dwa
-	 * źródła prawdy o tym, kto jest właścicielem.
-	 */
 	@Transactional
 	void setMemberRole(UUID communityId, UUID requesterId, UUID targetUserId, CommunityRole role) {
 		Community community = requireCommunity(communityId);
@@ -195,8 +163,6 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		if (membership.getRole() == CommunityRole.OWNER) {
 			throw new CannotModerateOwnerException();
 		}
-		// Zdarzenie tylko przy faktycznej zmianie — ta sama zasada co „tylko nowy
-		// ban": powtórzone kliknięcie nie dokłada powiadomienia o tym samym.
 		if (membership.getRole() == role) {
 			return;
 		}
@@ -205,30 +171,6 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 				role.canModerate(), Instant.now()));
 	}
 
-	/**
-	 * Banuje użytkownika: usuwa członkostwo i blokuje ponowne dołączenie.
-	 *
-	 * <p>
-	 * Samo usunięcie z listy członków nic by nie dało — dołączenie jest otwarte i
-	 * natychmiastowe (§8), więc zbanowany wróciłby jednym żądaniem. Dopiero wiersz
-	 * w {@code community_bans} czyni tę decyzję trwałą.
-	 *
-	 * <p>
-	 * Idempotentne wobec banu <b>aktywnego</b>: ponowny ban tej samej osoby nie
-	 * jest błędem, tylko brakiem zmiany — moderator nie powinien dostawać błędu za
-	 * to, że ktoś inny zdążył przed nim. Nie zmienia też czasu trwania:
-	 * przedłużenie albo skrócenie aktywnego banu to unban + ban, dwie świadome
-	 * decyzje zamiast cichej podmiany terminu przy zduplikowanym kliknięciu.
-	 *
-	 * <p>
-	 * Ban <b>wygasły</b> to co innego (ADR 0014): wiersz zostaje w tabeli tylko
-	 * dlatego, że klucz główny nie dopuszcza drugiego — ponowny ban nadpisuje go w
-	 * całości i publikuje nowe zdarzenie, bo z perspektywy zbanowanego to nowa
-	 * decyzja, o której trzeba zawiadomić.
-	 *
-	 * @param durationDays
-	 *            {@code null} = ban bezterminowy
-	 */
 	@Transactional
 	void ban(UUID communityId, UUID requesterId, UUID targetUserId, String reason, Integer durationDays) {
 		Community community = requireCommunity(communityId);
@@ -236,9 +178,6 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		if (community.getOwnerId().equals(targetUserId)) {
 			throw new CannotModerateOwnerException();
 		}
-		// Moderator nie zbanuje moderatora — inaczej dwoje moderatorów mogłoby
-		// wzajemnie wyrzucić się ze społeczności, a rozstrzygnięcie zależałoby od
-		// tego, kto pierwszy kliknął.
 		if (!requesterId.equals(community.getOwnerId()) && canModerate(communityId, targetUserId)) {
 			throw new CannotModerateModeratorException();
 		}
@@ -246,9 +185,6 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		Instant now = Instant.now();
 		Instant expiresAt = durationDays == null ? null : now.plus(Duration.ofDays(durationDays));
 		CommunityBan existing = banRepository.findForUpdate(communityId, targetUserId).orElse(null);
-		// Zdarzenie leci tylko przy banie, który zmienia stan z „niezbanowany" na
-		// „zbanowany" — czyli przy pierwszym i przy nadpisaniu wygasłego. Powtórzone
-		// kliknięcie na aktywnym banie nie dokłada powiadomienia o tym samym.
 		if (existing == null) {
 			banRepository.save(new CommunityBan(communityId, targetUserId, requesterId, reason, now, expiresAt));
 			eventPublisher.publishEvent(
@@ -260,16 +196,6 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		}
 	}
 
-	/**
-	 * Idempotentne — zdjęcie nieistniejącego banu nie jest błędem.
-	 *
-	 * <p>
-	 * Unban osoby z wiszącym odwołaniem <b>jest</b> uznaniem tego odwołania (ADR
-	 * 0017) i publikuje zdarzenie — osobnego „endpointu uznania" nie ma, bo to ta
-	 * sama decyzja. Bez tej reguły moderator zdejmujący ban wprost zostawiałby
-	 * petycję bez odpowiedzi, mimo że właśnie jej udzielił. Wygasły ban to sprawa
-	 * bezprzedmiotowa: sprzątnięcie martwego wiersza niczego nie uznaje.
-	 */
 	@Transactional
 	void unban(UUID communityId, UUID requesterId, UUID targetUserId) {
 		requireCommunity(communityId);
@@ -282,22 +208,12 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 						.publishEvent(new CommunityBanAppealAcceptedEvent(communityId, targetUserId, requesterId, now));
 			}
 			if (wasActive) {
-				// Osobne zdarzenie od uznania odwołania i publikowane obok niego: tamto
-				// mówi, dlaczego ban zniknął (i zasila powiadomienie), to mówi tylko, że
-				// zniknął — i zasila historię moderacji (ADR 0024). Zdjęcie banu już
-				// wygasłego to sprzątanie martwego wiersza, nie decyzja.
 				eventPublisher.publishEvent(new CommunityBanLiftedEvent(communityId, targetUserId, requesterId, now));
 			}
 			banRepository.delete(ban);
 		});
 	}
 
-	/**
-	 * Odwołanie od własnego bana (ADR 0017). Wyłącznie od bana <b>aktywnego</b> —
-	 * wygasły to brak bana (ADR 0014), nie ma się od czego odwoływać. Jedno
-	 * odwołanie na ban, niezależnie od losu poprzedniego: to strukturalny anty-spam
-	 * kanału, który z natury działa od zbanowanego do moderacji.
-	 */
 	@Transactional
 	void appealBan(UUID communityId, UUID userId, String text) {
 		requireCommunity(communityId);
@@ -311,17 +227,6 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		eventPublisher.publishEvent(new CommunityBanAppealSubmittedEvent(communityId, userId, now));
 	}
 
-	/**
-	 * Przekazanie odrzuconego odwołania do <b>drugiej instancji</b> (ADR 0028) —
-	 * administracji platformy. Wyłącznie ze stanu „odwołanie odrzucone": eskalacja
-	 * przed orzeczeniem pierwszej instancji omijałaby moderację społeczności, a to
-	 * ona jest tu instancją domyślną (Claude.md §8).
-	 *
-	 * <p>
-	 * Jedna eskalacja na ban — wychodzi z tego samego mechanizmu co jedno odwołanie
-	 * na ban (ADR 0017): ze stanu {@code REJECTED} wychodzi się bezpowrotnie, więc
-	 * drugi raz nie ma z czego eskalować.
-	 */
 	@Transactional
 	void escalateBanAppeal(UUID communityId, UUID userId) {
 		requireCommunity(communityId);
@@ -335,12 +240,6 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		eventPublisher.publishEvent(new CommunityBanAppealEscalatedEvent(communityId, userId, now));
 	}
 
-	/**
-	 * Kolejka drugiej instancji — sprawy skierowane do administracji, najstarsze
-	 * pierwsze. Bez paginacji, z tego samego powodu co wykazy administracyjne (ADR
-	 * 0021, 0022): to lista do przejrzenia, a eskalacji jest z natury tyle, ile
-	 * spraw, które przeszły dwa szczeble.
-	 */
 	@Transactional(readOnly = true)
 	List<EscalatedAppealResponse> escalatedAppeals() {
 		Instant now = Instant.now();
@@ -357,13 +256,6 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 				.toList();
 	}
 
-	/**
-	 * Druga instancja <b>uchyla</b> ban społeczności (ADR 0028). Jedyna operacja w
-	 * tym module, którą wykonuje ktoś z zewnątrz społeczności — i dlatego wymaga
-	 * wcześniejszej eskalacji: administracja nie przegląda cudzych banów z własnej
-	 * inicjatywy, tylko rozstrzyga sprawy, które sam zbanowany do niej skierował.
-	 * Autonomia społeczności zostaje regułą, przegląd platformy — wyjątkiem.
-	 */
 	@Transactional
 	void overturnBan(UUID communityId, UUID targetUserId, UUID adminId) {
 		requireCommunity(communityId);
@@ -374,12 +266,9 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		banRepository.delete(ban);
 		eventPublisher
 				.publishEvent(new CommunityBanAppealEscalationAcceptedEvent(communityId, targetUserId, adminId, now));
-		// Dziennik moderacji notuje samo zdjęcie banu z tego samego zdarzenia co przy
-		// decyzji moderatora (ADR 0024) — kto je podjął, niesie osobne pole.
 		eventPublisher.publishEvent(new CommunityBanLiftedEvent(communityId, targetUserId, adminId, now));
 	}
 
-	/** Druga instancja utrzymuje ban — koniec drabiny (ADR 0028). */
 	@Transactional
 	void rejectBanAppealEscalation(UUID communityId, UUID targetUserId, UUID adminId) {
 		requireCommunity(communityId);
@@ -392,11 +281,6 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 				.publishEvent(new CommunityBanAppealEscalationRejectedEvent(communityId, targetUserId, adminId, now));
 	}
 
-	/**
-	 * Odrzucenie odwołania — ban zostaje w mocy, a dla tego bana sprawa jest
-	 * zamknięta. Wymaga odwołania <b>oczekującego</b> przy banie <b>aktywnym</b>:
-	 * odwołanie przy banie wygasłym jest bezprzedmiotowe i nie ma na co odpowiadać.
-	 */
 	@Transactional
 	void rejectBanAppeal(UUID communityId, UUID requesterId, UUID targetUserId) {
 		requireCommunity(communityId);
@@ -428,12 +312,6 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		}
 	}
 
-	/**
-	 * Zdarzenie leci <b>przed</b> usunięciem wiersza: {@code posts} ma klucz obcy
-	 * do {@code communities}, więc moduł content musi zdążyć posprzątać swoje
-	 * wiersze w tej samej transakcji (Claude.md §9, ten sam mechanizm co przy
-	 * kasowaniu konta).
-	 */
 	private void deleteWithDependents(Community community) {
 		eventPublisher.publishEvent(new CommunityDeletedEvent(community.getId()));
 		communityRepository.delete(community);
@@ -468,13 +346,9 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		});
 	}
 
-	/** Idempotentne — ponowne dołączenie nie zmienia istniejącego członkostwa. */
 	@Transactional
 	void join(UUID communityId, UUID userId) {
 		Community community = requireCommunity(communityId);
-		// Bez tego sprawdzenia ban byłby wyłącznie usunięciem z listy: dołączenie
-		// jest otwarte i natychmiastowe (§8), więc zbanowany wracałby jednym
-		// żądaniem, a moderacja sprowadzałaby się do wyścigu na kliknięcia.
 		if (banRepository.existsActive(communityId, userId, Instant.now())) {
 			throw new BannedFromCommunityException();
 		}
@@ -498,27 +372,10 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		});
 	}
 
-	/**
-	 * Najpierw członkostwa usera (w tym jego własne OWNER w społecznościach, które
-	 * za chwilę i tak znikną), potem społeczności które posiada — usunięcie
-	 * community kaskadowo (ON DELETE CASCADE community_id) zabiera członkostwa
-	 * pozostałych userów w tej społeczności.
-	 *
-	 * <p>
-	 * Celowo <b>nie</b> masowym {@code deleteByOwnerId}: kasowanie wsadowe omija
-	 * cykl życia encji, więc nie poszłoby ani jedno {@link CommunityDeletedEvent} i
-	 * posty w tych społecznościach zostałyby z wiszącym kluczem obcym.
-	 */
 	@Transactional
 	void deleteAccountData(UUID userId) {
 		memberRepository.deleteByUserId(userId);
-		// Bany NAŁOŻONE przez tego usera zostają — należą do społeczności, nie do
-		// niego. Gdyby znikały razem z jego kontem, odejście moderatora po cichu
-		// wpuszczałoby z powrotem wszystkich, których zbanował. Gubimy tylko autora,
-		// bo klucz obcy do users nie ma jak przetrwać.
 		banRepository.clearBannedBy(userId);
-		// Bany NA tego usera znikają razem z kontem — nie ma już kogo trzymać za
-		// drzwiami, a wiersz i tak ma klucz obcy do users.
 		banRepository.deleteByUserId(userId);
 		communityRepository.findByOwnerId(userId).forEach(this::deleteWithDependents);
 	}
@@ -572,20 +429,12 @@ class CommunityService implements CommunityMembership, CommunityDirectory {
 		}
 	}
 
-	/**
-	 * Pojedyncza społeczność — dane założyciela dobieramy jednym zapytaniem po jego
-	 * id.
-	 */
 	private CommunityResponse toResponse(Community community, long memberCount, CommunityRole myRole) {
 		Set<UUID> ownerId = Set.of(community.getOwnerId());
 		return toResponse(community, memberCount, myRole, profileDirectory.displayNames(ownerId),
 				profileDirectory.avatarUrls(ownerId));
 	}
 
-	/**
-	 * Wariant wsadowy: nazwy/avatary założycieli podane z zewnątrz (jedno zapytanie
-	 * na całą stronę), żeby listy nie robiły N+1 do modułu profile.
-	 */
 	private CommunityResponse toResponse(Community community, long memberCount, CommunityRole myRole,
 			Map<UUID, String> ownerNames, Map<UUID, String> ownerAvatars) {
 		UUID ownerId = community.getOwnerId();

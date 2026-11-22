@@ -20,12 +20,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Historia moderacji (ADR 0024). Zamyka dług z czterech ADR-ów naraz: wygasłe
- * bany były niewidoczne (0014), odwołań nikt nie liczył (0017, 0023), a
- * trafności zgłoszeń nie dało się zmierzyć, bo kasowanie posta zabierało
- * kaskadą jego zgłoszenia (0019).
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class ModerationLogIntegrationTest extends AbstractIntegrationTest {
 
@@ -118,10 +112,6 @@ class ModerationLogIntegrationTest extends AbstractIntegrationTest {
 		return actions;
 	}
 
-	/**
-	 * Sedno ADR 0014: wygasły ban znika z wykazu stanu, ale zostaje w historii —
-	 * dopiero to pozwala odróżnić „nigdy nie był zbanowany" od „ban wygasł".
-	 */
 	@Test
 	void expiredBanDisappearsFromStateButStaysInHistory() throws Exception {
 		TestUser owner = user("modlog-exp-owner@songly.io");
@@ -132,14 +122,12 @@ class ModerationLogIntegrationTest extends AbstractIntegrationTest {
 		jdbcTemplate.update("UPDATE community_bans SET expires_at = now() - interval '1 hour' WHERE user_id = ?",
 				UUID.fromString(troll.userId()));
 
-		// Wykaz stanu jest pusty...
 		JsonNode bans = objectMapper.readTree(mockMvc
 				.perform(get("/api/v1/communities/" + communityId + "/bans").header("Authorization",
 						"Bearer " + owner.token()))
 				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("content");
 		assertThat(bans).isEmpty();
 
-		// ...a historia pamięta ban razem z jego terminem.
 		JsonNode log = communityLog(owner, communityId);
 		assertThat(actions(log)).contains("COMMUNITY_BAN_ISSUED");
 		JsonNode entry = log.get(0);
@@ -148,7 +136,6 @@ class ModerationLogIntegrationTest extends AbstractIntegrationTest {
 		assertThat(entry.get("expiresAt").isNull()).isFalse();
 	}
 
-	/** Ban i ułaskawienie to dwa wpisy — inaczej „zbanowany 3×" nic nie znaczy. */
 	@Test
 	void banAndLiftAreBothRecorded() throws Exception {
 		TestUser owner = user("modlog-lift-owner@songly.io");
@@ -163,10 +150,6 @@ class ModerationLogIntegrationTest extends AbstractIntegrationTest {
 				"COMMUNITY_BAN_ISSUED");
 	}
 
-	/**
-	 * Sedno ADR 0019: liczba zgłoszeń zapisana w chwili usunięcia posta. Po fakcie
-	 * nie ma już czego zliczyć, bo kasowanie posta zabiera kaskadą jego zgłoszenia.
-	 */
 	@Test
 	void postRemovalRecordsHowManyReportsItHad() throws Exception {
 		TestUser owner = user("modlog-rep-owner@songly.io");
@@ -198,7 +181,6 @@ class ModerationLogIntegrationTest extends AbstractIntegrationTest {
 		assertThat(entry.get("subjectId").asText()).isEqualTo(author.userId());
 	}
 
-	/** Odwołania i ich rozstrzygnięcia — to ich brak zapisały ADR 0017 i 0023. */
 	@Test
 	void appealsAreRecordedOnBothSides() throws Exception {
 		TestUser owner = user("modlog-app-owner@songly.io");
@@ -217,11 +199,6 @@ class ModerationLogIntegrationTest extends AbstractIntegrationTest {
 				"COMMUNITY_BAN_APPEAL_ACCEPTED", "COMMUNITY_BAN_LIFTED");
 	}
 
-	/**
-	 * Historia platformowa odpowiada na pytanie, którego nie dało się dotąd zadać
-	 * nigdzie: „co ten człowiek ma za sobą" — i spina decyzje społecznościowe z
-	 * platformowymi.
-	 */
 	@Test
 	void platformLogSpansCommunityAndPlatformDecisions() throws Exception {
 		TestUser adminUser = admin("modlog-plat-admin@songly.io");
@@ -244,12 +221,6 @@ class ModerationLogIntegrationTest extends AbstractIntegrationTest {
 		assertThat(suspension.get("expiresAt").isNull()).isFalse();
 	}
 
-	/**
-	 * Sedno ADR 0031: nadanie i odebranie roli administratora trafia do dziennika.
-	 * Dotąd zostawiało po sobie wyłącznie linijkę w logach i przyrost licznika —
-	 * czyli ślad wymagający dostępu do maszyny, w odróżnieniu od każdej sankcji
-	 * wobec zwykłego konta.
-	 */
 	@Test
 	void adminRoleChangesAreRecordedAsPlatformDecisions() throws Exception {
 		TestUser adminUser = admin("modlog-role-admin@songly.io");
@@ -261,19 +232,12 @@ class ModerationLogIntegrationTest extends AbstractIntegrationTest {
 		JsonNode log = platformLog(adminUser, promoted);
 		assertThat(actions(log)).containsExactly("PLATFORM_ADMIN_REVOKED", "PLATFORM_ADMIN_GRANTED");
 		JsonNode revocation = log.get(0);
-		// Rola jest platformowa, więc wpis nie należy do żadnej społeczności — tak samo
-		// jak zawieszenie konta (ADR 0022).
 		assertThat(revocation.get("communityId").isNull()).isTrue();
 		assertThat(revocation.get("subjectId").asText()).isEqualTo(promoted.userId());
 		assertThat(revocation.get("actorId").asText()).isEqualTo(adminUser.userId());
 		assertThat(revocation.get("expiresAt").isNull()).isTrue();
 	}
 
-	/**
-	 * Bramka „tylko faktyczna zmiana" siedzi u publikującego zdarzenie (ADR 0021 i
-	 * 0031), więc dziennik dziedziczy ją za darmo: nadanie roli komuś, kto ją ma,
-	 * jest idempotentnym brakiem zmiany i nie ma czego zapisywać.
-	 */
 	@Test
 	void repeatedGrantDoesNotAddASecondEntry() throws Exception {
 		TestUser adminUser = admin("modlog-role-idem-admin@songly.io");
@@ -285,7 +249,6 @@ class ModerationLogIntegrationTest extends AbstractIntegrationTest {
 		assertThat(actions(platformLog(adminUser, promoted))).containsExactly("PLATFORM_ADMIN_GRANTED");
 	}
 
-	/** Historię społeczności czyta jej moderacja, nie dowolny członek. */
 	@Test
 	void communityLogRequiresModerator() throws Exception {
 		TestUser owner = user("modlog-perm-owner@songly.io");
@@ -297,22 +260,10 @@ class ModerationLogIntegrationTest extends AbstractIntegrationTest {
 				"Bearer " + member.token())).andExpect(status().isForbidden());
 		mockMvc.perform(get("/api/v1/communities/" + UUID.randomUUID() + "/moderation-log").header("Authorization",
 				"Bearer " + owner.token())).andExpect(status().isNotFound());
-		// Historia platformowa jest tylko dla adminów (gating na prefiksie).
 		mockMvc.perform(get("/api/v1/admin/moderation-log").header("Authorization", "Bearer " + owner.token()))
 				.andExpect(status().isForbidden());
 	}
 
-	/**
-	 * Usunięcie konta zabiera wpisy <b>o</b> tej osobie, ale wpisy <b>jej
-	 * autorstwa</b> zostawia bez autora — ta sama asymetria co przy banach (ADR
-	 * 0011).
-	 *
-	 * <p>
-	 * Banuje tu <b>moderator, nie właściciel</b>, i to nie jest kosmetyka: gdyby
-	 * autorem decyzji był właściciel, jego konto zabrałoby przy kasowaniu całą
-	 * społeczność, a z nią jej historię — i nie byłoby czego osierocić (osobny test
-	 * niżej).
-	 */
 	@Test
 	void accountDeletionRemovesOwnEntriesAndOrphansAuthoredOnes() throws Exception {
 		TestUser adminUser = admin("modlog-del-admin@songly.io");
@@ -328,7 +279,6 @@ class ModerationLogIntegrationTest extends AbstractIntegrationTest {
 		ban(moderator, communityId, troll, null);
 		assertThat(platformLog(adminUser, troll)).isNotEmpty();
 
-		// Moderator kasuje konto: jego decyzja zostaje, traci tylko autora.
 		mockMvc.perform(delete("/api/v1/auth/me").header("Authorization", "Bearer " + moderator.token())
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"password":"password123"}""")).andExpect(status().isNoContent());
@@ -336,18 +286,12 @@ class ModerationLogIntegrationTest extends AbstractIntegrationTest {
 		assertThat(afterModeratorLeft).isNotEmpty();
 		assertThat(afterModeratorLeft.get(0).get("actorId").isNull()).isTrue();
 
-		// Zbanowany kasuje konto: historia sankcji wobec niego znika razem z nim.
 		mockMvc.perform(delete("/api/v1/auth/me").header("Authorization", "Bearer " + troll.token())
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"password":"password123"}""")).andExpect(status().isNoContent());
 		assertThat(platformLog(adminUser, troll)).isEmpty();
 	}
 
-	/**
-	 * Historia społeczności znika razem z nią — w praktyce także wtedy, gdy
-	 * właściciel kasuje konto, bo to usuwa jego społeczności. Wpis bez społeczności
-	 * nie miałby jak zostać odczytany, więc zostawiałby tylko rosnącą tabelę.
-	 */
 	@Test
 	void communityDeletionRemovesItsHistory() throws Exception {
 		TestUser adminUser = admin("modlog-comm-admin@songly.io");

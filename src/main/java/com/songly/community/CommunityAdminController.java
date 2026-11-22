@@ -13,15 +13,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * Druga instancja odwoławcza od banów w społecznościach (ADR 0028).
- *
- * <p>
- * Kontroler siedzi w module community, bo to jego dane — a leży pod prefiksem
- * {@code /api/v1/admin/**}, więc rolę pilnuje {@code SecurityConfig} (ADR 0021)
- * i nie trzeba jej tu powtarzać. Ten sam układ co przy historii moderacji (ADR
- * 0024).
- */
 @RestController
 @RequestMapping("/api/v1/admin")
 @SecurityRequirement(name = "bearerAuth")
@@ -38,7 +29,6 @@ class CommunityAdminController {
 		return communityService.escalatedAppeals();
 	}
 
-	/** Uchylenie banu = uwzględnienie odwołania w drugiej instancji. */
 	@DeleteMapping("/communities/{communityId}/bans/{userId}")
 	ResponseEntity<Void> overturnBan(Authentication authentication, @PathVariable UUID communityId,
 			@PathVariable UUID userId) {

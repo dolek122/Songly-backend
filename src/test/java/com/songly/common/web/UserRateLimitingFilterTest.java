@@ -54,8 +54,6 @@ class UserRateLimitingFilterTest {
 
 	private UserRateLimitingFilter filterWith(UserRateLimitProperties.Rule... rules) {
 		properties.setRules(List.of(rules));
-		// Reguły kompilują się w konstruktorze, więc filtr musi powstać po ustawieniu
-		// propercji — inaczej test sprawdzałby domyślne reguły.
 		return new UserRateLimitingFilter(new FixedWindowCounter(redisTemplate), properties, new ObjectMapper(),
 				meterRegistry);
 	}
@@ -99,7 +97,6 @@ class UserRateLimitingFilterTest {
 		verifyNoInteractions(redisTemplate);
 	}
 
-	/** Metoda spoza reguły — tu odczyt — nie jest liczona, choć ścieżka pasuje. */
 	@Test
 	void doesNotCount_whenMethodIsNotInRule() throws Exception {
 		UserRateLimitingFilter filter = filterWith(
@@ -111,10 +108,6 @@ class UserRateLimitingFilterTest {
 		verifyNoInteractions(redisTemplate);
 	}
 
-	/**
-	 * Klucz jest nazwą reguły i użytkownikiem, nie ścieżką — cała grupa dzieli
-	 * jeden licznik.
-	 */
 	@Test
 	void countsUnderRuleNameAndUser() throws Exception {
 		UserRateLimitingFilter filter = filterWith(
@@ -142,10 +135,6 @@ class UserRateLimitingFilterTest {
 		assertThat(response.getStatus()).isEqualTo(HttpStatus.OK.value());
 	}
 
-	/**
-	 * Przy dwóch przekroczonych regułach Retry-After musi wskazywać późniejszą —
-	 * krótszy obiecywałby powrót kończący się kolejnym 429.
-	 */
 	@Test
 	void reportsLatestRetryAfter_whenSeveralRulesAreExceeded() throws Exception {
 		UserRateLimitingFilter filter = filterWith(rule("writes", List.of("PUT"), "/api/**", 1, Duration.ofMinutes(1)),
@@ -162,7 +151,6 @@ class UserRateLimitingFilterTest {
 		assertThat(response.getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
 		assertThat(response.getHeader(HttpHeaders.RETRY_AFTER)).isEqualTo("480");
 		assertThat(response.getContentAsString()).contains("RATE_LIMIT_EXCEEDED");
-		// Tag to nazwa reguły z konfiguracji — ograniczona liczba wartości (§13).
 		assertThat(meterRegistry.counter("songly.rate.limit.user.rejected", "rule", "writes").count()).isEqualTo(1);
 	}
 }

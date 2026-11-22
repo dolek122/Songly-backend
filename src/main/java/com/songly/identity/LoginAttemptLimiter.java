@@ -8,31 +8,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-/**
- * Limit prób logowania na adres e-mail (ADR 0051), obok limitu per IP z
- * {@code RateLimitingFilter}. Tamten nie chroni konta przed atakiem
- * rozproszonym: każdy adres źródłowy ma własne okno, więc sto adresów dawało
- * sto razy więcej prób na jedno hasło.
- *
- * <p>
- * <b>Klucz to skrót adresu, bez sprawdzania, czy konto istnieje.</b> Adres bez
- * konta dostaje identyczny limit, więc odmowa nie mówi niczego o rejestracji
- * (§13). Skrót, a nie adres, bo klucze Redisa widać w narzędziach do
- * monitorowania, a adres to dane osobowe.
- *
- * <p>
- * <b>Liczymy każdą próbę przed sprawdzeniem hasła, a udane logowanie zeruje
- * licznik.</b> Liczenie samych porażek wymagałoby odczytu przed bcryptem i
- * zapisu po nim, a równoległe próby przechodziłyby między jednym a drugim.
- * {@code INCR} jest atomowy, więc limit trzyma przy dowolnej równoległości, a
- * prośba ponad limit nie kosztuje nawet bcrypta.
- *
- * <p>
- * Świadomy koszt: obcy może zablokować logowanie na cudzy adres na długość
- * okna. Zalogowane urządzenia działają dalej (refresh tokenu nie jest
- * limitowany), a okno jest krótkie. Fail-open jak reszta limitów: awaria Redisa
- * nie odcina logowania.
- */
 @Component
 class LoginAttemptLimiter {
 
@@ -51,10 +26,6 @@ class LoginAttemptLimiter {
 		this.window = window;
 	}
 
-	/**
-	 * @throws LoginRateLimitExceededException
-	 *             gdy ta próba przekracza limit dla adresu
-	 */
 	void recordAttempt(String email) {
 		String key = key(email);
 		Long attempts;
@@ -80,11 +51,6 @@ class LoginAttemptLimiter {
 		}
 	}
 
-	/**
-	 * Licznik bez TTL (INCR przeszedł, EXPIRE nie) dostaje okno tutaj, inaczej
-	 * adres zostałby zablokowany na zawsze — ta sama pułapka co w
-	 * {@code FixedWindowCounter}.
-	 */
 	private long retryAfterSeconds(String key) {
 		try {
 			Long ttl = redisTemplate.getExpire(key, TimeUnit.SECONDS);

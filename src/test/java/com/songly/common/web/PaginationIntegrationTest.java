@@ -17,14 +17,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Kolejność list należy do serwera, a {@code sort} od klienta jest ignorowany
- * (ADR 0051). Wcześniej Spring Data doklejał go do każdego zapytania, więc
- * {@code ?sort=foo} dawał 500 na każdej liście. Tam, gdzie zapytanie ma własne
- * {@code ORDER BY}, sortowanie klienta szło za nim jako drugi klucz; tam, gdzie
- * go nie miało (wyszukiwarka, gatunki), klient wybierał kolejność sam, po
- * dowolnym polu encji.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class PaginationIntegrationTest extends AbstractIntegrationTest {
 
@@ -38,16 +30,12 @@ class PaginationIntegrationTest extends AbstractIntegrationTest {
 
 	@BeforeEach
 	void setUp() throws Exception {
-		// Adres na test, bo baza jest wspólna dla całej suity (patrz
-		// registerAndVerify).
 		token = tokenOf(registerAndVerify("paging-" + UUID.randomUUID() + "@paging.test", "password123").getResponse()
 				.getContentAsString());
 	}
 
 	@Test
 	void unknownSortField_isIgnoredOnEveryKindOfQuery() throws Exception {
-		// Po jednej liście na każdy rodzaj zapytania: pochodne z nazwy metody, JPQL i
-		// findAll — każdy wywracał się na nieznanym polu innym wyjątkiem.
 		for (String path : List.of("/api/v1/genres", "/api/v1/feed", "/api/v1/posts", "/api/v1/communities",
 				"/api/v1/notifications", "/api/v1/profiles/search?query=paging")) {
 			String separator = path.contains("?") ? "&" : "?";
@@ -56,10 +44,6 @@ class PaginationIntegrationTest extends AbstractIntegrationTest {
 		}
 	}
 
-	/**
-	 * Wyszukiwarka nie miała {@code ORDER BY}, więc kolejność była taka, jaką
-	 * akurat zwróci Postgres, a kolejne strony mogły się nakładać.
-	 */
 	@Test
 	void userSearch_isOrderedByName() throws Exception {
 		registerAndVerify("pagina-c@paging.test", "password123");

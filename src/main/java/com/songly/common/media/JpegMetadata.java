@@ -2,23 +2,6 @@ package com.songly.common.media;
 
 import java.io.ByteArrayOutputStream;
 
-/**
- * Usuwa metadane z JPEG-a, przepisując plik segment po segmencie, bez
- * dekodowania obrazu.
- *
- * <p>
- * <b>Lista dozwolonych, nie zakazanych.</b> Zostaje to, co jest potrzebne do
- * narysowania obrazu (tablice, ramka, skany), oraz trzy segmenty aplikacyjne,
- * które wpływają na wygląd: JFIF bez miniatury, profil kolorów ICC i znacznik
- * Adobe (bez niego dekoder źle odczyta kolory pliku CMYK). Wszystko inne ginie:
- * EXIF z GPS-em, XMP, IPTC z APP13, komentarze, a także miniatura — znany
- * przypadek wycieku to przycięte zdjęcie, którego miniatura w EXIF-ie
- * pokazywała nadal całość.
- *
- * <p>
- * <b>Wszystko po EOI ginie.</b> Telefony doklejają tam drugi obraz (mapa głębi
- * z MPF) albo film „ruchomego zdjęcia”, każde z własnymi metadanymi.
- */
 final class JpegMetadata {
 
 	private static final int SOI = 0xD8;
@@ -52,7 +35,6 @@ final class JpegMetadata {
 			if (pos >= in.length || (in[pos] & 0xFF) != 0xFF) {
 				throw new UnsupportedImageException();
 			}
-			// Dowolna liczba bajtów 0xFF przed znacznikiem to dopuszczalne wypełnienie.
 			while (pos < in.length && (in[pos] & 0xFF) == 0xFF) {
 				pos++;
 			}
@@ -103,7 +85,6 @@ final class JpegMetadata {
 
 	private static boolean keeps(int marker, byte[] in, int payload, int end) {
 		if (marker == APP0) {
-			// Bajty 12 i 13 treści JFIF to wymiary miniatury; zero znaczy, że jej nie ma.
 			return Bytes.startsWith(in, payload, end, JFIF) && end - payload >= 14 && in[payload + 12] == 0
 					&& in[payload + 13] == 0;
 		}
@@ -116,11 +97,6 @@ final class JpegMetadata {
 		return !(marker >= APP0 && marker <= APP15) && marker != COM;
 	}
 
-	/**
-	 * Koniec danych skanu: pierwszy znacznik, który nie jest ani wypełnieniem
-	 * {@code FF 00}, ani znacznikiem restartu. Plik progresywny ma kilka skanów i
-	 * segmenty między nimi, więc pętla główna wraca do czytania segmentów.
-	 */
 	private static int scanEnd(byte[] in, int pos) {
 		while (pos + 1 < in.length) {
 			if ((in[pos] & 0xFF) == 0xFF) {

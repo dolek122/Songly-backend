@@ -18,12 +18,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * Operacje administracyjne (ADR 0021). Całe {@code /api/v1/admin/**} jest
- * zamknięte rolą w {@code SecurityConfig} — gating ścieżką, nie adnotacją na
- * metodzie, bo wtedy nowy endpoint w tym kontrolerze jest chroniony domyślnie,
- * a nie dopiero gdy ktoś pamięta o adnotacji.
- */
 @RestController
 @RequestMapping("/api/v1/admin")
 @SecurityRequirement(name = "bearerAuth")
@@ -66,20 +60,12 @@ class AdminController {
 		return ResponseEntity.noContent().build();
 	}
 
-	/**
-	 * Zdjęcie zawieszenia jest też <b>uznaniem</b> wiszącego odwołania (ADR 0023) —
-	 * to ta sama decyzja, więc nie ma osobnego endpointu uznania.
-	 */
 	@DeleteMapping("/users/{userId}/suspension")
 	ResponseEntity<Void> liftSuspension(Authentication authentication, @PathVariable UUID userId) {
 		suspensionService.lift(userId, currentUserId(authentication));
 		return ResponseEntity.noContent().build();
 	}
 
-	/**
-	 * Odrzucenie odwołania — zawieszenie zostaje, sprawa tego zawieszenia
-	 * zamknięta.
-	 */
 	@PostMapping("/users/{userId}/suspension/appeal/rejection")
 	ResponseEntity<Void> rejectSuspensionAppeal(Authentication authentication, @PathVariable UUID userId) {
 		suspensionService.rejectAppeal(userId, currentUserId(authentication));

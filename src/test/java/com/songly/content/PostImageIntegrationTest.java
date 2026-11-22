@@ -31,10 +31,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Zdjęcia w postach (ADR 0010) — wgranie w osobnym kroku, dołączenie kluczem
- * przy publikacji.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class PostImageIntegrationTest extends AbstractIntegrationTest {
 
@@ -102,10 +98,6 @@ class PostImageIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isOk()).andExpect(jsonPath("$.imageUrl").value(imageUrl));
 	}
 
-	/**
-	 * Zdjęcie w poście jest publiczne, a EXIF z aparatu mówi, gdzie je zrobiono
-	 * (ADR 0047). Sprawdzamy plik w magazynie, nie odpowiedź API.
-	 */
 	@Test
 	void uploadedImage_isStoredWithoutCameraMetadata() throws Exception {
 		String token = accessToken("post-image-exif@songly.io");
@@ -124,11 +116,6 @@ class PostImageIntegrationTest extends AbstractIntegrationTest {
 		assertThat(createPost(token, "Bez zdjecia", null, 201).get("imageUrl").isNull()).isTrue();
 	}
 
-	/**
-	 * Sedno walidacji własności: cudzy klucz nie da się przypiąć do swojego posta.
-	 * Bez tego wystarczyłoby podać czyjś klucz, żeby pokazać jego zdjęcie pod swoim
-	 * nazwiskiem — a przy usunięciu takiego posta skasować właścicielowi plik.
-	 */
 	@Test
 	void anotherUsersImageKey_isRejected() throws Exception {
 		String owner = accessToken("post-image-owner@songly.io");
@@ -141,7 +128,6 @@ class PostImageIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("UNKNOWN_POST_IMAGE"));
 	}
 
-	/** Zmyślony klucz odpada tak samo jak cudzy — ten sam kod, ta sama odmowa. */
 	@Test
 	void fabricatedImageKey_isRejected() throws Exception {
 		String token = accessToken("post-image-fake@songly.io");
@@ -152,11 +138,6 @@ class PostImageIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("UNKNOWN_POST_IMAGE"));
 	}
 
-	/**
-	 * Własny prefiks to za mało: {@code ..} za nim prowadzi do cudzego pliku, bo
-	 * klient HTTP rozwija takie segmenty w adresie, zanim wyśle żądanie. Klucz musi
-	 * mieć dokładnie kształt wydawany przy wgraniu.
-	 */
 	@Test
 	void ownPrefixWithTraversal_isRejected() throws Exception {
 		String owner = accessToken("post-image-trav-owner@songly.io");
@@ -173,11 +154,6 @@ class PostImageIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("UNKNOWN_POST_IMAGE"));
 	}
 
-	/**
-	 * Usunięcie posta kasuje jego zdjęcie. Bez tego każdy skasowany post
-	 * zostawiałby plik, którego nic już nie wskazuje i po którym nie ma śladu w
-	 * bazie — czyli nie da się go później odnaleźć nawet ręcznie.
-	 */
 	@Test
 	void deletingPost_removesItsImage() throws Exception {
 		String token = accessToken("post-image-delete@songly.io");
@@ -192,10 +168,6 @@ class PostImageIntegrationTest extends AbstractIntegrationTest {
 		assertThat(fetchAnonymously(imageUrl).statusCode()).isEqualTo(404);
 	}
 
-	/**
-	 * Kasowanie konta sprząta też pliki. Posty giną wsadowo, więc klucze trzeba
-	 * odczytać wcześniej — inaczej po skasowaniu wierszy nie ma już skąd ich wziąć.
-	 */
 	@Test
 	void deletingAccount_removesPostImages() throws Exception {
 		String token = accessToken("post-image-account@songly.io");
@@ -219,11 +191,6 @@ class PostImageIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.code").value("UNSUPPORTED_IMAGE"));
 	}
 
-	/**
-	 * Porzucone wgranie znika z magazynu i przestaje się dać przypiąć (ADR 0048).
-	 * Wiek ustawiamy SQL-em, bo właśnie on jest przedmiotem testu, a encja słusznie
-	 * nie pozwala go podać.
-	 */
 	@Test
 	void abandonedUpload_isRemovedFromStorage_andCanNoLongerBeAttached() throws Exception {
 		String token = accessToken("post-image-abandoned@songly.io");
@@ -238,15 +205,9 @@ class PostImageIntegrationTest extends AbstractIntegrationTest {
 				.contentType(MediaType.APPLICATION_JSON).content("""
 						{"content":"za pozno","imageKey":"%s"}""".formatted(key))).andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("UNKNOWN_POST_IMAGE"))
-				// To jedyna droga, którą trafia tu uczciwy klient, więc komunikat ma
-				// mówić, co zrobić, a nie oskarżać o cudzy klucz.
 				.andExpect(jsonPath("$.message").value("Zdjęcie wygasło albo zostało już użyte. Wgraj je ponownie."));
 	}
 
-	/**
-	 * Sprzątanie nie może dotknąć ani świeżego wgrania, ani zdjęcia, które już wisi
-	 * w poście — także wtedy, gdy wgrano je dawno.
-	 */
 	@Test
 	void cleanup_leavesRecentUploadsAndPublishedImagesAlone() throws Exception {
 		String token = accessToken("post-image-survivor@songly.io");
@@ -262,10 +223,6 @@ class PostImageIntegrationTest extends AbstractIntegrationTest {
 		createPost(token, "Swieze", recent.get("key").asText(), 201);
 	}
 
-	/**
-	 * Jeden plik, jeden post. Wcześniej ten sam klucz dawało się przypiąć dwa razy,
-	 * a usunięcie jednego posta kasowało zdjęcie drugiemu.
-	 */
 	@Test
 	void sameUpload_cannotBeAttachedToTwoPosts() throws Exception {
 		String token = accessToken("post-image-twice@songly.io");
@@ -278,11 +235,6 @@ class PostImageIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(jsonPath("$.code").value("UNKNOWN_POST_IMAGE"));
 	}
 
-	/**
-	 * Ponad limit oczekujących (domyślnie 10) kolejne wgranie usuwa najstarsze,
-	 * zamiast się nie udać — przeglądanie galerii w aplikacji nie może nikogo
-	 * zablokować na dobę.
-	 */
 	@Test
 	void uploadBeyondPendingLimit_evictsTheOldest() throws Exception {
 		String token = accessToken("post-image-evict@songly.io");

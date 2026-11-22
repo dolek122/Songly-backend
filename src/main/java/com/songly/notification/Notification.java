@@ -9,11 +9,6 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * {@code resourceId} wskazuje obiekt źródłowy (post albo zaproszenie) — celowo
- * bez klucza obcego, bo tabele należą do innych modułów; powiadomienie może
- * przeżyć usunięty post.
- */
 @Entity
 @Table(name = "notifications")
 class Notification {
@@ -52,10 +47,6 @@ class Notification {
 		this.createdAt = createdAt;
 	}
 
-	/**
-	 * Zwinięcie kolejnego powiadomienia w to istniejące (ADR 0035): wskazuje
-	 * najnowszy zasób i wraca na górę skrzynki jako jedno.
-	 */
 	void refresh(UUID resourceId, Instant occurredAt) {
 		this.resourceId = resourceId;
 		this.createdAt = occurredAt;

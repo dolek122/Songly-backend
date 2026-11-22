@@ -2,19 +2,6 @@ package com.songly.identity;
 
 import org.springframework.web.util.HtmlUtils;
 
-/**
- * Treść stron usuwania konta (ADR 0043). Zwykłe łańcuchy zamiast silnika
- * szablonów: stron jest cztery, a jedyną zmienną spoza naszego kodu jest token
- * z adresu — dla niego jedna zależność do escapowania nie uzasadnia dokładania
- * Thymeleafa do całej aplikacji.
- *
- * <p>
- * Treść odpowiada na pytania, które Google Play stawia stronie usuwania konta:
- * czyja to aplikacja, jak o usunięcie poprosić, co znika, a co i jak długo
- * zostaje. Lista „co usuwamy" musi iść za {@code *AccountDeletionListener}
- * wszystkich modułów — nowy moduł z danymi per-user dopisuje się i tam, i
- * tutaj.
- */
 final class AccountDeletionPages {
 
 	static final String START_PATH = "/account-deletion";
@@ -121,11 +108,6 @@ final class AccountDeletionPages {
 				""".formatted(ttlMinutes, START_PATH));
 	}
 
-	/**
-	 * Bez zewnętrznych zasobów: strona nie ładuje niczego spoza tego dokumentu,
-	 * więc token z adresu nie wycieka w nagłówku {@code Referer}, a nagłówek CSP z
-	 * kontrolera może zabronić wszystkiego poza stylami inline.
-	 */
 	private static String layout(String title, String body) {
 		return """
 				<!doctype html>

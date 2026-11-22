@@ -6,17 +6,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.zip.CRC32;
 
-/**
- * Usuwa metadane z PNG, przepisując plik blok po bloku ({@code chunk}), bez
- * dekodowania obrazu.
- *
- * <p>
- * Lista dozwolonych: bloki obrazu, przezroczystości, kolorów i animacji APNG.
- * Giną {@code eXIf} (poza orientacją, patrz {@link ExifOrientation}), bloki
- * tekstowe {@code tEXt}/{@code zTXt}/{@code iTXt} — w nich programy zapisują
- * XMP, a nawet cały EXIF jako tekst — {@code tIME} i każdy blok, którego nie
- * znamy.
- */
 final class PngMetadata {
 
 	private static final byte[] SIGNATURE = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};

@@ -19,11 +19,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Kanał push (ADR 0040): kto dostaje push, co w nim jest i kiedy urządzenie
- * przestaje go dostawać. Tokeny są unikalne per przypadek — baza i rekorder są
- * wspólne dla całej suity.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class PushNotificationIntegrationTest extends AbstractIntegrationTest {
 
@@ -99,11 +94,6 @@ class PushNotificationIntegrationTest extends AbstractIntegrationTest {
 				.containsKey("notificationId");
 	}
 
-	/**
-	 * Zawieszenie nie odpina telefonów, a zawieszone konto nie ma dostępu do
-	 * niczego, do czego push prowadzi (ADR 0022). Bez filtra ekran blokady dalej
-	 * pokazywał nazwy osób zapraszających je do znajomych (ADR 0049).
-	 */
 	@Test
 	void suspendedRecipientGetsNoPush() throws Exception {
 		TestUser suspended = user("push-suspended-recipient@songly.io");
@@ -119,10 +109,6 @@ class PushNotificationIntegrationTest extends AbstractIntegrationTest {
 		assertThat(pushes.sentTo("push-suspended-device")).isEmpty();
 	}
 
-	/**
-	 * Deduplikacja ze skrzynki (ADR 0035) obowiązuje też push: pętla
-	 * cofnij/przywróć nie może dzwonić komuś w kieszeni przy każdym obrocie.
-	 */
 	@Test
 	void likeLoopDoesNotRepeatThePush() throws Exception {
 		TestUser author = user("push-loop-author@songly.io");
@@ -140,11 +126,6 @@ class PushNotificationIntegrationTest extends AbstractIntegrationTest {
 		assertThat(pushes.sentTo("push-loop-device")).hasSize(1);
 	}
 
-	/**
-	 * Filtr blokad działa w chwili wysyłki, ale decyzja moderacyjna przechodzi mimo
-	 * blokady — inaczej wystarczyłoby zablokować moderatora, żeby nie dowiedzieć
-	 * się o własnym banie (ADR 0012). I nie niesie nazwy moderatora.
-	 */
 	@Test
 	void blockSilencesActivityButNotModerationDecisions() throws Exception {
 		TestUser owner = user("push-block-owner@songly.io");
@@ -169,10 +150,6 @@ class PushNotificationIntegrationTest extends AbstractIntegrationTest {
 				.doesNotContain("spam");
 	}
 
-	/**
-	 * Ten sam telefon, inne konto: poprzedni właściciel nie może tam dalej dostawać
-	 * swoich pushy.
-	 */
 	@Test
 	void reRegisteringTokenMovesTheDeviceToTheNewAccount() throws Exception {
 		TestUser first = user("push-move-first@songly.io");
@@ -186,10 +163,6 @@ class PushNotificationIntegrationTest extends AbstractIntegrationTest {
 		assertThat(pushes.sentTo("push-move-device")).isEmpty();
 	}
 
-	/**
-	 * Cudzy token daje 204, ale niczego nie odpina — odpowiedź nie mówi, czyj to
-	 * token.
-	 */
 	@Test
 	void removingSomeoneElsesTokenHasNoEffect() throws Exception {
 		TestUser owner = user("push-rm-owner@songly.io");
@@ -212,10 +185,6 @@ class PushNotificationIntegrationTest extends AbstractIntegrationTest {
 		assertThat(pushes.sentTo("push-rm-device")).hasSize(1);
 	}
 
-	/**
-	 * Zmiana hasła odcina telefon razem z sesjami — inaczej skradziony telefon
-	 * dalej by dzwonił.
-	 */
 	@Test
 	void passwordChangeUnregistersAllDevices() throws Exception {
 		TestUser owner = user("push-pwd-owner@songly.io");
@@ -229,10 +198,6 @@ class PushNotificationIntegrationTest extends AbstractIntegrationTest {
 		assertThat(pushDeviceRepository.findById("push-pwd-device")).isEmpty();
 	}
 
-	/**
-	 * Urządzenie, którego FCM już nie zna, znika — kolejne pushe nie lecą w
-	 * próżnię.
-	 */
 	@Test
 	void unregisteredDeviceIsForgotten() throws Exception {
 		TestUser author = user("push-gone-author@songly.io");

@@ -4,7 +4,6 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -13,27 +12,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
-/**
- * Pula do rozmów z serwisami zewnętrznymi (SMTP, FCM) poza wątkiem żądania (ADR
- * 0041, 0051). Wątek żądania nie może czekać na cudzy serwer: trzyma wtedy
- * wątek Tomcata, a z listenera {@code AFTER_COMMIT} także połączenia z bazą.
- *
- * <p>
- * <b>Kolejka ma granicę i przy przepełnieniu {@link #execute} rzuca
- * {@link RejectedExecutionException}.</b> Wołający decyduje, co wtedy przepada;
- * zablokowanie wątku żądania przywróciłoby dokładnie to, przed czym ta klasa
- * chroni.
- *
- * <p>
- * Kontekst MDC wędruje z żądaniem do wątku w tle, więc błąd ma w logu ten sam
- * {@code requestId} co żądanie, które go spowodowało. Wyjątek z zadania kończy
- * się wpisem w logu, nie śmiercią wątku.
- */
 public final class BoundedExecutor implements Executor, AutoCloseable {
 
 	private static final Logger log = LoggerFactory.getLogger(BoundedExecutor.class);
 
-	/** Ile czekamy przy zamykaniu aplikacji na zadania już przyjęte. */
 	private static final Duration SHUTDOWN_GRACE = Duration.ofSeconds(30);
 
 	private final String name;
@@ -46,10 +28,6 @@ public final class BoundedExecutor implements Executor, AutoCloseable {
 				new ThreadPoolExecutor.AbortPolicy());
 	}
 
-	/**
-	 * @throws RejectedExecutionException
-	 *             gdy kolejka jest pełna albo pula już zamknięta
-	 */
 	@Override
 	public void execute(Runnable task) {
 		Map<String, String> context = MDC.getCopyOfContextMap();
@@ -69,10 +47,6 @@ public final class BoundedExecutor implements Executor, AutoCloseable {
 		}
 	}
 
-	/**
-	 * Zadania przyjęte przed zamknięciem dostają chwilę na wykonanie, reszta
-	 * przepada z wpisem w logu.
-	 */
 	@Override
 	public void close() throws InterruptedException {
 		executor.shutdown();
@@ -82,10 +56,6 @@ public final class BoundedExecutor implements Executor, AutoCloseable {
 		}
 	}
 
-	/**
-	 * Wątki demony z czytelną nazwą: demon nie zatrzyma JVM, gdyby zamknięcie
-	 * kontekstu się nie wydarzyło, a nazwa mówi w zrzucie wątków, co tu robią.
-	 */
 	private static final class NamedDaemonThreadFactory implements ThreadFactory {
 
 		private final String prefix;

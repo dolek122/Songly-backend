@@ -2,16 +2,6 @@ package com.songly.common.media;
 
 import java.nio.ByteBuffer;
 
-/**
- * Jedyny znacznik EXIF, który przeżywa usunięcie metadanych (ADR 0047):
- * orientacja. Telefon zapisuje zdjęcie tak, jak leżała matryca, i dopisuje
- * „obróć o 90°” — bez tego znacznika portret wyświetlałby się bokiem.
- *
- * <p>
- * Czytamy wyłącznie IFD0 i wyłącznie ten jeden znacznik. EXIF, którego nie da
- * się przeczytać, znaczy po prostu „bez obrotu”: metadane i tak giną, więc
- * uszkodzony blok nie jest powodem, żeby odrzucać całe zdjęcie.
- */
 final class ExifOrientation {
 
 	static final int NORMAL = 1;
@@ -25,11 +15,6 @@ final class ExifOrientation {
 	private ExifOrientation() {
 	}
 
-	/**
-	 * Orientacja zapisana w strukturze TIFF, czyli w treści bloku EXIF. Przedrostek
-	 * {@code Exif\0\0} z JPEG-a jest pomijany, bo część programów dopisuje go także
-	 * w PNG i WebP, gdzie go być nie powinno.
-	 */
 	static int read(byte[] data, int offset, int length) {
 		if (Bytes.startsWith(data, offset, offset + length, JPEG_EXIF_HEADER)) {
 			offset += JPEG_EXIF_HEADER.length;
@@ -68,18 +53,12 @@ final class ExifOrientation {
 		return NORMAL;
 	}
 
-	/**
-	 * Najmniejszy poprawny TIFF z jednym wpisem — orientacją. Nie kopiujemy
-	 * oryginalnego wpisu, tylko piszemy nowy, żeby z cudzego bloku nie przeszedł
-	 * ani jeden bajt poza samą liczbą.
-	 */
 	static byte[] minimalTiff(int orientation) {
 		return ByteBuffer.allocate(26).put((byte) 'M').put((byte) 'M').putShort((short) 42).putInt(8)
 				.putShort((short) 1).putShort((short) ORIENTATION_TAG).putShort((short) TYPE_SHORT).putInt(1)
 				.putShort((short) orientation).putShort((short) 0).putInt(0).array();
 	}
 
-	/** Blok APP1 JPEG-a z samą orientacją, z przedrostkiem {@code Exif\0\0}. */
 	static byte[] jpegPayload(int orientation) {
 		byte[] tiff = minimalTiff(orientation);
 		byte[] payload = new byte[JPEG_EXIF_HEADER.length + tiff.length];

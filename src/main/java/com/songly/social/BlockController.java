@@ -33,10 +33,6 @@ class BlockController {
 		return ResponseEntity.noContent().build();
 	}
 
-	/**
-	 * Stan blokady dla ekranu cudzego profilu (ADR 0039). Osobno od profilu, bo
-	 * {@code profile} nie może zależeć od {@code social} — powstałby cykl.
-	 */
 	@GetMapping("/{userId}")
 	BlockStatusResponse blockStatus(Authentication authentication, @PathVariable UUID userId) {
 		return new BlockStatusResponse(socialGraphService.isBlocking(currentUserId(authentication), userId));

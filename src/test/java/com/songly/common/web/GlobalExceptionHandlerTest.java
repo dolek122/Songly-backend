@@ -12,25 +12,10 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.method.annotation.ExceptionHandlerMethodResolver;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
-/**
- * Mapowania, których nie da się wywołać przez MockMvc, bo powstają poza naszym
- * kodem — w kontenerze servletów.
- *
- * <p>
- * Test jednostkowy, a nie integracyjny, i to jest tu jedyna uczciwa opcja:
- * limit rozmiaru pliku egzekwuje kontener przy parsowaniu multiparta, a MockMvc
- * kontenera nie ma. Sprawdzamy więc dokładnie tę część, która należy do nas —
- * że wyjątek nie wpadnie do łapacza {@code Exception} i nie wróci jako 500.
- */
 class GlobalExceptionHandlerTest {
 
 	private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
 
-	/**
-	 * Bez tego mapowania za duży plik daje 500 {@code INTERNAL_ERROR} ze stack
-	 * tracem: w monitoringu wygląda jak awaria serwera, a klient nie ma jak
-	 * odróżnić „zmniejsz plik" od „spróbuj później".
-	 */
 	@Test
 	void maxUploadSizeExceeded_mapsToPayloadTooLarge() {
 		MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/profiles/me/avatar");
@@ -44,11 +29,6 @@ class GlobalExceptionHandlerTest {
 		assertThat(response.getBody().path()).isEqualTo("/api/v1/profiles/me/avatar");
 	}
 
-	/**
-	 * Wyścig dwóch identycznych zapisów kończy się naruszeniem klucza w bazie. To
-	 * konflikt ze stanem danych, nie awaria — i nie może wypuścić do klienta nazwy
-	 * ograniczenia ze schematu.
-	 */
 	@Test
 	void dataIntegrityViolation_mapsToConflictWithoutSchemaDetails() {
 		MockHttpServletRequest request = new MockHttpServletRequest("PUT", "/api/v1/posts/1/likes");
@@ -63,18 +43,11 @@ class GlobalExceptionHandlerTest {
 		assertThat(response.getBody().message()).doesNotContain("likes_pkey");
 	}
 
-	/**
-	 * Podwójne „cofnij lajk”: oba żądania wczytują wiersz, drugi DELETE nie trafia
-	 * w nic i Hibernate zgłasza blokadę optymistyczną. To ten sam wyścig co
-	 * podwójny INSERT, więc ta sama odpowiedź — 409, nie 500.
-	 */
 	@Test
 	void optimisticLockingFailure_mapsToConflict() {
 		ObjectOptimisticLockingFailureException ex = new ObjectOptimisticLockingFailureException(Object.class, "1");
 		MockHttpServletRequest request = new MockHttpServletRequest("DELETE", "/api/v1/posts/1/likes");
 
-		// Ten sam rozdzielacz, którego używa Spring MVC — bez mapowania wyjątek trafia
-		// do łapacza Exception, a sam wynik metody nic by o tym nie powiedział.
 		Method resolved = new ExceptionHandlerMethodResolver(GlobalExceptionHandler.class).resolveMethod(ex);
 		ResponseEntity<ApiError> response = handler.handleDataIntegrityViolation(ex, request);
 

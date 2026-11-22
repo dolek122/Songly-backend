@@ -24,18 +24,6 @@ import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Te same żądania wysłane naraz (ADR 0052). Każdy z tych przypadków przechodził
- * pojedynczo poprawnie, a równolegle zapisywał stan, którego sekwencja kliknięć
- * nigdy by nie dała: każde żądanie sprawdzało stan, zanim poprzednie zdążyło go
- * zmienić.
- *
- * <p>
- * Równoległych żądań jest mniej niż połączeń w puli testów (4). Przy większej
- * liczbie zakleszczałyby się na zapisie do skrzynki z listenera
- * {@code AFTER_COMMIT}, czyli test sprawdzałby rozmiar puli, a nie wyścig (ADR
- * 0051, {@code ConnectionPoolSizingTest}).
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class ConcurrentDecisionsIntegrationTest extends AbstractIntegrationTest {
 
@@ -54,10 +42,6 @@ class ConcurrentDecisionsIntegrationTest extends AbstractIntegrationTest {
 	private record TestUser(String token, String refreshToken, UUID id) {
 	}
 
-	/**
-	 * Trzy odrzucenia naraz to wciąż jedna decyzja, jedna kara i jedno
-	 * powiadomienie.
-	 */
 	@Test
 	void parallelDismissals_recordOneDecision() throws Exception {
 		TestUser owner = user("dismiss-owner");
@@ -88,7 +72,6 @@ class ConcurrentDecisionsIntegrationTest extends AbstractIntegrationTest {
 		assertThat(notifications(reporter, "POST_REPORT_DISMISSED")).isEqualTo(1);
 	}
 
-	/** Jedno odwołanie na ban, także gdy kliknięto trzy razy naraz. */
 	@Test
 	void parallelBanAppeals_acceptOne() throws Exception {
 		TestUser owner = user("appeal-owner");
@@ -108,7 +91,6 @@ class ConcurrentDecisionsIntegrationTest extends AbstractIntegrationTest {
 		assertThat(notifications(owner, "BAN_APPEAL_SUBMITTED")).isEqualTo(1);
 	}
 
-	/** To samo przy odwołaniu od zawieszenia konta. */
 	@Test
 	void parallelSuspensionAppeals_acceptOne() throws Exception {
 		TestUser admin = user("suspension-admin");
@@ -125,12 +107,6 @@ class ConcurrentDecisionsIntegrationTest extends AbstractIntegrationTest {
 		assertThat(statuses).containsOnlyOnce(204).containsOnly(204, 409);
 	}
 
-	/**
-	 * Token po rotacji wolno użyć raz. Przy równoległym użyciu każde żądanie
-	 * widziało jeszcze aktywną sesję i wydawało własną, więc z jednego tokenu
-	 * powstawały trzy niezależne łańcuchy — wykrywanie kradzieży (§9) ich nie
-	 * widziało, bo żaden nie używał odwołanego tokenu.
-	 */
 	@Test
 	void parallelRefreshes_leaveAtMostOneChain() throws Exception {
 		TestUser owner = user("refresh-owner");
@@ -152,10 +128,6 @@ class ConcurrentDecisionsIntegrationTest extends AbstractIntegrationTest {
 		assertThat(liveChains).isLessThanOrEqualTo(1);
 	}
 
-	/**
-	 * Zaproszenie w drugą stronę zamienia się w znajomość. Wysłane naraz tworzyły
-	 * dwa oczekujące zaproszenia, z których żadne nie było znajomością.
-	 */
 	@Test
 	void crossingFriendRequests_doNotLeaveTwoPending() throws Exception {
 		TestUser first = user("crossing-first");
@@ -169,10 +141,6 @@ class ConcurrentDecisionsIntegrationTest extends AbstractIntegrationTest {
 				second.id(), second.id(), first.id())).isLessThanOrEqualTo(1);
 	}
 
-	/**
-	 * Nazwa społeczności jest unikalna bez względu na wielkość liter, a przegrany
-	 * wyścig dostaje ten sam błąd co drugi klikający po kolei, nie ogólne 409.
-	 */
 	@Test
 	void communityNamesDifferingInCase_cannotBothBeCreated() throws Exception {
 		TestUser first = user("names-first");
@@ -218,10 +186,6 @@ class ConcurrentDecisionsIntegrationTest extends AbstractIntegrationTest {
 		return parallel(requests);
 	}
 
-	/**
-	 * Wszystkie żądania ruszają z jednej bramki, żeby naprawdę się na siebie
-	 * nałożyły.
-	 */
 	private <T> List<T> parallel(List<Callable<T>> requests) throws Exception {
 		ExecutorService pool = Executors.newFixedThreadPool(requests.size());
 		try {

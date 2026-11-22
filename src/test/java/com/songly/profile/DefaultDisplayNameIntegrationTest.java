@@ -15,15 +15,6 @@ import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Domyślna nazwa wyświetlana nie zdradza adresu e-mail (ADR 0046).
- *
- * <p>
- * Rejestracja idzie tu dwoma żądaniami wprost, a nie przez
- * {@code registerAndVerify}: pomocnik nadaje kontu nazwę z adresu, żeby
- * pozostałe testy miały przewidywalne nazwy, więc z nim ten test sprawdzałby
- * pomocnika, a nie aplikację.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class DefaultDisplayNameIntegrationTest extends AbstractIntegrationTest {
 
@@ -46,8 +37,6 @@ class DefaultDisplayNameIntegrationTest extends AbstractIntegrationTest {
 		assertThat(displayName).matches("Użytkownik \\d{6}");
 		assertThat(displayName.toLowerCase()).doesNotContain("jan").doesNotContain("kowalski");
 
-		// Wyszukiwarka to miejsce, w którym dawna nazwa wystawiała adres każdemu:
-		// fragment adresu nie może już znaleźć tego konta.
 		String searcher = registerWithoutNaming("default-name-searcher@songly.io");
 		JsonNode found = readJson(mockMvc.perform(
 				get("/api/v1/profiles/search").param("query", "kowalski").header("Authorization", "Bearer " + searcher))

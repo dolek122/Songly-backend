@@ -39,15 +39,9 @@ class SessionCleanupJobTest {
 
 		job.removeDeadSessions();
 
-		// Porcja mniejsza niż limit znaczy "nie ma już czego kasować" — kolejne
-		// zapytanie byłoby wyłącznie obciążeniem bazy.
 		verify(sessionRepository, times(2)).deleteDeadSessions(any(), anyInt());
 	}
 
-	/**
-	 * Zaniedbana tabela ma drenować się przez kolejne przebiegi, a nie w jednym,
-	 * który trzyma połączenie do bazy przez kwadrans.
-	 */
 	@Test
 	void neverExceedsBatchLimitInOneRun() {
 		when(sessionRepository.deleteDeadSessions(any(), anyInt())).thenReturn(100);
@@ -71,12 +65,6 @@ class SessionCleanupJobTest {
 				Instant.now().minus(Duration.ofDays(7)));
 	}
 
-	/**
-	 * Sprzątanie jest higieną, nie ścieżką krytyczną. Spring i tak przechwyciłby
-	 * wyjątek ze {@code @Scheduled} i zaplanował kolejny przebieg, ale zrobiłby to
-	 * ze stack tracem na ERROR — a niedostępna na chwilę baza nie jest awarią,
-	 * którą trzeba budzić kogoś w nocy.
-	 */
 	@Test
 	void survivesDatabaseFailure() {
 		when(sessionRepository.deleteDeadSessions(any(), anyInt())).thenThrow(new IllegalStateException("baza padła"));

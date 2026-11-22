@@ -9,10 +9,6 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Celowo bez odniesienia do konkretnego usera/zasobu — to tylko zliczenia "co
- * się dzieje", nie dane behawioralne per użytkownik (Claude.md §9).
- */
 @Entity
 @Table(name = "analytics_events")
 class AnalyticsEvent {

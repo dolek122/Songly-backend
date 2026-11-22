@@ -20,20 +20,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Pełna trafność zgłoszeń (ADR 0027).
- *
- * <p>
- * ADR 0019 zapisał, że zgłoszenie zamknięte usunięciem posta nie zostawia
- * śladu, a ADR 0025 — że sygnał jest jednostronny: liczyliśmy odrzucenia, nie
- * trafienia. Skutek był przewrotny: historia zgłoszenia ginęła dokładnie wtedy,
- * gdy zgłoszenie okazywało się <b>trafne</b>, bo kasowanie posta zabiera
- * kaskadą jego zgłoszenia.
- *
- * <p>
- * Limit ustawiony nisko (4, kara 2, podłoga 1), żeby nie robić dwudziestu żądań
- * na przypadek.
- */
 @TestPropertySource(properties = {"songly.security.rate-limit.enabled=false", "songly.content.report.limit=4",
 		"songly.content.report.dismissal-penalty=2", "songly.content.report.min-limit=1"})
 class ReportAccuracyIntegrationTest extends AbstractIntegrationTest {
@@ -138,11 +124,6 @@ class ReportAccuracyIntegrationTest extends AbstractIntegrationTest {
 		return actions;
 	}
 
-	/**
-	 * Sedno ADR 0027: usunięcie posta zapisuje trafienie <b>każdemu</b>
-	 * zgłaszającemu — i w kolejce, i w historii moderacji. Przed tą zmianą ślad
-	 * ginął razem z postem.
-	 */
 	@Test
 	void removingAPostRecordsAnUpheldReportForEveryReporter() throws Exception {
 		TestUser adminUser = admin("accuracy-upheld-admin@songly.io");
@@ -158,13 +139,10 @@ class ReportAccuracyIntegrationTest extends AbstractIntegrationTest {
 
 		removePost(owner, spam);
 
-		// Historia moderacji zapisuje trafienie obu zgłaszającym...
 		assertThat(platformLogActions(adminUser, firstReporter)).contains("POST_REPORT_UPHELD");
 		assertThat(platformLogActions(adminUser, secondReporter)).contains("POST_REPORT_UPHELD");
-		// ...a autorowi — usunięcie posta.
 		assertThat(platformLogActions(adminUser, author)).contains("COMMUNITY_POST_REMOVED");
 
-		// Kolejka pokazuje moderatorowi trafność przy następnym zgłoszeniu.
 		String another = createPost(author, communityId, "kolejny post");
 		report(firstReporter, another);
 		JsonNode entry = queue(owner, communityId).get(0);
@@ -172,11 +150,6 @@ class ReportAccuracyIntegrationTest extends AbstractIntegrationTest {
 		assertThat(entry.get("reporterDismissedCount").asInt()).isZero();
 	}
 
-	/**
-	 * Druga połowa ADR 0027: trafienia wybaczają odrzucenia jeden za jeden. Ktoś z
-	 * jednym trafnym i dwoma odrzuconymi zgłoszeniami ma przydział jak po jednym
-	 * odrzuceniu, nie jak po dwóch.
-	 */
 	@Test
 	void upheldReportsOffsetDismissals() throws Exception {
 		TestUser owner = user("accuracy-offset-owner@songly.io");
@@ -189,20 +162,14 @@ class ReportAccuracyIntegrationTest extends AbstractIntegrationTest {
 			posts.add(createPost(author, communityId, "post " + i));
 		}
 
-		// Dwa odrzucenia: przydział spadłby z 4 do podłogi (kara 2 × 2). Okno
-		// przesuwamy po każdej partii, bo zgłoszenia zajmują je niezależnie od swojego
-		// losu (ADR 0025) — inaczej badalibyśmy limit okna, nie przydział.
 		report(reporter, posts.get(0));
 		report(reporter, posts.get(1));
 		dismissAll(owner, communityId);
 		slideWindow(reporter);
-		// ...ale jedno trafne zgłoszenie odejmuje jedno odrzucenie.
 		report(reporter, posts.get(2));
 		removePost(owner, posts.get(2));
 		slideWindow(reporter);
 
-		// Netto jedno odrzucenie → przydział 4 - 2 = 2, więc dwa zgłoszenia przechodzą,
-		// trzecie już nie.
 		report(reporter, posts.get(3));
 		report(reporter, posts.get(4));
 		mockMvc.perform(
@@ -212,10 +179,6 @@ class ReportAccuracyIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isTooManyRequests());
 	}
 
-	/**
-	 * Trafienia nie podnoszą przydziału <b>powyżej</b> bazowego — inaczej ktoś, kto
-	 * raz zgłaszał dobrze, dostawałby szerszy kanał do zasypywania.
-	 */
 	@Test
 	void upheldReportsNeverRaiseTheAllowanceAboveBase() throws Exception {
 		TestUser owner = user("accuracy-cap-owner@songly.io");
@@ -228,14 +191,12 @@ class ReportAccuracyIntegrationTest extends AbstractIntegrationTest {
 			posts.add(createPost(author, communityId, "post " + i));
 		}
 
-		// Trzy trafne zgłoszenia, zero odrzuceń.
 		for (int i = 0; i < 3; i++) {
 			report(reporter, posts.get(i));
 			removePost(owner, posts.get(i));
 		}
 		slideWindow(reporter);
 
-		// Przydział to nadal 4, nie 4 + premia: cztery przechodzą, piąte nie.
 		for (int i = 3; i < 7; i++) {
 			report(reporter, posts.get(i));
 		}
@@ -246,11 +207,6 @@ class ReportAccuracyIntegrationTest extends AbstractIntegrationTest {
 				.andExpect(status().isTooManyRequests());
 	}
 
-	/**
-	 * Skasowanie <b>własnego</b> posta nie jest rozstrzygnięciem zgłoszenia —
-	 * inaczej autor spamu podnosiłby trafność zgłaszającym jednym kliknięciem, a to
-	 * jego decyzja, nie moderacji.
-	 */
 	@Test
 	void authorRemovingTheirOwnPostDoesNotCountAsUpheld() throws Exception {
 		TestUser owner = user("accuracy-own-owner@songly.io");
@@ -269,12 +225,6 @@ class ReportAccuracyIntegrationTest extends AbstractIntegrationTest {
 		assertThat(entry.get("reporterUpheldCount").asInt()).isZero();
 	}
 
-	/**
-	 * Jedno zgłoszenie to jedna decyzja. Powtórzone odrzucenie (podwójne
-	 * kliknięcie, dwóch moderatorów naraz) zapisywało dotąd kolejną karę w
-	 * przydziale, więc jedno zgłoszenie wystarczało, żeby zbić komuś limit do
-	 * podłogi.
-	 */
 	@Test
 	void dismissingTheSameReportTwiceRecordsOneDecision() throws Exception {
 		TestUser owner = user("accuracy-twice-owner@songly.io");

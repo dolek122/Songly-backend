@@ -13,11 +13,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 
-/**
- * Wygasłe zgłoszenia rejestracji znikają z bazy (ADR 0009). Mail weryfikacyjny
- * obiecuje osobie, której adres ktoś wpisał, że zgłoszenie „samo wygaśnie" — do
- * tej pory wygasał tylko link, a adres i hash hasła zostawały na zawsze.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class PendingRegistrationCleanupIntegrationTest extends AbstractIntegrationTest {
 
@@ -27,7 +22,6 @@ class PendingRegistrationCleanupIntegrationTest extends AbstractIntegrationTest 
 	@Autowired
 	private JdbcTemplate jdbcTemplate;
 
-	/** Przez SQL, bo encja nie pozwala ustawić terminu w przeszłości. */
 	private UUID insertPending(String email, Instant expiresAt) {
 		UUID id = UUID.randomUUID();
 		jdbcTemplate.update("""

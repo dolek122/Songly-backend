@@ -16,18 +16,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Ścieżka, którą sprawdza Render ({@code render.yaml}), liczy wyłącznie to, bez
- * czego aplikacja nie działa (ADR 0051). Redis i poczta są fail-open, więc ich
- * awaria nie może zdejmować instancji z ruchu, a przy pełnym
- * {@code /actuator/health} zdejmowała.
- *
- * <p>
- * Limit per IP wyłączony jak w pozostałych klasach: rejestracja z włączonym
- * limitem zostawia licznik dla {@code 127.0.0.1} we wspólnym Redisie, a
- * {@code RateLimitingIntegrationTest} uruchomiony w tej samej minucie dostaje
- * wtedy 429 już przy drugim żądaniu.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class HealthCheckIntegrationTest extends AbstractIntegrationTest {
 
@@ -50,7 +38,6 @@ class HealthCheckIntegrationTest extends AbstractIntegrationTest {
 						.getContentAsString())
 				.get("accessToken").asText();
 
-		// Szczegóły widzi wyłącznie zalogowany (show-details=when-authorized).
 		JsonNode readiness = objectMapper
 				.readTree(mockMvc.perform(get("/actuator/health/readiness").header("Authorization", "Bearer " + token))
 						.andExpect(status().isOk()).andReturn().getResponse().getContentAsString());

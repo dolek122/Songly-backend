@@ -17,11 +17,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Znacznik „ogłosiliśmy granie" utrzymywany przy publikacji (ADR 0007) — z
- * niego poll rozpoznaje, że status wygasł, a nie że użytkownik nigdy nic nie
- * grał.
- */
 @ExtendWith(MockitoExtension.class)
 class NowPlayingStatusPublisherTest {
 
@@ -52,9 +47,6 @@ class NowPlayingStatusPublisherTest {
 		verify(valueOperations).set(ANNOUNCED_KEY_PREFIX + userId, "1", Duration.ofHours(6));
 	}
 
-	/**
-	 * Znacznik musi zniknąć razem ze statusem, inaczej poll zapętliłby „stopped".
-	 */
 	@Test
 	void publishingStopped_clearsTheMarker() {
 		publisher().publishStopped(userId);

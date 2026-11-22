@@ -15,12 +15,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Publiczny profil innego użytkownika (GET /api/v1/profiles/{userId}) — do
- * oglądania cudzego profilu z aplikacji. Zwraca dane profilowe wraz z
- * ulubionymi gatunkami; świadomie nie niesie danych o zachowaniu (Claude.md
- * §9).
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class PublicProfileIntegrationTest extends AbstractIntegrationTest {
 
@@ -35,10 +29,6 @@ class PublicProfileIntegrationTest extends AbstractIntegrationTest {
 		return objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
 	}
 
-	/**
-	 * userId = podmiot (sub) tokena JWT; to nim posługuje się backend jako
-	 * principalem.
-	 */
 	private String userIdFromToken(String accessToken) {
 		String payload = accessToken.split("\\.")[1];
 		String json = new String(Base64.getUrlDecoder().decode(payload), StandardCharsets.UTF_8);

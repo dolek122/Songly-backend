@@ -14,27 +14,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Dwa gotowe konta do ręcznego przeklikania aplikacji lokalnie: administrator i
- * zwykły użytkownik.
- *
- * <p>
- * <b>Wyłącznie profil {@code local}</b> — hasła są w repo, więc to samo konto
- * na jakimkolwiek wspólnym środowisku byłoby publicznie znanym kluczem do
- * administracji. Profil nie włącza się sam: trzeba go podać przy starcie.
- *
- * <p>
- * Konta powstają tą samą drogą co po kliknięciu linku weryfikacyjnego
- * ({@link RegistrationService#verify}): wiersz w {@code users} i
- * {@link UserRegisteredEvent}, z którego reszta modułów (profil, analityka)
- * zakłada swoje dane. Rolę administratora nadajemy bezpośrednio, bo pierwszy
- * admin z założenia powstaje poza API (ADR 0021) — stąd brak wpisu w dzienniku
- * moderacji.
- *
- * <p>
- * Idempotentne: istniejące konto zostaje nietknięte, więc restart nie resetuje
- * haseł ani tego, co ktoś zdążył przeklikać.
- */
 @Component
 @Profile("local")
 class LocalDevAccountsSeeder implements ApplicationRunner {
@@ -49,11 +28,6 @@ class LocalDevAccountsSeeder implements ApplicationRunner {
 	private final PasswordEncoder passwordEncoder;
 	private final ApplicationEventPublisher eventPublisher;
 
-	/**
-	 * Profil {@code local} na środowisku, które wymaga prawdziwych sekretów, to
-	 * publicznie znane hasło administratora — więc start się nie udaje, zamiast
-	 * polegać wyłącznie na ostrzeżeniu w README.
-	 */
 	LocalDevAccountsSeeder(UserRepository userRepository, PasswordEncoder passwordEncoder,
 			ApplicationEventPublisher eventPublisher,
 			@Value("${" + DevSecrets.PRODUCTION_REQUIRED_PROPERTY + ":false}") boolean productionSecretsRequired) {

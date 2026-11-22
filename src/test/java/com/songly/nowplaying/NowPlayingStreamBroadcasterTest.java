@@ -74,10 +74,6 @@ class NowPlayingStreamBroadcasterTest {
 		assertThat(payload.getValue().status()).isEqualTo(status);
 	}
 
-	/**
-	 * Zawieszenie działa od razu (ADR 0022), a otwarty strumień nie przechodzi już
-	 * przez autoryzację — więc odbiorcę odcina dopiero ten filtr (ADR 0049).
-	 */
 	@Test
 	void suspendedFriend_withOpenStream_receivesNothing() {
 		UUID subject = UUID.randomUUID();
@@ -123,10 +119,6 @@ class NowPlayingStreamBroadcasterTest {
 		verify(hub, never()).push(any(), any(), any());
 	}
 
-	/**
-	 * Fan-out z Etapu 2 dowozi każdą zmianę na każdą instancję — ta bez ani jednego
-	 * strumienia nie może za to płacić zapytaniem o graf znajomych.
-	 */
 	@Test
 	void dropsMessage_withoutTouchingGraph_whenInstanceHoldsNoStreams() {
 		when(hub.hasAnySubscriber()).thenReturn(false);
@@ -137,11 +129,6 @@ class NowPlayingStreamBroadcasterTest {
 		verify(hub, never()).push(any(), any(), any());
 	}
 
-	/**
-	 * Widoczność egzekwowana przy pushu, nie przy otwarciu strumienia (ADR 0007,
-	 * Etap 4): wiadomość mogła wyjść z instancji, która o wyłączeniu jeszcze nie
-	 * wiedziała.
-	 */
 	@Test
 	void dropsMessage_whenSubjectTurnedSharingOff() {
 		UUID subject = UUID.randomUUID();
@@ -154,11 +141,6 @@ class NowPlayingStreamBroadcasterTest {
 		verify(hub, never()).push(any(), any(), any());
 	}
 
-	/**
-	 * „Przestał słuchać" nie może wpaść pod filtr widoczności — to właśnie ta
-	 * wiadomość leci przy jej wyłączeniu i ma zdjąć wpis z ekranu znajomego.
-	 * Odrzucenie jej zostawiłoby ostatni status widoczny w nieskończoność.
-	 */
 	@Test
 	void deliversStoppedMessage_evenWhenSubjectTurnedSharingOff() {
 		UUID subject = UUID.randomUUID();

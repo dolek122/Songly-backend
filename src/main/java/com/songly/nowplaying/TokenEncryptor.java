@@ -14,7 +14,6 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-/** AES-256-GCM: losowy 12-bajtowy IV doklejany przed szyfrogramem. */
 @Component
 class TokenEncryptor {
 
@@ -24,11 +23,6 @@ class TokenEncryptor {
 	private final SecretKey key;
 	private final SecureRandom secureRandom = new SecureRandom();
 
-	/**
-	 * Klucz deweloperski z repo odpada tam, gdzie wymagane są prawdziwe sekrety: z
-	 * nim każdy, kto ma zrzut bazy, odszyfrowałby tokeny Spotify wszystkich
-	 * użytkowników (Claude.md §9).
-	 */
 	TokenEncryptor(NowPlayingProperties properties,
 			@Value("${" + DevSecrets.PRODUCTION_REQUIRED_PROPERTY + ":false}") boolean productionSecretsRequired) {
 		byte[] keyBytes = Base64.getDecoder().decode(properties.getTokenEncryptionKey());

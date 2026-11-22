@@ -19,12 +19,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/**
- * Nazwy dla administracji (ADR 0036). Sedno: administrator widzi nazwę osoby
- * zawieszonej, choć jej profil jest dla wszystkich ukryty (ADR 0026) —
- * wcześniej wykaz zawieszeń pokazywał wyłącznie identyfikatory, a dociągnięcie
- * nazwy z profilu kończyło się 404 akurat dla ludzi, o których admin decyduje.
- */
 @TestPropertySource(properties = "songly.security.rate-limit.enabled=false")
 class AdminProfileSummariesIntegrationTest extends AbstractIntegrationTest {
 
@@ -64,7 +58,6 @@ class AdminProfileSummariesIntegrationTest extends AbstractIntegrationTest {
 				.header("Authorization", "Bearer " + admin.token()).contentType(MediaType.APPLICATION_JSON).content("""
 						{"reason":"nękanie"}""")).andExpect(status().isNoContent());
 
-		// Punkt wyjścia: zwykła droga do nazwy jest zamknięta także dla admina.
 		mockMvc.perform(get("/api/v1/profiles/" + target.userId()).header("Authorization", "Bearer " + admin.token()))
 				.andExpect(status().isNotFound());
 
@@ -85,10 +78,6 @@ class AdminProfileSummariesIntegrationTest extends AbstractIntegrationTest {
 		assertThat(suspended.get("suspended").asBoolean()).isTrue();
 	}
 
-	/**
-	 * Pod /api/v1/admin/** — rola pilnowana przez SecurityConfig, nie przez
-	 * kontroler.
-	 */
 	@Test
 	void regularUserCannotUseIt() throws Exception {
 		TestUser regular = user("summaries-regular@songly.io");
@@ -97,10 +86,6 @@ class AdminProfileSummariesIntegrationTest extends AbstractIntegrationTest {
 				"Bearer " + regular.token())).andExpect(status().isForbidden());
 	}
 
-	/**
-	 * Usunięte konto w historii moderacji to normalny przypadek — brak w wyniku,
-	 * nie błąd.
-	 */
 	@Test
 	void unknownIdsAreSkipped() throws Exception {
 		TestUser admin = admin("summaries-unknown@songly.io");

@@ -52,11 +52,6 @@ class PostController {
 		return ResponseEntity.status(HttpStatus.CREATED).body(response);
 	}
 
-	/**
-	 * Wgranie zdjęcia jest osobnym krokiem od publikacji posta (patrz
-	 * {@code CreatePostRequest}). Zwrócony klucz podaje się potem w
-	 * {@code imageKey}; sam w sobie nie tworzy jeszcze żadnej treści.
-	 */
 	@PostMapping(path = "/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 	PostImageResponse uploadPostImage(Authentication authentication, @RequestPart("file") MultipartFile file)
 			throws IOException {
@@ -114,11 +109,6 @@ class PostController {
 		return ResponseEntity.status(HttpStatus.CREATED).body(response);
 	}
 
-	/**
-	 * Zgłasza post do moderacji społeczności. Dostępne dla każdego zalogowanego —
-	 * także dla nie-członka, bo społeczności są otwarte do czytania (Claude.md §8)
-	 * i treść widzi szerzej niż jej członkowie.
-	 */
 	@PostMapping("/{postId}/reports")
 	@ResponseStatus(HttpStatus.ACCEPTED)
 	void reportPost(Authentication authentication, @PathVariable UUID postId,
