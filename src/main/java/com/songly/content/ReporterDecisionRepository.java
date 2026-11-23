@@ -24,6 +24,16 @@ interface ReporterDecisionRepository extends JpaRepository<ReporterDecision, UUI
 			@Param("outcome") ReporterDecisionOutcome outcome, @Param("userIds") Collection<UUID> userIds,
 			@Param("since") Instant since);
 
+	@Query("""
+			select d.userId as userId, count(d) as decisionCount
+			from ReporterDecision d
+			where d.communityId is null and d.outcome = :outcome
+			  and d.userId in :userIds and d.decidedAt > :since
+			group by d.userId
+			""")
+	List<UserDecisionCount> countOutsideCommunitiesByOutcomeSince(@Param("outcome") ReporterDecisionOutcome outcome,
+			@Param("userIds") Collection<UUID> userIds, @Param("since") Instant since);
+
 	@Modifying(flushAutomatically = true)
 	@Query("delete from ReporterDecision d where d.userId = :userId")
 	void deleteByUserId(@Param("userId") UUID userId);

@@ -247,7 +247,7 @@ class CommunityModerationIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	@Test
-	void reportingRules_ownPostAndDuplicatesAndNonCommunityPosts() throws Exception {
+	void reportingRules_ownPostAndDuplicates() throws Exception {
 		TestUser owner = user("rep-rules-owner@songly.io");
 		TestUser reporter = user("rep-rules-reporter@songly.io");
 		String communityId = createCommunity(owner, "Reguly-zgloszen");
@@ -256,17 +256,6 @@ class CommunityModerationIntegrationTest extends AbstractIntegrationTest {
 		report(owner, postId, 400);
 		report(reporter, postId, 202);
 		report(reporter, postId, 409);
-
-		String plainPostId = objectMapper.readTree(mockMvc
-				.perform(post("/api/v1/posts").header("Authorization", "Bearer " + owner.token())
-						.contentType(MediaType.APPLICATION_JSON).content("""
-								{"content":"zwykly post"}"""))
-				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asText();
-		mockMvc.perform(
-				post("/api/v1/posts/" + plainPostId + "/reports").header("Authorization", "Bearer " + reporter.token())
-						.contentType(MediaType.APPLICATION_JSON).content("""
-								{"reason":"SPAM"}"""))
-				.andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("POST_NOT_IN_COMMUNITY"));
 	}
 
 	@Test

@@ -51,6 +51,13 @@ interface PostReportRepository extends JpaRepository<PostReport, UUID> {
 			@Param("status") ReportStatus status, Pageable pageable);
 
 	@Query("""
+			select r from PostReport r join Post p on p.id = r.postId
+			where p.communityId is null and r.status = :status
+			order by r.createdAt asc
+			""")
+	Page<PostReport> findOutsideCommunitiesByStatus(@Param("status") ReportStatus status, Pageable pageable);
+
+	@Query("""
 			select r.postId as postId, count(r) as reportCount from PostReport r
 			where r.postId in :postIds and r.status = :status group by r.postId
 			""")

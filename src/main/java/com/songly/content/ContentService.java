@@ -14,6 +14,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -170,13 +171,10 @@ class ContentService {
 	@Transactional
 	void reportPost(UUID postId, UUID reporterId, ReportReason reason, String details) {
 		Post post = visiblePost(postId, reporterId);
-		if (post.getCommunityId() == null) {
-			throw new PostNotInCommunityException();
-		}
 		if (post.getAuthorId().equals(reporterId)) {
 			throw new CannotReportOwnPostException();
 		}
-		if (communityMembership.isBanned(post.getCommunityId(), reporterId)) {
+		if (post.getCommunityId() != null && communityMembership.isBanned(post.getCommunityId(), reporterId)) {
 			meterRegistry.counter(REPORT_REJECTED_METRIC, "reason", "banned").increment();
 			throw new BannedFromCommunityException();
 		}
@@ -210,8 +208,18 @@ class ContentService {
 	@Transactional(readOnly = true)
 	Page<PostReportResponse> listPendingReports(UUID communityId, UUID requesterId, Pageable pageable) {
 		requireModerator(communityId, requesterId);
-		Page<PostReport> page = reportRepository.findByCommunityIdAndStatus(communityId, ReportStatus.PENDING,
-				pageable);
+		return pendingReports(reportRepository.findByCommunityIdAndStatus(communityId, ReportStatus.PENDING, pageable),
+				communityId, requesterId, pageable);
+	}
+
+	@Transactional(readOnly = true)
+	Page<PostReportResponse> listPendingPlatformReports(UUID adminId, Pageable pageable) {
+		return pendingReports(reportRepository.findOutsideCommunitiesByStatus(ReportStatus.PENDING, pageable), null,
+				adminId, pageable);
+	}
+
+	private Page<PostReportResponse> pendingReports(Page<PostReport> page, UUID communityId, UUID requesterId,
+			Pageable pageable) {
 		List<UUID> postIds = page.getContent().stream().map(PostReport::getPostId).distinct().toList();
 		if (postIds.isEmpty()) {
 			return Page.empty(pageable);
@@ -237,33 +245,57 @@ class ContentService {
 
 	private Map<UUID, Long> decisionCounts(UUID communityId, ReporterDecisionOutcome outcome, Set<UUID> reporterIds,
 			Instant since) {
-		return decisionRepository.countByCommunityAndOutcomeSince(communityId, outcome, reporterIds, since).stream()
-				.collect(Collectors.toMap(ReporterDecisionRepository.UserDecisionCount::getUserId,
-						ReporterDecisionRepository.UserDecisionCount::getDecisionCount));
+		List<ReporterDecisionRepository.UserDecisionCount> counts = communityId == null
+				? decisionRepository.countOutsideCommunitiesByOutcomeSince(outcome, reporterIds, since)
+				: decisionRepository.countByCommunityAndOutcomeSince(communityId, outcome, reporterIds, since);
+		return counts.stream().collect(Collectors.toMap(ReporterDecisionRepository.UserDecisionCount::getUserId,
+				ReporterDecisionRepository.UserDecisionCount::getDecisionCount));
 	}
 
 	@Transactional
 	void dismissReport(UUID communityId, UUID reportId, UUID requesterId) {
 		requireModerator(communityId, requesterId);
+		dismiss(communityId, reportId, requesterId);
+	}
+
+	@Transactional
+	void dismissPlatformReport(UUID reportId, UUID adminId) {
+		dismiss(null, reportId, adminId);
+	}
+
+	private void dismiss(UUID communityId, UUID reportId, UUID reviewerId) {
 		PostReport report = reportRepository.findByIdForUpdate(reportId).orElseThrow(ReportNotFoundException::new);
 		Post post = postRepository.findById(report.getPostId()).orElseThrow(ReportNotFoundException::new);
-		if (!communityId.equals(post.getCommunityId())) {
+		if (!Objects.equals(communityId, post.getCommunityId())) {
 			throw new ReportNotFoundException();
 		}
 		if (report.getStatus() != ReportStatus.PENDING) {
 			return;
 		}
 		Instant now = Instant.now();
-		report.dismiss(requesterId, now);
+		report.dismiss(reviewerId, now);
 		recordDecision(report.getReporterId(), communityId, ReporterDecisionOutcome.DISMISSED, now);
-		eventPublisher.publishEvent(new PostReportDismissedEvent(communityId, report.getPostId(),
-				report.getReporterId(), requesterId, now));
+		eventPublisher.publishEvent(
+				new PostReportDismissedEvent(communityId, report.getPostId(), report.getReporterId(), reviewerId, now));
+	}
+
+	@Transactional
+	void removePlatformPost(UUID postId, UUID adminId) {
+		Post post = postRepository.findByIdForUpdate(postId).orElseThrow(PostNotFoundException::new);
+		if (post.getCommunityId() != null) {
+			throw new PostInCommunityException();
+		}
+		if (post.getImageKey() != null) {
+			reportOrphanedImages(List.of(post.getImageKey()));
+		}
+		Set<UUID> reporterIds = Set.copyOf(reportRepository.findReporterIdsByPostId(postId));
+		Instant now = Instant.now();
+		recordUpheldReports(null, reporterIds, now);
+		eventPublisher.publishEvent(new PostRemovedEvent(postId, post.getAuthorId(), adminId, reporterIds, now));
+		postRepository.delete(post);
 	}
 
 	private void recordUpheldReports(UUID communityId, Set<UUID> reporterIds, Instant now) {
-		if (communityId == null) {
-			return;
-		}
 		reporterIds.forEach(reporterId -> recordDecision(reporterId, communityId, ReporterDecisionOutcome.UPHELD, now));
 	}
 

@@ -140,6 +140,8 @@ class PushNotifier implements AutoCloseable {
 			case BAN_ESCALATION_REJECTED -> new Text(community(event), "Administracja utrzymała ban");
 			case COMMUNITY_POST_REPORTED -> new Text(APP_NAME, "Nowe zgłoszenie posta do rozpatrzenia");
 			case POST_REPORT_DISMISSED -> new Text(APP_NAME, "Moderacja nie uwzględniła Twojego zgłoszenia");
+			case POST_REPORTED -> new Text(APP_NAME, "Nowe zgłoszenie posta do rozpatrzenia przez administrację");
+			case POST_REMOVED -> new Text(APP_NAME, "Administracja usunęła Twój post");
 		};
 	}
 

@@ -32,5 +32,7 @@ public enum AnalyticsEventType {
 
 	BAN_APPEAL_ACCEPTED,
 
-	BAN_APPEAL_REJECTED
+	BAN_APPEAL_REJECTED,
+
+	POST_REMOVED
 }

@@ -11,6 +11,7 @@ import com.songly.community.CommunityMemberBannedEvent;
 import com.songly.community.CommunityMemberRoleChangedEvent;
 import com.songly.content.CommunityCommentRemovedEvent;
 import com.songly.content.CommunityPostRemovedEvent;
+import com.songly.content.PostRemovedEvent;
 import com.songly.content.PostReportDismissedEvent;
 import com.songly.identity.AdminRoleChangedEvent;
 import com.songly.identity.UserSuspendedEvent;
@@ -49,6 +50,14 @@ class ModerationLogEventListener {
 				event.moderatorId(), null, event.reporterIds().size(), event.occurredAt());
 		event.reporterIds().forEach(reporterId -> moderationLogService.record(ModerationAction.POST_REPORT_UPHELD,
 				event.communityId(), reporterId, event.moderatorId(), null, null, event.occurredAt()));
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onPostRemoved(PostRemovedEvent event) {
+		moderationLogService.record(ModerationAction.POST_REMOVED, null, event.postAuthorId(), event.moderatorId(),
+				null, event.reporterIds().size(), event.occurredAt());
+		event.reporterIds().forEach(reporterId -> moderationLogService.record(ModerationAction.POST_REPORT_UPHELD, null,
+				reporterId, event.moderatorId(), null, null, event.occurredAt()));
 	}
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)

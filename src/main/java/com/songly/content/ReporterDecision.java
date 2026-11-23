@@ -19,7 +19,7 @@ class ReporterDecision {
 	@Column(name = "user_id", nullable = false)
 	private UUID userId;
 
-	@Column(name = "community_id", nullable = false)
+	@Column(name = "community_id")
 	private UUID communityId;
 
 	@Enumerated(EnumType.STRING)

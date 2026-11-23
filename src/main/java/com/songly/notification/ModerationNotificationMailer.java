@@ -12,6 +12,7 @@ import com.songly.community.CommunityMemberBannedEvent;
 import com.songly.community.CommunityMembership;
 import com.songly.content.CommunityCommentRemovedEvent;
 import com.songly.content.CommunityPostRemovedEvent;
+import com.songly.content.PostRemovedEvent;
 import com.songly.content.PostReportDismissedEvent;
 import com.songly.content.PostReportedEvent;
 import com.songly.identity.AdminDirectory;
@@ -175,6 +176,20 @@ class ModerationNotificationMailer {
 	}
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onPostRemoved(PostRemovedEvent event) {
+		sendTo(Set.of(event.postAuthorId()), event.moderatorId(), MailCategory.DECISION_ABOUT_ME,
+				"Songly — Twój post został usunięty", """
+						Cześć!
+
+						Administracja Songly usunęła Twój post, bo naruszał zasady
+						serwisu.
+
+						Szczegóły znajdziesz w aplikacji, w skrzynce powiadomień.
+
+						Zespół Songly""");
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onCommunityPostRemoved(CommunityPostRemovedEvent event) {
 		String community = communityName(event.communityId());
 		sendTo(Set.of(event.postAuthorId()), event.moderatorId(), MailCategory.DECISION_ABOUT_ME,
@@ -204,6 +219,19 @@ class ModerationNotificationMailer {
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onPostReported(PostReportedEvent event) {
+		if (event.communityId() == null) {
+			sendToAdmins("report", event.reporterId(), "Songly — nowe zgłoszenie posta", """
+					Cześć!
+
+					Ktoś zgłosił post w Songly. Zajrzyj do zgłoszeń w panelu
+					administracji w aplikacji, żeby je rozpatrzyć.
+
+					Kolejne zgłoszenia nie wygenerują następnych wiadomości przez
+					jakiś czas — ich liczbę zobaczysz przy poście w kolejce.
+
+					Zespół Songly""");
+			return;
+		}
 		String community = communityName(event.communityId());
 		sendToModerators(event.communityId(), "report", event.reporterId(),
 				"Songly — nowe zgłoszenie w społeczności „%s”".formatted(community), """
@@ -315,6 +343,20 @@ class ModerationNotificationMailer {
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onPostReportDismissed(PostReportDismissedEvent event) {
+		if (event.communityId() == null) {
+			sendTo(Set.of(event.reporterId()), event.moderatorId(), MailCategory.DECISION_ABOUT_ME,
+					"Songly — Twoje zgłoszenie zostało rozpatrzone", """
+							Cześć!
+
+							Administracja Songly obejrzała zgłoszony przez Ciebie post
+							i uznała, że może zostać.
+
+							Dziękujemy za zgłoszenie — to dzięki nim wiemy, czemu się
+							przyjrzeć, także wtedy, gdy decyzja jest inna, niż się spodziewasz.
+
+							Zespół Songly""");
+			return;
+		}
 		String community = communityName(event.communityId());
 		sendTo(Set.of(event.reporterId()), event.moderatorId(), MailCategory.DECISION_ABOUT_ME,
 				"Songly — Twoje zgłoszenie zostało rozpatrzone", """
@@ -329,8 +371,17 @@ class ModerationNotificationMailer {
 						Zespół Songly""".formatted(community));
 	}
 
+	private void sendToAdmins(String kind, UUID actorId, String subject, String body) {
+		if (!claimModeratorMailSlot("platform", kind)) {
+			meterRegistry.counter(MAIL_SUPPRESSED_METRIC, "kind", kind).increment();
+			log.debug("Mail do administracji ({}) wyciszony odstępem", kind);
+			return;
+		}
+		sendTo(adminDirectory.adminIds(), actorId, MailCategory.MODERATION_QUEUE, subject, body);
+	}
+
 	private void sendToModerators(UUID communityId, String kind, UUID actorId, String subject, String body) {
-		if (!claimModeratorMailSlot(communityId, kind)) {
+		if (!claimModeratorMailSlot(communityId.toString(), kind)) {
 			meterRegistry.counter(MAIL_SUPPRESSED_METRIC, "kind", kind).increment();
 			log.debug("Mail do moderatorów społeczności {} ({}) wyciszony odstępem", communityId, kind);
 			return;
@@ -341,10 +392,10 @@ class ModerationNotificationMailer {
 		sendTo(moderators, actorId, MailCategory.MODERATION_QUEUE, subject, body);
 	}
 
-	private boolean claimModeratorMailSlot(UUID communityId, String kind) {
+	private boolean claimModeratorMailSlot(String scope, String kind) {
 		try {
-			Boolean claimed = redisTemplate.opsForValue().setIfAbsent("moderation-mail:" + kind + ":" + communityId,
-					"1", properties.getModeratorInterval());
+			Boolean claimed = redisTemplate.opsForValue().setIfAbsent("moderation-mail:" + kind + ":" + scope, "1",
+					properties.getModeratorInterval());
 			return claimed == null || claimed;
 		} catch (RuntimeException ex) {
 			log.warn("Wyciszanie maili moderacyjnych wyłączone dla tej wiadomości — Redis nie odpowiada: {}",

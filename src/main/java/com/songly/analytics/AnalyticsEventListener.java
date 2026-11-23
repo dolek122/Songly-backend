@@ -9,6 +9,7 @@ import com.songly.content.CommunityCommentRemovedEvent;
 import com.songly.content.CommunityPostRemovedEvent;
 import com.songly.content.PostCommentedEvent;
 import com.songly.content.PostLikedEvent;
+import com.songly.content.PostRemovedEvent;
 import com.songly.content.PostReportDismissedEvent;
 import com.songly.content.PostReportedEvent;
 import com.songly.content.PostSharedEvent;
@@ -76,6 +77,11 @@ class AnalyticsEventListener {
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onCommunityPostRemoved(CommunityPostRemovedEvent event) {
 		analyticsService.record(AnalyticsEventType.COMMUNITY_POST_REMOVED, event.occurredAt());
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onPostRemoved(PostRemovedEvent event) {
+		analyticsService.record(AnalyticsEventType.POST_REMOVED, event.occurredAt());
 	}
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)

@@ -14,8 +14,10 @@ import com.songly.content.CommunityPostRemovedEvent;
 import com.songly.content.PostCommentedEvent;
 import com.songly.content.PostLikedEvent;
 import com.songly.content.PostReportDismissedEvent;
+import com.songly.content.PostRemovedEvent;
 import com.songly.content.PostReportedEvent;
 import com.songly.content.PostSharedEvent;
+import com.songly.identity.AdminDirectory;
 import com.songly.social.FriendRequestAcceptedEvent;
 import com.songly.social.FriendRequestSentEvent;
 import org.springframework.stereotype.Component;
@@ -27,10 +29,13 @@ class NotificationEventListener {
 
 	private final NotificationService notificationService;
 	private final CommunityMembership communityMembership;
+	private final AdminDirectory adminDirectory;
 
-	NotificationEventListener(NotificationService notificationService, CommunityMembership communityMembership) {
+	NotificationEventListener(NotificationService notificationService, CommunityMembership communityMembership,
+			AdminDirectory adminDirectory) {
 		this.notificationService = notificationService;
 		this.communityMembership = communityMembership;
+		this.adminDirectory = adminDirectory;
 	}
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -82,6 +87,12 @@ class NotificationEventListener {
 	}
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	void onPostRemoved(PostRemovedEvent event) {
+		notificationService.record(event.postAuthorId(), event.moderatorId(), NotificationType.POST_REMOVED,
+				event.postId(), event.occurredAt());
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onCommunityCommentRemoved(CommunityCommentRemovedEvent event) {
 		notificationService.record(event.commentAuthorId(), event.moderatorId(),
 				NotificationType.COMMUNITY_COMMENT_REMOVED, event.postId(), event.occurredAt());
@@ -128,6 +139,11 @@ class NotificationEventListener {
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	void onPostReported(PostReportedEvent event) {
+		if (event.communityId() == null) {
+			adminDirectory.adminIds().forEach(adminId -> notificationService.record(adminId, event.reporterId(),
+					NotificationType.POST_REPORTED, event.postId(), event.occurredAt()));
+			return;
+		}
 		communityMembership.moderatorIds(event.communityId())
 				.forEach(moderatorId -> notificationService.record(moderatorId, event.reporterId(),
 						NotificationType.COMMUNITY_POST_REPORTED, event.postId(), event.occurredAt()));
